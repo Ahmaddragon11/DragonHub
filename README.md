@@ -80,17 +80,5 @@
 - المساحة: 500MB
 - الإنترنت: مطلوب للميزات السحابية
 
-### التثبيت
-
-```bash
-# نسخ المستودع
-git clone https://github.com/Ahmaddragon11/DragonHub.git
-
-# الدخول للمجلد
-cd DragonHub
-
-# تثبيت المتطلبات
-npm install
-
 # تشغيل البرنامج
 npm start
