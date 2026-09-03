@@ -1,333 +1,392 @@
-# DragonHub
+<div align="center">
 
-> **مركز إنتاجية متكامل لسطح المكتب يعمل على Windows 10/11 ‏64-bit.**ملاحظات، مشاريع، مهام، ملفات، محرر أكواد، تنزيلات، ضغط، معالجة صور وفيديو وصوت، وخزنة مشفّرة — في مساحة عمل واحدة هادئة وسريعة.
+# 🐉 DragonHub
 
-## تحميل سريع
+### The All-in-One Desktop Workspace
 
-[تحميل DragonHub v1.1.0 لـ Windows x64](https://github.com/Ahmaddragon11/DragonHub/releases/download/1/DragonHub-Setup-1.1.0-win-x64.exe)
+**Code. Files. Media. Notes. Downloads. Productivity.**
 
-## نبذة عن DragonHub
+**Everything connected in one powerful workspace.**
 
-DragonHub هو برنامج سطح مكتب مصمم لتجميع أدوات العمل اليومية في مركز واحد بدل التنقل بين العديد من التطبيقات. يجمع البرنامج بين تنظيم الأفكار والمشاريع والمهام، وإدارة الملفات، وتحرير الأكواد، والتنزيل، والضغط، ومعالجة الوسائط، وحماية الملفات الحساسة.
+<br>
 
-تم تصميم DragonHub ليكون عمليًا وسهل الاستخدام مع الحفاظ على أدوات متقدمة للمستخدمين الذين يحتاجون إلى إنجاز عمليات متعددة من مكان واحد. يدعم البرنامج الواجهتين العربية والإنجليزية، واتجاه RTL للعربية، والمظهر الداكن والفاتح.
+[![Latest Release](https://img.shields.io/github/v/release/Ahmaddragon11/DragonHub?style=for-the-badge&label=Latest%20Release)](https://github.com/Ahmaddragon11/DragonHub/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/Ahmaddragon11/DragonHub?style=for-the-badge)](https://github.com/Ahmaddragon11/DragonHub/stargazers)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
-## أبرز الميزات
+</div>
 
-### لوحة تحكم موحّدة
+---
 
-توفر لوحة التحكم نظرة سريعة على مساحة العمل والمهام النشطة والملفات والعمليات الأخيرة، بحيث يبدأ المستخدم يومه من مركز واحد واضح بدل البحث بين نوافذ متعددة.
+# 🐉 What is DragonHub?
 
-### الملاحظات والأفكار
+**DragonHub** is an all-in-one desktop workspace created to bring essential tools and workflows together inside a single modern application.
 
-أنشئ ملاحظاتك، واحفظ الأفكار، ونظّم المحتوى الذي تحتاج إلى الرجوع إليه أثناء العمل. صُممت وحدة الملاحظات لتكون نقطة سريعة لالتقاط المعلومات دون تعقيد.
+Instead of constantly switching between different applications for coding, managing files, working with media, taking notes, handling downloads, and completing everyday tasks, DragonHub aims to provide a unified environment where everything is available from one place.
 
-### المشاريع
+> **One application. One workspace. Endless possibilities.**
 
-أنشئ مساحات مستقلة للمشاريع، ونظّم عناصر العمل والملفات والملاحظات ذات الصلة في مكان واحد. تساعدك وحدة المشاريع على فصل السياقات المختلفة والحفاظ على ترتيب العمل.
+DragonHub is designed for developers, creators, students, power users, and anyone who wants a cleaner and more centralized digital workspace.
 
-### إدارة المهام بأسلوب Kanban
+---
 
-حوّل المهام إلى أعمدة واضحة، وتابع ما تم إنجازه وما هو قيد التنفيذ وما يحتاج إلى بدء. تساعدك لوحة Kanban على رؤية سير العمل بطريقة بصرية مباشرة.
+# ⚡ Why DragonHub?
 
-### مدير الملفات بواجهتين
+Modern computers often require dozens of different applications.
 
-استعرض الملفات والمجلدات من خلال مدير ملفات بواجهتين، وانقل الملفات وانسخها وأعد تسميتها واحذفها بطريقة أكثر كفاءة. يدعم البرنامج المسارات المحلية مع التحقق من المسارات داخل العملية الرئيسية.
+One application for code.
 
-### محرر الأكواد Monaco
+Another for files.
 
-يحتوي DragonHub على محرر أكواد مبني على Monaco Editor، مع تجربة مناسبة لتحرير الملفات البرمجية وملفات النصوص. يوفر المحرر تلوينًا لغويًا ودعمًا لعدد كبير من لغات البرمجة من خلال محرك Monaco.
+Another for images.
 
-### مدير التنزيلات
+Another for videos.
 
-نزّل الملفات مع إمكانية متابعة العمليات ومراقبة التقدم. يتضمن البرنامج دعمًا لمدير تنزيل متعدد الاتصالات، إضافة إلى تنزيل الوسائط من خلال yt-dlp عند استخدام مصادر مدعومة.
+Another for notes.
 
-### مركز الضغط والأرشفة
+Another for downloads.
 
-أنشئ أرشيفات بصيغ متعددة، ومنها:
+Another for productivity.
 
-- ZIP
+DragonHub takes a different approach.
 
-- 7z
+### 🐉 Bring your workflow together.
 
-- TAR
+DragonHub is designed to become a central hub for the things you do every day.
 
-- GZIP
+**Open → Work → Create → Organize → Manage**
 
-- XZ
+Without constantly jumping between unrelated applications.
 
-كما يدعم مركز الضغط تشفير AES-256 للأرشيفات التي تحتوي على ملفات حساسة.
+---
 
-### استوديو الصور
+# ✨ Features
 
-نفّذ عمليات معالجة الصور من خلال مكتبة Sharp، مثل تحويل الصيغ وبعض عمليات المعالجة والتحسين، مع دعم تنفيذ العمليات على الملفات المحلية.
+## 💻 Development Workspace
 
-### استوديو الفيديو والصوت
+A dedicated environment for developers and people who work with code.
 
-استخدم FFmpeg لتنفيذ عمليات الوسائط، مثل تحويل الصيغ، ومعالجة الفيديو، واستخراج الصوت، وتنفيذ عمليات التحويل المناسبة على الملفات المحلية.
+- 🧠 Multi-language support
+- 🎨 Syntax highlighting
+- ⚡ Fast editing
+- 🔎 Search and replace
+- 📂 Project-based workflow
+- 💾 Easy file management
+- 🛠️ Developer-oriented tools
 
-### الخزنة المشفّرة
+Whether you're writing a small script or working on a larger project, DragonHub provides a centralized place for your development workflow.
 
-خزنة مخصصة لحماية البيانات الحساسة. تعتمد الخزنة على اشتقاق مفتاح باستخدام PBKDF2-SHA512 مع 600,000 تكرار، ثم تشفير AES-256-GCM. يبقى مفتاح الخزنة في الذاكرة أثناء الاستخدام ولا يتم حفظه كبيانات مكشوفة.
+---
 
-### الاختصارات
+## 📁 Advanced File Management
 
-يوفر DragonHub صفحة مخصصة للاختصارات لمساعدة المستخدم على تنفيذ العمليات المتكررة بسرعة أكبر والتنقل بين أجزاء البرنامج بكفاءة.
+Keep your digital workspace organized.
 
-### الإعدادات
+DragonHub provides tools for working with files and folders without requiring a separate application.
 
-تجمع صفحة الإعدادات خيارات البرنامج الأساسية، بما في ذلك اللغة، والمظهر، وإعدادات السلوك ومسارات العمل.
+### Includes:
 
-### دعم العربية والإنجليزية
+- 📂 File and folder browsing
+- 🔎 Fast search
+- 📋 Copy and move operations
+- 🗑️ File deletion
+- 📦 Organization tools
+- 👁️ File access and management
+- ⚡ Efficient workflow
 
-يدعم البرنامج اللغتين العربية والإنجليزية، مع دعم اتجاه الكتابة من اليمين إلى اليسار في الواجهة العربية، إلى جانب إمكانية استخدام المظهر الداكن أو الفاتح.
+---
 
-## الوحدات المتوفرة
+## 🎨 Image Workspace
 
-| الوحدة | الوظيفة |
-| --- | --- |
-| Dashboard | نظرة عامة على مساحة العمل والعمليات النشطة |
-| Notes | كتابة الملاحظات وحفظ الأفكار |
-| Projects | تنظيم المشاريع ومساحات العمل |
-| Tasks | إدارة المهام ولوحة Kanban |
-| Files | إدارة الملفات والمجلدات بواجهتين |
-| Editor | تحرير الأكواد والملفات باستخدام Monaco Editor |
-| Downloads | إدارة التنزيلات وتنزيل الوسائط المدعومة |
-| Compress | ضغط الملفات وإنشاء الأرشيفات وتشفيرها |
-| Images | معالجة الصور وتحويلها |
-| Video | معالجة الفيديو والصوت باستخدام FFmpeg |
-| Vault | حفظ البيانات الحساسة داخل خزنة مشفّرة |
-| Shortcuts | عرض وإدارة اختصارات البرنامج |
-| Settings | إعدادات اللغة والمظهر والسلوك |
-| About | معلومات البرنامج والإصدار |
+Work with images directly inside DragonHub.
 
-## متطلبات التشغيل
+### Tools include:
 
-| المتطلب | التفاصيل |
-| --- | --- |
-| نظام التشغيل | Windows 10 أو Windows 11 |
-| المعمارية | 64-bit / x64 |
-| الذاكرة | يفضّل توفر 4 GB RAM أو أكثر، خصوصًا عند معالجة الفيديو أو الملفات الكبيرة |
-| مساحة التخزين | مساحة كافية لتثبيت البرنامج والملفات المؤقتة وملفات الوسائط |
-| الصلاحيات | يعمل المثبّت بصلاحيات المستخدم العادي، وقد تحتاج بعض العمليات إلى صلاحيات Windows بحسب المجلد المختار |
+- ✂️ Crop
+- 🔄 Rotate
+- 🎚️ Adjustments
+- ✨ Filters
+- 🖼️ Image management
+- 📤 Export support
+- 📚 Multiple formats
 
-> يحتاج تشغيل عمليات الفيديو والصوت والضغط إلى موارد إضافية بحسب حجم الملفات ودقة الوسائط ومستوى الضغط المختار.
+---
 
-## طريقة التثبيت
+## 🎬 Video Workspace
 
-1. نزّل ملف التثبيت من [رابط التحميل المباشر](https://github.com/Ahmaddragon11/DragonHub/releases/download/1/DragonHub-Setup-1.1.0-win-x64.exe).
+A dedicated environment for basic video editing and management.
 
-1. شغّل الملف `DragonHub-Setup-1.1.0-win-x64.exe`.
+### Features include:
 
-1. اختر مجلد التثبيت المناسب.
+- 🎥 Import videos
+- ✂️ Trim clips
+- 🔪 Split videos
+- 🔊 Audio support
+- 📝 Titles and text
+- 👀 Preview workflow
+- 📤 Export capabilities
 
-1. اتبع خطوات معالج التثبيت حتى النهاية.
+---
 
-1. استخدم الاختصار الذي ينشئه المثبّت على سطح المكتب أو من قائمة Start.
+## 📝 Notes & Ideas
 
-إذا عرض Windows تحذيرًا بسبب عدم وجود توقيع رقمي للملف، فتحقق من مصدر الملف، ثم اختر **More info** وبعدها **Run anyway** إذا كنت تثق بالنسخة التي نزّلتها.
+Your workspace shouldn't only contain files and code.
 
-## النسخة المحمولة
+DragonHub also provides a place for your ideas, information, and notes.
 
-يتوفر DragonHub أيضًا بصيغة محمولة يمكن تشغيلها دون تثبيت. النسخة المحمولة مناسبة للتشغيل من مجلد مستقل أو من وحدة تخزين خارجية. أما نسخة المثبّت التقليدي فهي الأنسب للاستخدام اليومي على جهاز واحد لأنها تنشئ اختصارات وتوفر إزالة منظمة من إعدادات Windows.
+### Designed for:
 
-## الأمان والخصوصية
+- 📝 Quick notes
+- 💡 Ideas
+- 📚 Information
+- 🗂️ Organization
+- 🔎 Fast searching
+- 📌 Important content
 
-صُمم DragonHub مع مجموعة من الإجراءات الأمنية المناسبة لتطبيق سطح مكتب يتعامل مع الملفات والبيانات المحلية، ومنها:
+Keep your thoughts close to your work instead of scattering them across different applications.
 
-- تفعيل `contextIsolation` في Electron.
+---
 
-- تشغيل واجهة renderer داخل sandbox.
+## ⬇️ Download Manager
 
-- استخدام جسر آمن عبر `contextBridge` للتواصل مع العملية الرئيسية.
+Manage downloads from one centralized interface.
 
-- تطبيق سياسة محتوى صارمة CSP.
+### Features:
 
-- منع تحميل المحتوى البعيد غير الضروري.
+- ⚡ Multiple downloads
+- 📊 Progress monitoring
+- ⏯️ Resume interrupted downloads
+- 📋 Download organization
+- 🚦 Download management
+- 📈 Status information
 
-- تحويل الصور المصغرة إلى Data URLs بما يتوافق مع CSP.
+---
 
-- التحقق من مسارات الملفات داخل العملية الرئيسية.
+# 🎨 Designed to Feel Modern
 
-- استخدام `shell.trashItem` لإرسال العناصر إلى سلة المحذوفات الأصلية في Windows.
+DragonHub isn't designed to look like another old-fashioned utility program.
 
-- تشفير الخزنة باستخدام PBKDF2-SHA512 وAES-256-GCM.
+The interface focuses on:
 
-- إبقاء مفتاح الخزنة في الذاكرة أثناء جلسة الاستخدام.
+### 🌙 Dark Mode
+A comfortable dark interface designed for long sessions.
 
-> لا تشارك كلمة مرور الخزنة مع أي شخص. فقدان كلمة المرور قد يمنع استعادة البيانات المشفّرة.
+### ☀️ Light Mode
+A clean alternative for users who prefer brighter interfaces.
 
-## تخزين البيانات
+### 🧭 Simple Navigation
+Important tools should never feel hidden.
 
-DragonHub تطبيق سطح مكتب محلي، وتُحفظ بيانات العمل والإعدادات وفق آلية التخزين المحلية الخاصة بالتطبيق ونظام التشغيل. قبل حذف البرنامج أو نقل مجلدات البيانات، يُنصح بإنشاء نسخة احتياطية من البيانات المهمة.
+### 📱 Responsive Design
+The interface is designed to adapt to different screen sizes where supported.
 
-يجب حفظ ملفات الخزنة والنسخ الاحتياطية المشفّرة في مكان آمن. لا ترفعها إلى خدمات عامة أو تشاركها دون التأكد من حماية كلمة المرور والملف معًا.
+---
 
-## التقنيات المستخدمة
+# 🧠 The DragonHub Philosophy
 
-- Electron لتشغيل تطبيق سطح المكتب.
+DragonHub follows a simple principle:
 
-- React لبناء واجهة المستخدم.
+> **Your tools should adapt to your workflow — not the other way around.**
 
-- TypeScript لكتابة كود أكثر وضوحًا وأمانًا.
+The goal isn't simply to put random utilities into one application.
 
-- Vite لبناء الواجهة وتشغيل وضع التطوير.
+The goal is to create a **cohesive digital workspace** where different tools can work together naturally.
 
-- Zustand لإدارة الحالة العامة.
+---
 
-- Monaco Editor لتحرير الأكواد.
+# 🚀 Roadmap
 
-- Framer Motion للحركات والانتقالات.
+DragonHub is an evolving project.
 
-- Lucide React للأيقونات.
+Future versions may introduce:
 
-- Sharp لمعالجة الصور.
+### 🤖 Intelligence
+- AI-powered tools
+- AI coding assistance
+- Smart automation
+- Intelligent file utilities
 
-- FFmpeg لمعالجة الفيديو والصوت.
+### ☁️ Cloud
+- Cloud storage
+- Synchronization
+- Automatic backups
+- Cross-device access
 
-- yt-dlp لتنزيل الوسائط من المصادر المدعومة.
+### 🌐 Platforms
+- Web version
+- Mobile companion
+- Additional desktop platforms
 
-- 7-Zip وأدوات الأرشفة لإنشاء الملفات المضغوطة.
+### 🔌 Integrations
+- External services
+- Developer tools
+- Productivity platforms
+- Additional file formats
 
-- Electron Store لحفظ الإعدادات المحلية.
+### 🎨 Customization
+- More themes
+- Interface customization
+- Personal workspaces
+- Additional visual options
 
-## بنية المشروع
+### ⚡ Performance
+- Faster startup
+- Lower resource consumption
+- Improved responsiveness
+- Better large-project handling
 
+---
+
+# 📦 Installation
+
+## Windows
+
+Download the latest Windows installer from:
+
+**GitHub → Releases → Latest Release**
+
+Then:
+
+```text
+1. Download DragonHub
+2. Run the installer
+3. Follow the installation steps
+4. Launch DragonHub
+5. Start working
 ```
-DragonHub/
-├── electron/
-│   ├── main/
-│   │   ├── index.ts
-│   │   ├── ipc.ts
-│   │   └── services/
-│   └── preload/
-├── src/
-│   ├── shared/
-│   │   └── types.ts
-│   └── renderer/
-│       ├── components/
-│       ├── i18n/
-│       ├── lib/
-│       ├── pages/
-│       └── store/
-├── build/
-│   ├── icon.ico
-│   └── icon.png
-├── package.json
-└── README.md
-```
 
-## البناء من المصدر
+---
 
-### المتطلبات
+# 💻 System Requirements
 
-- Node.js 20 أو أحدث.
+DragonHub is designed to remain accessible even on relatively modest computers.
 
-- npm.
+### Recommended
 
-- Windows 10/11 ‏64-bit عند إنشاء حزم Windows محليًا.
+- Windows 10 / 11
+- 4 GB RAM or more
+- x64 processor
+- Available storage for the application and your workspace
 
-### الأوامر
+> Requirements may change as new features are introduced.
+
+---
+
+# 🔐 Privacy & Security
+
+DragonHub aims to keep the user's workspace secure and under their control.
+
+Security and privacy remain important parts of the project's development direction.
+
+Future versions may expand these capabilities with additional security and privacy features.
+
+---
+
+# 🛠️ Development
+
+Clone the repository:
 
 ```bash
-# تثبيت الاعتماديات
+git clone https://github.com/Ahmaddragon11/DragonHub.git
+```
+
+Enter the project:
+
+```bash
+cd DragonHub
+```
+
+Install dependencies:
+
+```bash
 npm install
-
-# فحص TypeScript دون إنشاء ملفات بناء
-npm run typecheck
-
-# بناء الواجهة وملفات Electron
-npm run build
-
-# تشغيل وضع التطوير
-npm run dev
-
-# إنشاء المثبّت التقليدي والنسخة المحمولة لـ Windows x64
-npm run dist
 ```
 
-تُحفظ ملفات الإصدار الناتجة داخل:
-
-```
-release/1.1.0/
-```
-
-## أوامر إدارة الإصدارات
+Start the development environment:
 
 ```bash
-npm run version:patch
-npm run version:minor
-npm run version:major
+npm start
 ```
 
-## التحقق من ملف التحميل
+> Development commands may change depending on the current project structure.
 
-يمكن التحقق من سلامة ملف المثبّت بعد تنزيله باستخدام SHA-256:
+---
 
+# 🤝 Contributing
+
+DragonHub is an evolving project, and contributions are welcome.
+
+You can contribute by:
+
+- 🐛 Reporting bugs
+- 💡 Suggesting features
+- 🎨 Improving the interface
+- ⚡ Improving performance
+- 🧑‍💻 Contributing code
+- 📚 Improving documentation
+- 🌍 Helping with localization
+
+### Contribution workflow
+
+```bash
+git checkout -b feature/my-feature
 ```
-c758c65008aa6997ab61267e31deb7c0290f6b0bf394d6a0717508d06fb32463
+
+Make your changes, then:
+
+```bash
+git add .
+git commit -m "Add my feature"
+git push origin feature/my-feature
 ```
 
-في PowerShell:
+Then open a Pull Request.
 
-```
-Get-FileHash .\DragonHub-Setup-1.1.0-win-x64.exe -Algorithm SHA256
-```
+---
 
-## سجل التغييرات
+# 🐛 Issues
 
-### v1.1.0 — 2026-09-03
+Found a bug?
 
-- إصلاح تعطل بدء التشغيل المرتبط بـ `electron-store` الإصدار 8.
+Please report it through the GitHub Issues section.
 
-- استبدال عملية نقل الملفات إلى سلة المحذوفات باستخدام `shell.trashItem` الأصلي.
+When reporting an issue, include:
 
-- إصلاح فئات Tailwind غير الصالحة.
+- Operating system
+- DragonHub version
+- Steps to reproduce
+- Expected behavior
+- Actual behavior
+- Screenshots/logs if available
 
-- تحسين توافق الصور المصغرة مع CSP.
+---
 
-- إضافة أيقونة التطبيق.
+# 🗺️ Project Vision
 
-- استكمال مفاتيح الترجمة الناقصة.
+DragonHub is more than a collection of utilities.
 
-- توفير حزم Windows x64 بصيغة المثبّت التقليدي والنسخة المحمولة.
+The long-term vision is to build a **complete desktop ecosystem** where productivity, development, creativity, organization, and intelligent tools coexist in one environment.
 
-### v1.0.0 — 2026-09-02
+Today, it may be a collection of useful tools.
 
-- الإصدار الأولي.
+Tomorrow, it can become your entire workspace.
 
-- إطلاق الوحدات الأساسية الأربع عشرة.
+---
 
-## المشكلات والاقتراحات
+<div align="center">
 
-إذا واجهت مشكلة، افتح Issue جديدًا في المستودع، واذكر المعلومات التالية:
+# 🐉 DragonHub
 
-- إصدار DragonHub.
+### One Hub. Your Workflow. Your Tools.
 
-- إصدار Windows والمعمارية.
+**Built to simplify the way you work.**
 
-- الوحدة التي ظهرت فيها المشكلة.
+<br>
 
-- الخطوات التي تؤدي إلى ظهور المشكلة.
+⭐ If DragonHub is useful to you, consider giving the project a star.
 
-- رسالة الخطأ أو لقطة شاشة عند الحاجة.
+<br>
 
-- نوع الملف وحجمه إذا كانت المشكلة مرتبطة بالضغط أو الوسائط أو التنزيل.
+**Made with ❤️ by Ahmad Dragon**
 
-لا ترفق كلمات مرور الخزنة أو الملفات الحساسة أو مفاتيح التشفير داخل Issue.
-
-## الترخيص
-
-راجع ملف `LICENSE.md` الموجود في المستودع لمعرفة شروط استخدام DragonHub وتوزيعه.
-
-## المطوّر
-
-تم تطوير DragonHub بواسطة **AHMADDRAGON**.
-
-- Telegram: [@ahmaddragon](https://t.me/ahmaddragon)
-
-- GitHub: [Ahmaddragon11](https://github.com/Ahmaddragon11)
-
-## رابط التحميل
-
-[تحميل المثبّت التقليدي لـ Windows x64](https://github.com/Ahmaddragon11/DragonHub/releases/download/1/DragonHub-Setup-1.1.0-win-x64.exe)
+</div>
