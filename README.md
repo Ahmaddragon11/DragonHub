@@ -2,7 +2,7 @@
 
 > منصتك المتكاملة الشاملة لكل احتياجات الإنتاجية والتطوير
 
-![DragonHub](https://img.shields.io/badge/DragonHub-v1.0-brightgreen)
+![DragonHub](https://img.shields.io/badge/DragonHub-v1.1-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Status](https://img.shields.io/badge/status-Active-success)
 
