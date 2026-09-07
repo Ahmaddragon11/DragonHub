@@ -1,0 +1,129 @@
+{
+  "name": "dragonhub",
+  "productName": "DragonHub",
+  "version": "1.3.0",
+  "description": "DragonHub - All-in-one productivity suite for Windows: notes, projects, tasks, file manager, editor, downloader, compressor, media tools and encrypted vault.",
+  "author": {
+    "name": "AHMADDRAGON",
+    "url": "https://t.me/ahmaddragon"
+  },
+  "license": "SEE LICENSE IN LICENSE.md",
+  "homepage": "https://t.me/ahmaddragon",
+  "main": "dist-electron/main/index.js",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "build:renderer": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dist": "npm run build && electron-builder --win --x64",
+    "dist:dir": "npm run build && electron-builder --win --x64 --dir",
+    "release": "npm run dist",
+    "version:patch": "npm version patch -m \"chore(release): v%s\"",
+    "version:minor": "npm version minor -m \"chore(release): v%s\"",
+    "version:major": "npm version major -m \"chore(release): v%s\"",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "7zip-bin": "^5.2.0",
+    "electron-store": "^8.2.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "node-7z": "^3.0.0",
+    "sharp": "^0.33.5",
+    "yt-dlp-wrap": "^2.3.12"
+  },
+  "devDependencies": {
+    "@monaco-editor/react": "^4.6.0",
+    "@types/fluent-ffmpeg": "^2.1.26",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "framer-motion": "^11.15.0",
+    "i18next": "^24.2.0",
+    "lucide-react": "^0.469.0",
+    "monaco-editor": "^0.52.0",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^15.2.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "zustand": "^5.0.2"
+  },
+  "build": {
+    "appId": "com.ahmaddragon.dragonhub",
+    "productName": "DragonHub",
+    "copyright": "Copyright © 2026 AHMADDRAGON",
+    "directories": {
+      "output": "release/${version}",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/@ffmpeg-installer/**",
+      "node_modules/@ffprobe-installer/**",
+      "node_modules/7zip-bin/**",
+      "node_modules/sharp/**",
+      "node_modules/@img/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-Setup-${version}-win-x64.${ext}",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}-win-x64.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DragonHub",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerLanguages": [
+        "en_US",
+        "ar_SA"
+      ],
+      "license": "LICENSE.md"
+    },
+    "publish": null
+  },
+  "allowScripts": {
+    "@ffmpeg-installer/linux-x64@4.1.0": true,
+    "@ffprobe-installer/linux-x64@5.2.0": true,
+    "electron@33.4.11": true,
+    "esbuild@0.25.12": true,
+    "sharp@0.33.5": true
+  }
+}

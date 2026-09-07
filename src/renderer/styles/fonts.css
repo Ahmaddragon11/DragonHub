@@ -1,0 +1,2 @@
+/* System font stack used offline. Inter/Cairo are used when installed on the system;
+   fallbacks to Segoe UI (Windows) so the app never depends on network fonts (CSP: no remote). */

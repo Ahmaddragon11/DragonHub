@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.vite/
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
+*.tar.gz
+*.zip
+.idea/
+.vscode/*
+!.vscode/extensions.json
+core
