@@ -420,6 +420,19 @@ npm run dev         # وضع التطوير
 إدارة الإصدارات: `npm run version:patch|minor|major`.
 ملف الأيقونة `build/icon.ico` موجود وجاهز للبناء.
 
+## البناء والنشر عبر GitHub Actions
+
+يوجد Workflow في `.github/workflows/build-windows.yml`. عند الدفع إلى `main`
+يتم البناء ورفع ملفات Windows كـ Artifact مؤقت. لإنشاء Release دائم يمكن للجميع
+تنزيله، أنشئ Tag يبدأ بحرف `v` وادفعه إلى GitHub:
+
+```bash
+git tag v1.3.0
+git push origin v1.3.0
+```
+
+سيبني GitHub Actions نسخة NSIS ونسخة Portable ويرفقهما تلقائياً بصفحة Releases.
+
 > ملاحظة: مجلد `node_modules` غير مضمّن في الأرشيف. أول `npm install` يحتاج إنترنت
 > (تحميل كبير لمرة واحدة). بعد ذلك البناء يعمل محلياً بالكامل.
 
