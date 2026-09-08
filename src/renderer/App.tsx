@@ -31,14 +31,21 @@ function useReminders() {
   const tasksRef = useRef(tasks)
   tasksRef.current = tasks
   useEffect(() => {
-    // Notifications are allow-listed in the main-process permission handler;
-    // request renderer permission once so reminders can actually surface.
-    try {
-      if ('Notification' in window && Notification.permission === 'default') {
-        const r = Notification.requestPermission() as unknown as Promise<string> | void
-        if (r && typeof (r as Promise<string>).catch === 'function') (r as Promise<string>).catch(() => {})
+    const ensurePermission = async () => {
+      try {
+        if (typeof window === 'undefined' || !('Notification' in window)) return
+        if (Notification.permission === 'default') {
+          const r = await Notification.requestPermission().catch(() => 'denied')
+          if (r !== 'granted') {
+            toast(t('tasks.reminder'), 'warning')
+          }
+        }
+      } catch {
+        // Notifications are optional; app should continue without them.
       }
-    } catch { /* notifications unavailable */ }
+    }
+    void ensurePermission()
+
     const check = () => {
       const now = Date.now()
       for (const k of tasksRef.current) {
@@ -48,9 +55,13 @@ function useReminders() {
         fired.current.add(key)
         toast(`${t('tasks.reminder')}: ${k.title}`, 'warning')
         try {
-          const n = new Notification('DragonHub', { body: `${t('tasks.reminderBody')}: ${k.title}` })
-          n.onclick = () => navigate('tasks', { open: k.id })
-        } catch { /* notifications unavailable */ }
+          if ('Notification' in window && Notification.permission === 'granted') {
+            const n = new Notification('DragonHub', { body: `${t('tasks.reminderBody')}: ${k.title}` })
+            n.onclick = () => navigate('tasks', { open: k.id })
+          }
+        } catch {
+          // notifications are best-effort only
+        }
       }
     }
     check()
