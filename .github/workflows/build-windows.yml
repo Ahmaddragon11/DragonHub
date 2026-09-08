@@ -38,11 +38,18 @@ jobs:
       - name: Build Windows packages
         run: npm run dist
 
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          node scripts/release-body.mjs > release-notes.md
+          echo "--- release notes preview ---"
+          sed -n '1,80p' release-notes.md
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: DragonHub-Windows
-          path: release/*/*.exe
+          path: release/**/*.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -51,6 +58,7 @@ jobs:
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}
           name: ${{ startsWith(github.ref, 'refs/tags/') && format('DragonHub {0}', github.ref_name) || format('DragonHub Build {0}', github.run_number) }}
+          body_path: release-notes.md
           prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
           generate_release_notes: true
           files: |
