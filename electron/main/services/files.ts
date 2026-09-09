@@ -14,7 +14,7 @@ const execFileP = promisify(execFile)
  *  own allowlist/blocklist on top (see SECURITY_NOTES.md). */
 export function safePath(p: string): string {
   if (typeof p !== 'string' || p.length === 0 || p.length > 32000 || p.includes('\0')) throw new Error('Invalid path')
-  if (/[\x00-\x1F]/.test(path.basename(p))) throw new Error('Invalid path: control characters')
+  if (/[\x00-\x1F]/.test(p)) throw new Error('Invalid path: control characters')
   const n = path.resolve(p)
   return n
 }
@@ -28,9 +28,14 @@ function samePath(a: string, b: string): boolean {
 export async function listDir(dir: string, showHidden = false): Promise<FileEntry[]> {
   const d = safePath(dir)
   const entries = await fsp.readdir(d, { withFileTypes: true })
+  // Bound FD/memory pressure on huge folders (e.g. node_modules, system dirs).
+  if (entries.length > 20000) throw new Error('Too many entries in folder (max 20000)')
   const out: FileEntry[] = []
-  await Promise.all(
-    entries.map(async (e) => {
+  // Chunked lstat: same result as Promise.all without exhausting file descriptors.
+  for (let i = 0; i < entries.length; i += 64) {
+    const chunk = entries.slice(i, i + 64)
+    await Promise.all(
+      chunk.map(async (e) => {
       const full = path.join(d, e.name)
       try {
         const st = await fsp.lstat(full)
@@ -50,8 +55,9 @@ export async function listDir(dir: string, showHidden = false): Promise<FileEntr
       } catch {
         /* skip unreadable */
       }
-    }),
-  )
+      }),
+    )
+  }
   out.sort((a, b) => (a.isDirectory === b.isDirectory ? a.name.localeCompare(b.name, undefined, { numeric: true }) : a.isDirectory ? -1 : 1))
   return out
 }
@@ -76,16 +82,23 @@ export async function readText(p: string, maxBytes = 20 * 1024 * 1024): Promise<
   const sp = safePath(p)
   const st = await fsp.stat(sp)
   if (st.size > maxBytes) throw new Error('File too large for text editor (max 20MB)')
-  return fsp.readFile(sp, 'utf8')
+  const text = await fsp.readFile(sp, 'utf8')
+  // TOCTOU guard: file may have grown between stat and read.
+  if (Buffer.byteLength(text) > maxBytes) throw new Error('File changed during read (max 20MB)')
+  return text
 }
+
+const MAX_WRITE_BYTES = 50 * 1024 * 1024
 
 export async function writeText(p: string, content: string, encoding: 'utf8' | 'base64' = 'utf8'): Promise<void> {
   const sp = safePath(p)
+  const bytes = encoding === 'base64' ? Buffer.from(content, 'base64') : content
+  if (Buffer.byteLength(bytes as string) > MAX_WRITE_BYTES) throw new Error('Content too large (max 50MB)')
   // atomic write: unique tmp + rename (pid + random avoids symlink races between concurrent writers)
   const { randomBytes } = await import('node:crypto')
   const tmp = `${sp}.dh-tmp-${process.pid}-${randomBytes(6).toString('hex')}`
   try {
-    await fsp.writeFile(tmp, encoding === 'base64' ? Buffer.from(content, 'base64') : content, encoding === 'base64' ? undefined : 'utf8')
+    await fsp.writeFile(tmp, bytes, encoding === 'base64' ? undefined : 'utf8')
     await fsp.rename(tmp, sp)
   } catch (e) {
     await fsp.rm(tmp, { force: true }).catch(() => {})
@@ -97,7 +110,9 @@ export async function readBase64(p: string, maxBytes = 50 * 1024 * 1024): Promis
   const sp = safePath(p)
   const st = await fsp.stat(sp)
   if (st.size > maxBytes) throw new Error('File too large')
-  return (await fsp.readFile(sp)).toString('base64')
+  const buf = await fsp.readFile(sp)
+  if (buf.length > maxBytes) throw new Error('File changed during read')
+  return buf.toString('base64')
 }
 
 export async function mkdir(p: string) {
@@ -107,18 +122,32 @@ export async function mkdir(p: string) {
 export async function createFile(p: string) {
   const sp = safePath(p)
   if (fs.existsSync(sp)) throw new Error('File already exists')
-  await fsp.writeFile(sp, '')
+  // O_EXCL closes the exists-then-write race: concurrent creators can't both win.
+  try {
+    await fsp.writeFile(sp, '', { flag: 'wx' })
+  } catch (e: any) {
+    if (e?.code === 'EEXIST') throw new Error('File already exists')
+    throw e
+  }
 }
 
 export async function rename(from: string, to: string) {
   await fsp.rename(safePath(from), safePath(to))
 }
 
+/** Into-itself check that respects case-insensitive filesystems + symlinked prefixes. */
+function isInside(child: string, parent: string): boolean {
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    return child.toLowerCase().startsWith(parent.toLowerCase() + path.sep)
+  }
+  return child.startsWith(parent + path.sep)
+}
+
 export async function copy(src: string, dest: string) {
   const s = safePath(src)
   const d = safePath(dest)
   if (samePath(s, d)) throw new Error('Source and destination are the same')
-  if (d.startsWith(s + path.sep)) throw new Error('Cannot copy a folder into itself')
+  if (isInside(d, s)) throw new Error('Cannot copy a folder into itself')
   await fsp.cp(s, d, { recursive: true, errorOnExist: false, force: true })
 }
 
@@ -126,17 +155,33 @@ export async function move(src: string, dest: string) {
   const s = safePath(src)
   const d = safePath(dest)
   if (samePath(s, d)) throw new Error('Source and destination are the same')
-  if (d.startsWith(s + path.sep)) throw new Error('Cannot move a folder into itself')
+  if (isInside(d, s)) throw new Error('Cannot move a folder into itself')
   try {
     await fsp.rename(s, d)
-  } catch {
+  } catch (firstErr) {
+    // Cross-device fallback: copy first, verify the copy, and only then remove
+    // the source — a crash/partial copy must never silently lose data.
     await copy(s, d)
+    try {
+      await fsp.stat(d)
+    } catch {
+      throw firstErr
+    }
     await fsp.rm(s, { recursive: true, force: true })
+  }
+}
+
+/** Paths that must never be removed, even with useTrash=false. */
+function assertRemovable(sp: string) {
+  const root = path.parse(sp).root
+  if (sp === root || samePath(sp, os.homedir())) {
+    throw new Error('Refusing to delete a drive root or home folder')
   }
 }
 
 export async function remove(p: string, useTrash: boolean) {
   const sp = safePath(p)
+  assertRemovable(sp)
   if (useTrash) {
     await shell.trashItem(sp)
   } else {
@@ -147,9 +192,13 @@ export async function remove(p: string, useTrash: boolean) {
 export async function getDrives(): Promise<DriveInfo[]> {
   if (process.platform === 'win32') {
     // wmic is deprecated/removed on Windows 11 — prefer PowerShell, fall back to letter probing.
+    // Absolute System32 path: avoids PATH-hijack of powershell.exe.
+    const ps = process.env.SystemRoot
+      ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      : 'powershell.exe'
     try {
       const { stdout } = await execFileP(
-        'powershell.exe',
+        ps,
         ['-NoProfile', '-NonInteractive', '-Command', 'Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{n="Free";e={$_.Free}}, @{n="Used";e={$_.Used}} | ConvertTo-Csv -NoTypeInformation'],
         { windowsHide: true, timeout: 8000 },
       )
@@ -196,7 +245,7 @@ export function specialFolders() {
 
 export async function search(root: string, query: string, maxResults = 500): Promise<FileEntry[]> {
   const r = safePath(root)
-  const q = query.toLowerCase()
+  const q = String(query || '').slice(0, 256).toLowerCase()
   const results: FileEntry[] = []
   const stack = [r]
   const seen = new Set<string>([r.toLowerCase()])
@@ -266,6 +315,10 @@ export async function folderSize(p: string): Promise<{ size: number; files: numb
 
 export async function openExternal(p: string) {
   const sp = safePath(p)
+  const executable = new Set(['.exe', '.com', '.bat', '.cmd', '.msi', '.scr', '.ps1', '.psm1', '.vbs', '.vbe', '.js', '.jse', '.jar', '.lnk', '.hta', '.wsf', '.wsh', '.wsc', '.reg', '.msc', '.cpl', '.pif', '.py', '.pyw'])
+  if (executable.has(path.extname(sp).toLowerCase())) {
+    throw new Error('Opening executable/script files is blocked for safety; use Show in folder instead')
+  }
   const err = await shell.openPath(sp)
   if (err) throw new Error(err)
 }
@@ -274,10 +327,15 @@ export function showInFolder(p: string) {
   shell.showItemInFolder(safePath(p))
 }
 
+const MAX_HASH_BYTES = 10 * 1024 * 1024 * 1024 // 10GB: hashing must stay bounded
+
 export async function hashFile(p: string, algo: 'md5' | 'sha1' | 'sha256' | 'sha512'): Promise<string> {
+  const sp = safePath(p)
+  const st = await fsp.stat(sp).catch(() => null)
+  if (st && st.size > MAX_HASH_BYTES) throw new Error('File too large to hash (max 10GB)')
   const crypto = await import('node:crypto')
   return new Promise((res, rej) => {
     const h = crypto.createHash(algo)
-    fs.createReadStream(safePath(p)).on('data', (d) => h.update(d)).on('end', () => res(h.digest('hex'))).on('error', rej)
+    fs.createReadStream(sp).on('data', (d) => h.update(d)).on('end', () => res(h.digest('hex'))).on('error', rej)
   })
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutDashboard, StickyNote, CheckSquare, Lightbulb, Download, Plus, Code2, ShieldCheck, Cpu, MemoryStick, Clock, Send } from 'lucide-react'
 import { useApp } from '@/store'
@@ -13,16 +13,23 @@ export default function Dashboard() {
   const [sys, setSys] = useState<any>(null)
   const [vaultCount, setVaultCount] = useState<number | null>(null)
   useEffect(() => {
-    const load = () => invoke('app:system').then(setSys).catch(() => {})
-    load(); const i = setInterval(load, 5000)
-    invoke<boolean>('vault:isUnlocked').then((u) => { if (u) invoke<any[]>('vault:list').then((l) => setVaultCount(l.length)) }).catch(() => {})
-    return () => clearInterval(i)
+    let alive = true
+    const load = () => {
+      if (!alive || document.hidden) return
+      invoke('app:system').then((s) => { if (alive) setSys(s) }).catch(() => {})
+    }
+    load()
+    const i = setInterval(load, 15000)
+    const onVis = () => { if (!document.hidden) load() }
+    document.addEventListener('visibilitychange', onVis)
+    invoke<boolean>('vault:isUnlocked').then((u) => { if (u && alive) invoke<any[]>('vault:list').then((l) => setVaultCount(l.length)).catch(() => {}) }).catch(() => {})
+    return () => { alive = false; clearInterval(i); document.removeEventListener('visibilitychange', onVis) }
   }, [])
-  const openTasks = tasks.filter((x) => x.status !== 'done')
-  const upcoming = [...openTasks].filter((x) => x.dueDate).sort((a, b) => a.dueDate! - b.dueDate!).slice(0, 6)
-  const recentNotes = [...notes].filter((n) => !n.archived).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5)
-  const activeProjects = projects.filter((p) => p.status === 'active' || p.status === 'planning').slice(0, 5)
-  const activeDl = downloads.filter((d) => d.status === 'downloading' || d.status === 'queued')
+  const openTasks = useMemo(() => tasks.filter((x) => x.status !== 'done'), [tasks])
+  const upcoming = useMemo(() => [...openTasks].filter((x) => x.dueDate).sort((a, b) => a.dueDate! - b.dueDate!).slice(0, 6), [openTasks])
+  const recentNotes = useMemo(() => [...notes].filter((n) => !n.archived).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5), [notes])
+  const activeProjects = useMemo(() => projects.filter((p) => p.status === 'active' || p.status === 'planning').slice(0, 5), [projects])
+  const activeDl = useMemo(() => downloads.filter((d) => d.status === 'downloading' || d.status === 'queued'), [downloads])
   const hour = new Date().getHours()
   const stats = [
     { label: t('dashboard.notesCount'), value: notes.length, icon: <StickyNote size={20} />, page: 'notes' as const, color: 'from-violet-500 to-fuchsia-500' },
@@ -34,7 +41,7 @@ export default function Dashboard() {
     { l: t('dashboard.newNote'), i: <StickyNote size={18} />, go: () => navigate('notes', { create: true }) },
     { l: t('dashboard.newTask'), i: <CheckSquare size={18} />, go: () => navigate('tasks', { create: true }) },
     { l: t('dashboard.newProject'), i: <Lightbulb size={18} />, go: () => navigate('projects', { create: true }) },
-    { l: t('dashboard.newDownload'), i: <Download size={18} />, go: () => navigate('downloads') },
+    { l: t('dashboard.newDownload'), i: <Download size={18} />, go: () => navigate('downloads', { focus: true }) },
     { l: t('dashboard.openEditor'), i: <Code2 size={18} />, go: () => navigate('editor') },
     { l: t('dashboard.openVault'), i: <ShieldCheck size={18} />, go: () => navigate('vault') },
   ]
@@ -47,7 +54,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 stagger">
         {stats.map((s) => (
           <button key={s.label} onClick={() => navigate(s.page)} className="card p-5 text-start relative overflow-hidden group hover:-translate-y-1 transition-all duration-500">
-            <div className={`absolute -end-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br ${s.color} opacity-20 blur-2xl group-hover:opacity-40 transition-opacity duration-700`} />
+            <div className={`absolute -end-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br ${s.color} opacity-20 blur-xl group-hover:opacity-40 transition-opacity duration-700 [contain:paint]`} />
             <div className={`inline-flex p-2.5 rounded-xl bg-gradient-to-br ${s.color} text-white shadow-lg`}>{s.icon}</div>
             <p className="mt-4 text-3xl font-black">{s.value}</p>
             <p className="text-xs text-surface-600">{s.label}</p>
@@ -107,7 +114,9 @@ export default function Dashboard() {
       <div className="grid lg:grid-cols-2 gap-4 mt-4 stagger">
         {activeDl.length > 0 && (
           <section className="card p-5">
-            <h2 className="font-semibold mb-3 flex items-center gap-2"><Download size={16} className="text-accent" />{t('dashboard.activeDownloads')}</h2>
+            <h2 className="font-semibold mb-3 flex items-center gap-2"><Download size={16} className="text-accent" />{t('dashboard.activeDownloads')}
+              <button className="ms-auto text-xs text-accent hover:underline" onClick={() => navigate('downloads')}>{t('dashboard.viewAll')}</button>
+            </h2>
             {activeDl.slice(0, 4).map((d) => (
               <div key={d.id} className="mb-3">
                 <div className="flex justify-between text-xs mb-1"><span className="truncate">{d.filename || d.url}</span><span className="text-surface-500">{formatBytes(d.speed)}/s</span></div>
@@ -120,7 +129,7 @@ export default function Dashboard() {
           <section className="card p-5">
             <h2 className="font-semibold mb-3 flex items-center gap-2"><Cpu size={16} className="text-accent" />{t('dashboard.system')}</h2>
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="rounded-xl bg-surface-200/60 p-3"><Cpu size={18} className="mx-auto text-accent" /><p className="text-xs mt-1 text-surface-600">{t('dashboard.cpu')}</p><p className="text-sm font-semibold">{sys.cpus} cores</p></div>
+              <div className="rounded-xl bg-surface-200/60 p-3"><Cpu size={18} className="mx-auto text-accent" /><p className="text-xs mt-1 text-surface-600">{t('dashboard.cpu')}</p><p className="text-sm font-semibold">{sys.cpus} {t('dashboard.cores')}</p></div>
               <div className="rounded-xl bg-surface-200/60 p-3"><MemoryStick size={18} className="mx-auto text-accent" /><p className="text-xs mt-1 text-surface-600">{t('dashboard.memory')}</p><p className="text-sm font-semibold">{formatBytes(sys.totalMem - sys.freeMem, 0)} / {formatBytes(sys.totalMem, 0)}</p></div>
               <div className="rounded-xl bg-surface-200/60 p-3"><Clock size={18} className="mx-auto text-accent" /><p className="text-xs mt-1 text-surface-600">{t('dashboard.uptime')}</p><p className="text-sm font-semibold">{formatDuration(sys.uptime)}</p></div>
             </div>

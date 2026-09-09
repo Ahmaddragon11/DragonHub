@@ -1,8 +1,8 @@
 export default {
-  app: { name: 'دراغون هب', tagline: 'مركزك المتكامل للإنتاجية', by: 'تطوير', version: 'الإصدار', loading: 'جاري تحميل مساحة عملك…' },
+  app: { name: 'دراغون هب', tagline: 'مركزك المتكامل للإنتاجية', by: 'تطوير', version: 'الإصدار', loading: 'جاري تحميل مساحة عملك…', loadFailed: 'تعذر تحميل البيانات — العمل بالإعدادات الافتراضية' },
   nav: {
     dashboard: 'الرئيسية', notes: 'الملاحظات', projects: 'المشاريع والأفكار', tasks: 'المهام', files: 'مدير الملفات', editor: 'المحرر',
-    downloads: 'التحميلات', compress: 'الضغط', images: 'استوديو الصور', video: 'الفيديو والصوت', vault: 'الخزنة', network: 'الشبكة',
+    downloads: 'التحميلات', compress: 'الضغط', images: 'استوديو الصور', video: 'الفيديو والصوت', vault: 'الخزنة', network: 'الشبكة', resources: 'الموارد',
     shortcuts: 'الاختصارات', settings: 'الإعدادات', about: 'حول البرنامج',
   },
   common: {
@@ -14,13 +14,13 @@ export default {
     done: 'تم', error: 'خطأ', success: 'نجاح', warning: 'تحذير', info: 'معلومة', loading: 'جاري التحميل…', processing: 'جاري المعالجة…', selectFile: 'اختر ملفاً', selectFolder: 'اختر مجلداً',
     selected: 'تم تحديد {{count}}', items: '{{count}} عنصر', today: 'اليوم', yesterday: 'أمس', untitled: 'بدون عنوان', pinned: 'مثبّت', favorites: 'المفضلة', archived: 'المؤرشفة',
     sortBy: 'ترتيب حسب', view: 'العرض', grid: 'شبكة', list: 'قائمة', filter: 'تصفية', export: 'تصدير', import: 'استيراد', reset: 'إعادة تعيين', apply: 'تطبيق', preview: 'معاينة',
-    confirmDelete: 'هل أنت متأكد من الحذف؟', irreversible: 'لا يمكن التراجع عن هذا الإجراء.', optional: 'اختياري', required: 'مطلوب',
+    confirmDelete: 'هل أنت متأكد من الحذف؟', irreversible: 'لا يمكن التراجع عن هذا الإجراء.', optional: 'اختياري', required: 'مطلوب', clear: 'مسح', retry: 'إعادة المحاولة', cancelAction: 'إلغاء العملية',
   },
   dashboard: {
     welcome: 'مرحباً بعودتك', subtitle: 'إليك ما يحدث في مركزك اليوم', quickActions: 'إجراءات سريعة', recentNotes: 'أحدث الملاحظات',
     upcomingTasks: 'المهام القادمة', activeProjects: 'المشاريع النشطة', activeDownloads: 'التحميلات الجارية', system: 'النظام', stats: 'نظرة عامة',
     newNote: 'ملاحظة جديدة', newTask: 'مهمة جديدة', newProject: 'مشروع جديد', newDownload: 'تحميل جديد', openEditor: 'فتح المحرر', openVault: 'فتح الخزنة',
-    notesCount: 'الملاحظات', tasksCount: 'مهام مفتوحة', projectsCount: 'المشاريع', vaultCount: 'عناصر الخزنة', memory: 'الذاكرة', cpu: 'المعالج', uptime: 'مدة التشغيل',
+    notesCount: 'الملاحظات', tasksCount: 'مهام مفتوحة', projectsCount: 'المشاريع', vaultCount: 'عناصر الخزنة', memory: 'الذاكرة', cpu: 'المعالج', uptime: 'مدة التشغيل', cores: 'أنوية', viewAll: 'عرض الكل',
   },
   notes: {
     title: 'الملاحظات', newNote: 'ملاحظة جديدة', placeholderTitle: 'عنوان الملاحظة', placeholderBody: 'اكتب بصيغة Markdown… **عريض**، *مائل*، - قوائم، # عناوين، `كود`، - [ ] مهام',
@@ -38,7 +38,7 @@ export default {
     status: { todo: 'للتنفيذ', in_progress: 'قيد التنفيذ', review: 'مراجعة', done: 'منجز' },
     priority: { low: 'منخفضة', medium: 'متوسطة', high: 'عالية', urgent: 'عاجلة' },
     overdue: 'متأخرة', dueToday: 'تستحق اليوم', completed: 'المنجزة', showCompleted: 'إظهار المنجزة', recurring: 'متكررة', none: 'لا', daily: 'يومياً', weekly: 'أسبوعياً', monthly: 'شهرياً',
-    reminder: 'تذكير', reminderBody: 'تذكير: حان موعد المهمة',
+    reminder: 'تذكير', reminderBody: 'تذكير: حان موعد المهمة', dragHint: 'اسحب لنقل المهمة بين الأعمدة',
   },
   files: {
     title: 'مدير الملفات', drives: 'الأقراص', quickAccess: 'وصول سريع', home: 'الرئيسية', desktop: 'سطح المكتب', documents: 'المستندات', downloads: 'التنزيلات', pictures: 'الصور', videos: 'الفيديو', music: 'الموسيقى',
@@ -50,7 +50,7 @@ export default {
   editor: {
     title: 'المحرر', openFile: 'فتح ملف', newFile: 'ملف جديد', save: 'حفظ', saveAs: 'حفظ باسم…', unsaved: 'تغييرات غير محفوظة', language: 'اللغة', wordWrap: 'التفاف النص', minimap: 'الخريطة المصغرة',
     fontSize: 'حجم الخط', find: 'بحث', replace: 'استبدال', format: 'تنسيق المستند', goToLine: 'الذهاب إلى سطر', noFile: 'افتح ملفاً أو أنشئ ملفاً جديداً لبدء التحرير',
-    line: 'سطر', col: 'عمود', tabs: 'التبويبات', closeOthers: 'إغلاق الأخرى', closeAll: 'إغلاق الكل', closeSaved: 'إغلاق المحفوظة',
+    line: 'سطر', col: 'عمود', tabs: 'التبويبات', closeOthers: 'إغلاق الأخرى', closeAll: 'إغلاق الكل', closeSaved: 'إغلاق المحفوظة', externalChange: 'تغيّر الملف خارجياً: {{name}} — تم إيقاف الحفظ التلقائي له',
   },
   downloads: {
     title: 'التحميلات', addUrl: 'الصق رابطاً للتحميل…', add: 'تحميل', direct: 'ملف مباشر', media: 'وسائط (يوتيوب و+1000 موقع)', segments: 'الاتصالات', folder: 'حفظ في', queue: 'قائمة الانتظار',
@@ -59,7 +59,8 @@ export default {
     audioOnly: 'صوت فقط (MP3)', bestQuality: 'أفضل جودة', fetchInfo: 'جلب المعلومات', ytdlpInstalling: 'تجهيز محرك الوسائط (أول مرة)…', noDownloads: 'لا توجد تحميلات بعد',
     invalidUrl: 'يرجى إدخال رابط http/https صالح',
   },
-  net: { title: 'الشبكة والاستهلاك', live: 'المباشر', down: 'التنزيل', up: 'الرفع', today: 'اليوم', used: 'المستهلك', remaining: 'المتبقي', limit: 'الحد', dailyCap: 'الحد اليومي', blockOnCap: 'حظر الإنترنت عند تجاوز الحد', restoreMidnight: 'إعادة التفعيل عند منتصف الليل', restoreQuit: 'إزالة الحظر عند إغلاق البرنامج', monitoring: 'المراقبة', blockNow: 'حظر الإنترنت الآن', unblock: 'إلغاء الحظر', blocked: 'الإنترنت محظور', unblocked: 'الإنترنت يعمل', needsAdmin: 'يتطلب الحظر صلاحيات المسؤول (شغّل البرنامج كمسؤول)', plan: 'الباقة', planName: 'اسم الباقة', quotaGB: 'الحجم (GB)', cycle: 'الدورة', daily: 'يومية', weekly: 'أسبوعية', monthly: 'شهرية', custom: 'مخصصة', cycleDays: 'عدد الأيام', startDate: 'بداية الدورة', savePlan: 'حفظ الباقة', clearPlan: 'حذف الباقة', allowance: 'الحصة اليومية', history: 'سجل الاستهلاك', date: 'التاريخ', total: 'المجموع', noData: 'لا توجد بيانات بعد', confirmBlock: 'سيتم حظر الإنترنت عن كامل الكمبيوتر. متابعة؟', daysLeft: 'الأيام المتبقية', quota: 'الحصة', perDay: 'يومياً', footnote: 'تشمل العدادات كامل استهلاك النظام منذ تشغيل الجهاز وتُصفَّر عند منتصف الليل.' },
+  net: { title: 'الشبكة والاستهلاك', live: 'المباشر', down: 'التنزيل', up: 'الرفع', today: 'اليوم', used: 'المستهلك', remaining: 'المتبقي', limit: 'الحد', dailyCap: 'الحد اليومي', blockOnCap: 'حظر الإنترنت عند تجاوز الحد', restoreMidnight: 'إعادة التفعيل عند منتصف الليل', restoreQuit: 'إزالة الحظر عند إغلاق البرنامج', monitoring: 'المراقبة', blockNow: 'حظر الإنترنت الآن', unblock: 'إلغاء الحظر', blocked: 'الإنترنت محظور', unblocked: 'الإنترنت يعمل', needsAdmin: 'يتطلب الحظر صلاحيات المسؤول (شغّل البرنامج كمسؤول)', plan: 'الباقة', planName: 'اسم الباقة', quotaGB: 'الحجم (GB)', cycle: 'الدورة', daily: 'يومية', weekly: 'أسبوعية', monthly: 'شهرية', custom: 'مخصصة', cycleDays: 'عدد الأيام', startDate: 'بداية الدورة', savePlan: 'حفظ الباقة', clearPlan: 'حذف الباقة', allowance: 'الحصة اليومية', history: 'سجل الاستهلاك', date: 'التاريخ', total: 'المجموع', noData: 'لا توجد بيانات بعد', confirmBlock: 'سيتم حظر الإنترنت عن كامل الكمبيوتر. متابعة؟', daysLeft: 'الأيام المتبقية', quota: 'الحصة', perDay: 'يومياً', footnote: 'تشمل العدادات كامل استهلاك النظام منذ تشغيل الجهاز وتُصفَّر عند منتصف الليل.', tabOverview: 'نظرة عامة', tabPlan: 'الخطة', tabLimits: 'الحدود', tabHistory: 'السجل', tabTools: 'الأدوات', connInfo: 'الاتصال الحالي', ssid: 'اسم الشبكة', signal: 'قوة الإشارة', radio: 'نوع الراديو', adapter: 'المحوّل', connState: 'الحالة', unknown: 'غير معروف', unavailable: 'غير متاح', radar: 'رادار الاتصالات النشطة', radarDesc: 'أي تطبيق متصل الآن (TCP)', noConns: 'لا توجد اتصالات نشطة', remote: 'الوجهة', local: 'المحلي', process: 'العملية', appBlock: 'حجب تطبيق واحد', appBlockDesc: 'قاعدة جدار حماية لملف .exe محدد (يتطلب المسؤول)', pickExe: 'اختيار ملف .exe…', blockApp: 'حجب التطبيق', unblockApp: 'إلغاء حجب التطبيق', invalidExe: 'اختر ملف .exe صالحاً بمسار مطلق', depletion: 'توقّع نفاد الباقة', depletionOk: 'الاستهلاك ضمن الحد اليوم', depletionEta: 'ينفد الحد خلال ~{{h}} ساعة بالسرعة الحالية', depletionExceeded: 'تم تجاوز حد اليوم', avgDay: 'المتوسط اليومي', bestDay: 'أفضل يوم', worstDay: 'أسوأ يوم', alert80: 'تنبيه عند 80% و 90% من الحد', speedTest: 'اختبار السرعة (اختياري)', speedTestDesc: 'يستهلك بيانات حقيقية من باقتك!', speedTestRun: 'بدء الاختبار (10MB)', speedTestRunning: 'جاري الاختبار…', speedTestResult: 'السرعة: {{s}}', exportCsv: 'تصدير السجل CSV' },
+  res: { title: 'الموارد والاستهلاك', subtitle: 'مراقبة حيّة للمعالج والذاكرة والأقراص وكارت الشاشة', cpu: 'المعالج', ram: 'الذاكرة', disk: 'القرص', gpu: 'كارت الشاشة', health: 'صحة النظام', cores: 'الأنوية', temp: 'الحرارة', processes: 'العمليات', topApps: 'أعلى التطبيقات استهلاكاً', searchApps: 'ابحث عن تطبيق…', name: 'الاسم', pid: 'المعرّف', kill: 'إنهاء', killConfirm1: 'إنهاء {{name}} (PID {{pid}})؟', killConfirm2: 'تأكيد نهائي: سيتم إيقاف العملية فوراً. متابعة؟', killDone: 'تم إنهاء العملية', killBlocked: 'ممنوع: عملية نظام أو البرنامج نفسه', freeze: 'تجميد', unfreeze: 'استئناف', export: 'تصدير تقرير', compact: 'مضغوط', comfortable: 'مريح', hideSystem: 'إخفاء عمليات النظام', sources: 'حالة مصادر البيانات', alerts: 'التنبيهات', alertCpu: 'حد المعالج %', alertMemory: 'حد الذاكرة %', alertFired: 'تجاوز {{what}} حد {{v}}% لأكثر من 30 ثانية', noData: 'بانتظار أول عيّنة…', topProcess: 'الأعلى استهلاكاً', openCard: 'فتح البطاقة العائمة', cardOpened: 'البطاقة العائمة تعمل — أخفِ النافذة الرئيسية وستبقى التحديثات', perCore: 'لكل نواة', pagefile: 'ملف الترحيل', uptime: 'مدة التشغيل', capacity: 'السعة', activity: 'النشاط', ok: 'سليم', degraded: 'منخفض', unavailable: 'غير متاح', settings: 'إعدادات المراقبة', interval: 'فاصل العيّنة (ثوانٍ)', topN: 'عدد العمليات', alertsOn: 'تفعيل التنبيهات' },
   compress: {
     title: 'مركز الضغط', compressTab: 'ضغط', extractTab: 'استخراج', browseTab: 'استعراض أرشيف', addFiles: 'إضافة ملفات', addFolder: 'إضافة مجلد', clear: 'مسح', format: 'الصيغة', level: 'المستوى',
     levels: { 0: 'تخزين', 1: 'الأسرع', 3: 'سريع', 5: 'عادي', 7: 'أقصى', 9: 'فائق' }, password: 'كلمة مرور (AES-256)', solid: 'أرشيف صلب', split: 'تقسيم إلى أجزاء (MB)', deleteAfter: 'حذف المصدر بعد الضغط',
@@ -103,5 +104,7 @@ export default {
     changelog: 'سجل التغييرات', versionInfo: 'معلومات الإصدار', techStack: 'مبني بـ Electron وReact وTypeScript وTailwind وMonaco وFFmpeg وsharp و7-Zip', checkUpdate: 'الحصول على التحديثات عبر تيليجرام', updatesNote: 'لا يوجد محدّث تلقائي مدمج بعد — تُعلن الإصدارات الجديدة عبر قناة تيليجرام.', upToDate: 'أنت على آخر إصدار',
   },
   palette: { placeholder: 'اكتب أمراً أو ابحث…', noMatch: 'لا توجد أوامر مطابقة', navigate: 'التنقل', actions: 'إجراءات', theme: 'تبديل السمة', lang: 'تبديل اللغة' },
+  focus: { title: 'مؤقت التركيز', work: 'عمل', short: 'استراحة', long: 'استراحة طويلة', workDone: 'انتهت جلسة العمل — وقت الاستراحة', breakDone: 'انتهت الاستراحة — عودة للعمل', sessions: '{{count}} جلسة اليوم' },
+  side: { main: 'الرئيسية', productivity: 'الإنتاجية', files: 'الملفات والأدوات', media: 'الوسائط', security: 'الأمان', system: 'النظام', collapse: 'طي القائمة', expand: 'توسيع القائمة' },
   toast: { saved: 'تم الحفظ', deleted: 'تم الحذف', copied: 'تم النسخ إلى الحافظة', error: 'حدث خطأ ما', created: 'تم الإنشاء', updated: 'تم التحديث' },
 }

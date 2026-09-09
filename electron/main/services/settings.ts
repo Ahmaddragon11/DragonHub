@@ -32,7 +32,10 @@ function sanitizePatch(patch: Partial<AppSettings>): Partial<AppSettings> {
   if (patch.compactMode !== undefined) out.compactMode = !!patch.compactMode
   if (patch.glassEffect !== undefined) out.glassEffect = !!patch.glassEffect
   if (patch.sidebarCollapsed !== undefined) out.sidebarCollapsed = !!patch.sidebarCollapsed
-  if (patch.startPage !== undefined && typeof patch.startPage === 'string') out.startPage = patch.startPage.slice(0, 32)
+  if (patch.startPage !== undefined && typeof patch.startPage === 'string') {
+    const pages = new Set(['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about'])
+    out.startPage = (pages.has(patch.startPage) ? patch.startPage : d.startPage).slice(0, 32)
+  }
   if (patch.downloadDir !== undefined && typeof patch.downloadDir === 'string') out.downloadDir = patch.downloadDir.slice(0, 1024)
   if (patch.maxParallelDownloads !== undefined) out.maxParallelDownloads = Math.round(clamp(patch.maxParallelDownloads, 1, 10, d.maxParallelDownloads))
   if (patch.downloadSegments !== undefined) out.downloadSegments = Math.round(clamp(patch.downloadSegments, 1, 32, d.downloadSegments))
@@ -77,7 +80,7 @@ export const settingsStore = {
 // Generic JSON collection store (notes, projects, tasks, downloads history)
 // Only these renderer-known keys may be read/written; everything else is rejected
 // so a compromised renderer cannot corrupt internal state (e.g. downloads queue).
-const ALLOWED_DATA_KEYS = new Set(['notes', 'projects', 'tasks', 'downloads', 'fileFavorites', 'recentLocations', 'activity', 'netState', 'netPlan', 'netLimits'])
+const ALLOWED_DATA_KEYS = new Set(['notes', 'projects', 'tasks', 'downloads', 'fileFavorites', 'recentLocations', 'activity', 'netState', 'netPlan', 'netLimits', 'netAppBlocks', 'resConfig', 'resCardConfig', 'focus'])
 const MAX_DATA_BYTES = 50 * 1024 * 1024
 const dataStore = new Store<Record<string, unknown>>({ name: 'dragonhub-data' })
 export const dataCollections = {
@@ -102,7 +105,10 @@ export const dataCollections = {
     for (const [k, v] of entries) {
       if (!ALLOWED_DATA_KEYS.has(k)) continue // skip unknown keys instead of corrupting state
       if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue
-      dataStore.set(k, v as never)
+      try {
+        // Route through set() so size + proto guards apply to backups too.
+        dataCollections.set(k, v)
+      } catch { /* oversized entry skipped */ }
     }
   },
   path: dataStore.path,

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { X, Check, Info, AlertTriangle, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useApp } from '@/store'
@@ -14,21 +15,24 @@ export function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boo
 }
 
 export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title?: string; children: React.ReactNode; wide?: boolean }) {
+  const { t } = useTranslation()
   useEffect(() => {
     if (!open) return
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', k)
-    return () => window.removeEventListener('keydown', k)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', k); document.body.style.overflow = prevOverflow }
   }, [open, onClose])
   return (
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-          <motion.div className={cn('card w-full max-h-[90vh] flex flex-col overflow-hidden', wide ? 'max-w-4xl' : 'max-w-xl')} initial={{ scale: 0.92, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.95, y: 10, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 26 }}>
+        <motion.div className="fixed inset-0 z-[90] flex items-start sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+          <motion.div role="dialog" aria-modal="true" aria-label={title} className={cn('card w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] my-auto flex flex-col overflow-hidden', wide ? 'max-w-4xl' : 'max-w-xl')} initial={{ scale: 0.92, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.95, y: 10, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 26 }}>
             {title && (
               <header className="flex items-center justify-between px-5 py-4 border-b border-surface-300/60">
                 <h3 className="font-semibold">{title}</h3>
-                <button className="btn-icon" onClick={onClose}><X size={18} /></button>
+                <button className="btn-icon" aria-label={t('common.close')} onClick={onClose}><X size={18} /></button>
               </header>
             )}
             <div className="p-5 overflow-auto">{children}</div>
@@ -41,15 +45,16 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
 
 export function Toasts() {
   const { toasts, dismissToast } = useApp()
+  const rtl = typeof document !== 'undefined' && document.documentElement.dir === 'rtl'
   const icons = { success: <Check size={16} />, error: <XCircle size={16} />, info: <Info size={16} />, warning: <AlertTriangle size={16} /> }
   const colors = { success: 'text-emerald-500 bg-emerald-500/10', error: 'text-rose-500 bg-rose-500/10', info: 'text-sky-500 bg-sky-500/10', warning: 'text-amber-500 bg-amber-500/10' }
   return (
-    <div className="fixed bottom-4 end-4 z-[100] flex flex-col gap-2 w-80">
+    <div className="fixed bottom-4 end-4 z-[100] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)]">
       <AnimatePresence>
         {toasts.map((t) => (
-          <motion.div key={t.id} layout initial={{ opacity: 0, x: 40, scale: 0.95 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 40, scale: 0.9 }} className="card flex items-center gap-3 px-4 py-3 text-sm cursor-pointer" onClick={() => dismissToast(t.id)}>
-            <span className={cn('rounded-lg p-1.5', colors[t.type])}>{icons[t.type]}</span>
-            <span className="flex-1 truncate">{t.text}</span>
+          <motion.div key={t.id} layout role="status" title={t.text} initial={{ opacity: 0, x: rtl ? -40 : 40, scale: 0.95 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: rtl ? -40 : 40, scale: 0.9 }} className="card flex items-center gap-3 px-4 py-3 text-sm cursor-pointer" onClick={() => dismissToast(t.id)}>
+            <span className={cn('rounded-lg p-1.5 shrink-0', colors[t.type])}>{icons[t.type]}</span>
+            <span className="flex-1 line-clamp-3 break-words">{t.text}</span>
           </motion.div>
         ))}
       </AnimatePresence>
@@ -87,7 +92,7 @@ export function TagInput({ tags, onChange, placeholder }: { tags: string[]; onCh
   return (
     <div className="flex flex-wrap gap-1.5 items-center input min-h-[38px] py-1">
       {tags.map((t) => (
-        <span key={t} className="badge bg-accent/15 text-accent">#{t}<button onClick={() => onChange(tags.filter((x) => x !== t))}><X size={11} /></button></span>
+        <span key={t} className="badge bg-accent/15 text-accent">#{t}<button type="button" onClick={() => onChange(tags.filter((x) => x !== t))}><X size={11} /></button></span>
       ))}
       <input className="bg-transparent outline-none flex-1 min-w-[80px] text-sm" value={v} placeholder={placeholder} onChange={(e) => setV(e.target.value)}
         onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ',') && v.trim()) { e.preventDefault(); if (!tags.includes(v.trim())) onChange([...tags, v.trim()]); setV('') } if (e.key === 'Backspace' && !v && tags.length) onChange(tags.slice(0, -1)) }} />
@@ -127,9 +132,9 @@ export function Ring({ value, size = 80, stroke = 8, children }: { value: number
   )
 }
 
-export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+export function Field({ label, children, hint, className }: { label: string; children: React.ReactNode; hint?: string; className?: string }) {
   return (
-    <label className="block space-y-1.5">
+    <label className={cn('block space-y-1.5', className)}>
       <span className="label">{label}</span>
       {children}
       {hint && <span className="text-[11px] text-surface-500">{hint}</span>}
@@ -151,14 +156,18 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
   useEffect(() => {
     const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose() }
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('mousedown', h); window.addEventListener('keydown', k); window.addEventListener('blur', onClose)
-    return () => { window.removeEventListener('mousedown', h); window.removeEventListener('keydown', k); window.removeEventListener('blur', onClose) }
+    const s = () => onClose()
+    window.addEventListener('mousedown', h); window.addEventListener('keydown', k); window.addEventListener('resize', s); window.addEventListener('scroll', s, true)
+    // Focus first item for keyboard users.
+    ref.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    return () => { window.removeEventListener('mousedown', h); window.removeEventListener('keydown', k); window.removeEventListener('resize', s); window.removeEventListener('scroll', s, true) }
   }, [onClose])
-  const left = Math.min(x, window.innerWidth - 230), top = Math.min(y, window.innerHeight - items.length * 34 - 20)
+  const menuH = items.reduce((a, it) => a + (it.sep ? 9 : 34), 16)
+  const left = Math.max(8, Math.min(x, window.innerWidth - 226)), top = Math.max(8, Math.min(y, window.innerHeight - menuH - 8))
   return (
-    <div ref={ref} className="fixed z-[95] card p-1.5 min-w-[210px] animate-fade-in" style={{ left, top }}>
+    <div ref={ref} role="menu" className="fixed z-[95] card p-1.5 min-w-[210px] animate-fade-in" style={{ left, top }}>
       {items.map((it, i) => it.sep ? <div key={i} className="divider my-1" /> : (
-        <button key={i} className={cn('w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-start transition-colors hover:bg-surface-200', it.danger && 'text-rose-500 hover:bg-rose-500/10')} onClick={() => { it.onClick?.(); onClose() }}>
+        <button key={i} role="menuitem" className={cn('w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-start transition-colors hover:bg-surface-200', it.danger && 'text-rose-500 hover:bg-rose-500/10')} onClick={() => { it.onClick?.(); onClose() }}>
           {it.icon && <span className="text-surface-600">{it.icon}</span>}{it.label}
         </button>
       ))}

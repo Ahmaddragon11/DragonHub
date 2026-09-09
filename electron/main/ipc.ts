@@ -10,19 +10,60 @@ import * as archive from './services/archive'
 import * as media from './services/media'
 import * as netmon from './services/netmonitor'
 import * as netblock from './services/netblock'
+import * as resmon from './services/resmonitor'
 import { settingsStore, dataCollections } from './services/settings'
-import type { AppSettings, CompressOptions, ImageOp, VideoOp, VaultItem, VersionInfo, NetPlan, NetLimits, NetConfig, NetCycle } from '../../src/shared/types'
+import type { AppSettings, CompressOptions, ImageOp, VideoOp, VaultItem, VersionInfo, NetPlan, NetLimits, NetConfig, NetCycle, ResConfig, ResCardConfig } from '../../src/shared/types'
 import { CHANGELOG, TELEGRAM_URL, DEFAULT_NET_LIMITS } from '../../src/shared/types'
 
 type GetWin = () => BrowserWindow | null
 
+/** Main window getter, set once in registerAllHandlers so h() can validate senders. */
+let senderWin: GetWin | null = null
+/** Floating-card window getter (same process, also allowed as IPC sender). */
+let senderCardWin: GetWin | null = null
+
+function isAllowedSender(e: Electron.IpcMainInvokeEvent): boolean {
+  const w = senderWin?.()
+  const c = senderCardWin?.()
+  if (!w && !c) return true
+  try {
+    if (w && !w.isDestroyed() && e.sender === w.webContents) return true
+    if (c && !c.isDestroyed() && e.sender === c.webContents) return true
+  } catch { /* destroyed windows — deny */ }
+  return false
+}
+
+/** Tiny per-channel rate limiter (brute-force + flood protection). */
+const rateHits = new Map<string, number[]>()
+const RATE_LIMITS: Record<string, { n: number; ms: number }> = {
+  'vault:unlock': { n: 20, ms: 60000 },
+  'vault:init': { n: 10, ms: 60000 },
+  'vault:changePassword': { n: 10, ms: 60000 },
+  'res:killProcess': { n: 10, ms: 60000 },
+  'net:appBlocked': { n: 20, ms: 60000 },
+  'net:speedTest': { n: 5, ms: 60000 },
+}
+const DEFAULT_RATE = { n: 120, ms: 10000 }
+function checkRate(channel: string) {
+  const lim = RATE_LIMITS[channel] ?? DEFAULT_RATE
+  const now = Date.now()
+  const arr = (rateHits.get(channel) ?? []).filter((t) => now - t < lim.ms)
+  if (arr.length >= lim.n) throw new Error('Rate limited, try again shortly')
+  arr.push(now)
+  rateHits.set(channel, arr)
+}
+
 /** Wrap a handler so errors are serialized safely to the renderer. */
 function h<T extends unknown[], R>(channel: string, fn: (...args: T) => R | Promise<R>) {
-  ipcMain.handle(channel, async (_e, ...args: unknown[]) => {
+  ipcMain.handle(channel, async (e, ...args: unknown[]) => {
     try {
+      // Only the app windows (main + floating card, same process) may call
+      // privileged channels — a future webview never inherits them.
+      if (!isAllowedSender(e)) throw new Error('Blocked: bad sender')
+      checkRate(channel)
       return { ok: true, data: await fn(...(args as T)) }
-    } catch (e: any) {
-      return { ok: false, error: e?.message || String(e) }
+    } catch (err: any) {
+      return { ok: false, error: err?.message || String(err) }
     }
   })
 }
@@ -33,11 +74,21 @@ function readNetConfig(): NetConfig {
   return { plan, limits: { ...DEFAULT_NET_LIMITS, ...(stored ?? {}) } }
 }
 
-export function registerAllHandlers(getWin: GetWin) {
+export interface CardControls {
+  show: () => void
+  hide: () => void
+  toggle: () => boolean
+  isOpen: () => boolean
+}
+
+export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCardWin?: GetWin) {
+  senderWin = getWin
+  if (getCardWin) senderCardWin = getCardWin
+  const cardCtl: CardControls = card ?? { show: () => {}, hide: () => {}, toggle: () => false, isOpen: () => false }
   // ---------- App / system ----------
   h('app:version', (): VersionInfo => ({
-    version: app.getVersion(), build: '2026.09.05', electron: process.versions.electron, chrome: process.versions.chrome,
-    node: process.versions.node, platform: process.platform, arch: process.arch, releaseDate: '2026-09-05', channel: 'stable',
+    version: app.getVersion(), build: '2026.09.09', electron: process.versions.electron, chrome: process.versions.chrome,
+    node: process.versions.node, platform: process.platform, arch: process.arch, releaseDate: '2026-09-09', channel: 'stable',
   }))
   h('app:changelog', () => CHANGELOG)
   h('app:paths', () => ({ userData: app.getPath('userData'), temp: app.getPath('temp'), logs: app.getPath('logs'), ...files.specialFolders() }))
@@ -46,6 +97,7 @@ export function registerAllHandlers(getWin: GetWin) {
     cpuModel: os.cpus()[0]?.model, totalMem: os.totalmem(), freeMem: os.freemem(), uptime: os.uptime(), user: os.userInfo().username,
   }))
   h('app:openExternal', (url: string) => {
+    if (typeof url !== 'string' || url.length > 2048) throw new Error('Blocked URL')
     if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) throw new Error('Blocked URL scheme')
     return shell.openExternal(url)
   })
@@ -123,8 +175,14 @@ export function registerAllHandlers(getWin: GetWin) {
   h('fs:showInFolder', (p: string) => files.showInFolder(p))
   h('fs:hash', (p: string, algo: 'md5' | 'sha1' | 'sha256' | 'sha512') => files.hashFile(p, algo))
   h('fs:exists', (p: string) => { try { return fs.existsSync(files.safePath(p)) } catch { return false } })
-  h('fs:pathInfo', (p: string) => ({ dir: path.dirname(p), base: path.basename(p), ext: path.extname(p), name: path.parse(p).name, sep: path.sep }))
-  h('fs:join', (...parts: string[]) => path.join(...parts))
+  h('fs:pathInfo', (p: string) => {
+    if (typeof p !== 'string' || p.length > 4096 || p.includes('\0')) throw new Error('Invalid path')
+    return { dir: path.dirname(p), base: path.basename(p), ext: path.extname(p), name: path.parse(p).name, sep: path.sep }
+  })
+  h('fs:join', (...parts: string[]) => {
+    if (parts.length > 10 || parts.some((x) => typeof x !== 'string' || x.length > 1024 || x.includes('\0'))) throw new Error('Invalid path parts')
+    return path.join(...parts)
+  })
 
   // ---------- Downloads ----------
   h('dl:list', () => dl.list())
@@ -254,4 +312,33 @@ export function registerAllHandlers(getWin: GetWin) {
     return r
   })
   h('net:isBlocked', async () => ({ blocked: await netblock.isBlocked() }))
+  h('net:connInfo', () => netmon.getConnectionInfo())
+  h('net:connections', () => netmon.getActiveConnections())
+  h('net:appBlocked', async (exePath: string, on: boolean) => {
+    const r = await netblock.setAppBlocked(exePath, !!on)
+    try {
+      const list = dataCollections.get<Record<string, boolean>>('netAppBlocks', {})
+      dataCollections.set('netAppBlocks', { ...(list ?? {}), [r.exePath]: r.blocked })
+    } catch { /* bookkeeping only */ }
+    return r
+  })
+  h('net:appBlockedCheck', async (exePath: string) => {
+    const blocked = await netblock.isAppBlocked(exePath)
+    return { blocked, exists: netblock.appExeExists(exePath) }
+  })
+  h('net:speedTest', () => netmon.speedTest(10_000_000))
+
+  // ---------- Resources monitor (CPU / RAM / disks / GPU / processes) ----------
+  h('res:snapshot', () => resmon.getResSnapshot())
+  h('res:processes', (topN?: number) => resmon.getResProcesses(topN))
+  h('res:history', () => resmon.getResHistory())
+  h('res:config:get', () => resmon.getResConfig())
+  h('res:config:set', (patch: Partial<ResConfig>) => resmon.setResConfig(patch ?? {}))
+  h('res:killProcess', (pid: number) => resmon.killProcess(pid))
+  h('res:card:get', () => resmon.getResCardConfig())
+  h('res:card:set', (patch: Partial<ResCardConfig>) => resmon.setResCardConfig(patch ?? {}))
+  h('res:card:show', () => { cardCtl.show(); return cardCtl.isOpen() })
+  h('res:card:hide', () => { cardCtl.hide(); return cardCtl.isOpen() })
+  h('res:card:toggle', () => cardCtl.toggle())
+  h('res:card:isOpen', () => cardCtl.isOpen())
 }

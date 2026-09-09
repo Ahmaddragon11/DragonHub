@@ -30,6 +30,15 @@ export default function Images() {
   // batch
   const [batch, setBatch] = useState<string[]>([]); const [bFmt, setBFmt] = useState<Fmt>('webp'); const [bQ, setBQ] = useState(85); const [bW, setBW] = useState('')
   const [bDone, setBDone] = useState(0)
+  const batchCancel = React.useRef(false)
+
+  // Debounced live-filter preview: slider drags must not recompute GPU filters at 60Hz.
+  const [debF, setDebF] = useState({ bright, sat, hue, blur })
+  useEffect(() => {
+    const i = setTimeout(() => setDebF({ bright, sat, hue, blur }), 120)
+    return () => clearTimeout(i)
+  }, [bright, sat, hue, blur])
+  useEffect(() => () => { batchCancel.current = true }, [])
 
   useEffect(() => on<JobProgress>('job:progress', (p) => { if (p.id.startsWith('img-')) setProgress(p) }), [])
   useEffect(() => { if (pageParams?.path) load(String(pageParams.path)) }, [pageParams?.path])
@@ -67,20 +76,22 @@ export default function Images() {
     if (!batch.length) return
     const dir = await invoke('dialog:openFolder')
     if (!dir) return
+    batchCancel.current = false
     setBusy(true); setBDone(0)
     const ext = bFmt === 'jpeg' ? 'jpg' : bFmt
     for (const f of batch) {
+      if (batchCancel.current) break
       try {
         const pi = await invoke('fs:pathInfo', f)
         await invoke('img:process', 'img-b-' + uid(), { input: f, output: `${dir}${pi.sep}${pi.name}.${ext}`, format: bFmt, quality: bQ, resize: bW ? { width: +bW, fit: 'inside' } : undefined, removeMetadata: true } as ImageOp)
-      } catch (e: any) { toast(`${stripPath(f)}: ${e.message || e}`, 'error') }
+      } catch (e: any) { if (!batchCancel.current) toast(`${stripPath(f)}: ${e.message || e}`, 'error') }
       setBDone((d) => d + 1)
     }
-    setBusy(false); toast(t('common.done'), 'success')
+    setBusy(false); toast(batchCancel.current ? t('common.cancelAction') : t('common.done'), batchCancel.current ? 'info' : 'success')
   }
   const filterStyle: React.CSSProperties = {
-    filter: `${gray ? 'grayscale(1) ' : ''}blur(${blur / 4}px) brightness(${bright}) saturate(${sat}) hue-rotate(${hue}deg)`,
-    transform: `rotate(${rotate}deg) scaleX(${flop ? -1 : 1}) scaleY(${flip ? -1 : 1})`, transition: 'all .3s',
+    filter: `${gray ? 'grayscale(1) ' : ''}blur(${debF.blur / 4}px) brightness(${debF.bright}) saturate(${debF.sat}) hue-rotate(${debF.hue}deg)`,
+    transform: `rotate(${rotate}deg) scaleX(${flop ? -1 : 1}) scaleY(${flip ? -1 : 1})`, transition: 'transform .3s', willChange: 'filter',
   }
 
   return (
@@ -151,9 +162,9 @@ export default function Images() {
               <div className="grid grid-cols-4 gap-2 stagger">
                 {batch.map((f) => (
                   <div key={f} className="relative group rounded-xl overflow-hidden bg-surface-200 aspect-square">
-                    <img src={toFileUrl(f)} className="w-full h-full object-cover" alt="" />
+                    <img src={toFileUrl(f)} className="w-full h-full object-cover" alt="" loading="lazy" decoding="async" />
                     <div className="absolute inset-x-0 bottom-0 p-1 text-[10px] truncate bg-black/50 text-white">{stripPath(f)}</div>
-                    <button className="absolute top-1 end-1 btn-icon bg-black/60 text-white opacity-0 group-hover:opacity-100" onClick={() => setBatch((b) => b.filter((x) => x !== f))}><X size={12} /></button>
+                    <button className="absolute top-1 end-1 btn-icon bg-black/60 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => setBatch((b) => b.filter((x) => x !== f))}><X size={12} /></button>
                   </div>
                 ))}
               </div>
@@ -165,6 +176,7 @@ export default function Images() {
             <Field label={t('images.width') + ' (max)'}><input className="input" value={bW} onChange={(e) => setBW(e.target.value.replace(/\D/g, ''))} placeholder="—" /></Field>
             {busy && <Progress value={(bDone / Math.max(1, batch.length)) * 100} />}
             <button className="btn-primary w-full" disabled={!batch.length || busy} onClick={convertAll}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} {t('images.convertAll')}</button>
+            {busy && <button className="btn-ghost w-full" onClick={() => { batchCancel.current = true }}>{t('common.cancelAction')}</button>}
           </div>
         </div>
       )}

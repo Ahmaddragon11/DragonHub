@@ -13,10 +13,10 @@ const APP: Group[] = [
   ] },
   { key: 'navigation', items: [
     ['Ctrl+1', 'Dashboard', 'لوحة التحكم'], ['Ctrl+2', 'Notes', 'الملاحظات'], ['Ctrl+3', 'Projects', 'المشاريع'], ['Ctrl+4', 'Tasks', 'المهام'], ['Ctrl+5', 'Files', 'الملفات'],
-    ['Ctrl+6', 'Editor', 'المحرر'], ['Ctrl+7', 'Downloads', 'التنزيلات'], ['Ctrl+8', 'Compression', 'الضغط'], ['Ctrl+9', 'Images', 'الصور'],
+    ['Ctrl+6', 'Editor', 'المحرر'], ['Ctrl+7', 'Downloads', 'التنزيلات'], ['Ctrl+8', 'Network', 'الشبكة'], ['Ctrl+9', 'Compression', 'الضغط'],
   ] },
   { key: 'editing', items: [
-    ['Ctrl+N', 'New note / file', 'ملاحظة/ملف جديد'], ['Ctrl+S', 'Save', 'حفظ'], ['Ctrl+Shift+S', 'Save as', 'حفظ باسم'], ['Ctrl+O', 'Open file', 'فتح ملف'], ['Ctrl+W', 'Close tab', 'إغلاق التبويب'],
+    ['Ctrl+N', 'New in current section (note / task / project / file)', 'جديد في القسم الحالي (ملاحظة / مهمة / مشروع / ملف)'], ['Ctrl+S', 'Save (editor)', 'حفظ (المحرر)'], ['Ctrl+Shift+S', 'Save as (editor)', 'حفظ باسم (المحرر)'], ['Ctrl+O', 'Open file (editor)', 'فتح ملف (المحرر)'], ['Ctrl+W', 'Close tab (editor)', 'إغلاق التبويب (المحرر)'],
     ['Ctrl+Tab', 'Next tab', 'التبويب التالي'], ['Ctrl+F', 'Find', 'بحث'], ['Ctrl+H', 'Replace', 'استبدال'], ['Shift+Alt+F', 'Format document', 'تنسيق المستند'], ['Alt+↑/↓', 'Move line', 'تحريك السطر'], ['Ctrl+/', 'Toggle comment', 'تعليق/إلغاء التعليق'], ['Ctrl+D', 'Add selection to next match', 'تحديد التطابق التالي'],
   ] },
   { key: 'explorer', items: [
@@ -80,7 +80,7 @@ export default function Shortcuts() {
       </PageHeader>
       <div className="flex-1 overflow-y-auto p-4">
         {filtered.length === 0 ? <Empty icon={<Keyboard size={40} />} text={t('common.empty')} /> : (
-          <div className="grid grid-cols-2 gap-4 stagger">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
             {filtered.map((g) => (
               <section key={g.key} className="card p-4">
                 <h3 className="font-semibold mb-3 text-accent">{t(`shortcuts.${g.key}`)}</h3>

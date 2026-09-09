@@ -1,6 +1,6 @@
 // Shared type contracts between main process and renderer
 
-export const APP_VERSION = '1.3.0'
+export const APP_VERSION = '1.4.0'
 export const DEVELOPER = 'AHMADDRAGON'
 export const TELEGRAM_URL = 'https://t.me/ahmaddragon'
 
@@ -295,6 +295,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.0',
+    date: '2026-09-09',
+    changes: [
+      { type: 'added', text: 'New Resources page: live CPU (total + per-core), RAM, disks (capacity + activity), GPU and temperature monitoring with animated rings and sparklines' },
+      { type: 'added', text: 'Top-consumers table: which app uses what (CPU/RAM/disk/network), searchable and sortable, grouped per application' },
+      { type: 'added', text: 'System health score, threshold alerts, freeze mode, source status badges and CSV/JSON report export' },
+      { type: 'added', text: 'Floating monitor card (rescard): draggable always-on-top mini card showing CPU/RAM/network live while the main window is hidden to tray' },
+      { type: 'changed', text: 'Network page redesigned into tabs (Overview / Plan / Limits / History / Tools) with skeletons, animated values and connection info (SSID, signal)' },
+      { type: 'added', text: 'Network history charts with weekly/monthly bars, daily average and quota depletion estimate' },
+      { type: 'added', text: 'Optional speed test and CSV history export with explicit data-usage warning' },
+      { type: 'security', text: 'All new IPC channels whitelisted in preload with the same single-sender + rate-limit guards; process kill requires double confirmation and never targets system PIDs or DragonHub itself' },
+    ],
+  },
+  {
     version: '1.3.0',
     date: '2026-09-05',
     changes: [
@@ -421,4 +435,98 @@ export const DEFAULT_NET_LIMITS: NetLimits = {
   restoreAtMidnight: true,
   restoreOnQuit: true,
   monitoringEnabled: true,
+}
+
+// ---------- Resources monitor (CPU / RAM / disk / GPU / processes) ----------
+export type ResSourceStatus = 'ok' | 'degraded' | 'unavailable'
+
+export interface ResCore {
+  index: number
+  percent: number
+  speedMHz: number
+}
+
+export interface ResGpu {
+  name: string
+  percent: number | null
+  memoryTotalMB: number | null
+  memoryUsedMB: number | null
+  temperatureC: number | null
+}
+
+export interface ResDiskDrive {
+  letter: string
+  label: string
+  totalGB: number
+  freeGB: number
+  percentBusy: number | null
+  readMBs: number | null
+  writeMBs: number | null
+}
+
+export interface ResProcess {
+  pid: number
+  name: string
+  displayName: string
+  cpuPercent: number
+  cpuCumulativeSec: number
+  memoryMB: number
+  diskReadMBs: number | null
+  diskWriteMBs: number | null
+  path: string | null
+}
+
+export interface ResLive {
+  cpuPercent: number
+  cores: ResCore[]
+  temperatureC: number | null
+  memoryTotalMB: number
+  memoryUsedMB: number
+  memoryCachedMB: number | null
+  memoryPercent: number
+  pagefilePercent: number | null
+  disks: ResDiskDrive[]
+  gpu: ResGpu | null
+  netDownSpeedBps: number
+  netUpSpeedBps: number
+  processesCount: number
+  sources: Record<string, ResSourceStatus>
+  osUptimeSec: number
+  at: number
+}
+
+export interface ResConfig {
+  enabled: boolean
+  intervalMs: number
+  topN: number
+  alertCpuPercent: number
+  alertMemoryPercent: number
+  alertsOn: boolean
+}
+
+export const DEFAULT_RES_CONFIG: ResConfig = {
+  enabled: true,
+  intervalMs: 2000,
+  topN: 12,
+  alertCpuPercent: 90,
+  alertMemoryPercent: 90,
+  alertsOn: true,
+}
+
+export interface ResCardConfig {
+  size: 'small' | 'medium'
+  opacity: number
+  locked: boolean
+  x: number | null
+  y: number | null
+  showTopProcess: boolean
+}
+
+export const DEFAULT_RES_CARD_CONFIG: ResCardConfig = {
+  size: 'medium',
+  opacity: 0.95,
+  locked: false,
+  x: null,
+  y: null,
+  showTopProcess: true,
 }

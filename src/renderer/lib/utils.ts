@@ -1,7 +1,20 @@
-export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36))
+export const uid = () => {
+  try {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+    if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
+      const b = new Uint8Array(16)
+      crypto.getRandomValues(b)
+      b[6] = (b[6] & 0x0f) | 0x40
+      b[8] = (b[8] & 0x3f) | 0x80
+      const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
+      return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+    }
+  } catch { /* fall through to Math.random fallback */ }
+  return Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2)
+}
 
 export function formatBytes(n: number, d = 1) {
-  if (!n || n < 0) return '0 B'
+  if (!Number.isFinite(n) || !n || n < 0) return '0 B'
   const u = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)))
   return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : d)} ${u[i]}`
@@ -18,9 +31,18 @@ export function formatDate(ts?: number, lang = 'en') {
   return new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(ts)
 }
 
+const rtfCache = new Map<string, Intl.RelativeTimeFormat>()
+function getRtf(lang: string) {
+  const key = lang === 'ar' ? 'ar' : 'en'
+  let r = rtfCache.get(key)
+  if (!r) { r = new Intl.RelativeTimeFormat(key, { numeric: 'auto' }); rtfCache.set(key, r) }
+  return r
+}
+
 export function relTime(ts: number, lang = 'en') {
+  if (!Number.isFinite(ts)) return ''
   const diff = (ts - Date.now()) / 1000
-  const rtf = new Intl.RelativeTimeFormat(lang === 'ar' ? 'ar' : 'en', { numeric: 'auto' })
+  const rtf = getRtf(lang)
   const abs = Math.abs(diff)
   if (abs < 60) return rtf.format(Math.round(diff), 'second')
   if (abs < 3600) return rtf.format(Math.round(diff / 60), 'minute')
@@ -40,7 +62,7 @@ export function extToLang(ext: string): string {
     php: 'php', sql: 'sql', sh: 'shell', bash: 'shell', ps1: 'powershell', bat: 'bat', cmd: 'bat', yml: 'yaml', yaml: 'yaml', xml: 'xml', svg: 'xml', toml: 'ini', ini: 'ini', cfg: 'ini',
     dart: 'dart', swift: 'swift', lua: 'lua', r: 'r', pl: 'perl', dockerfile: 'dockerfile', graphql: 'graphql', vue: 'html', txt: 'plaintext', log: 'plaintext', env: 'plaintext',
   }
-  return m[ext.toLowerCase()] || 'plaintext'
+  return m[String(ext || '').toLowerCase()] || 'plaintext'
 }
 
 export const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'tiff', 'tif', 'svg', 'ico'])

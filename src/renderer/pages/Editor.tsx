@@ -30,7 +30,7 @@ import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 }
 loader.config({ monaco })
 
-interface Tab { id: string; path?: string; name: string; content: string; saved: string; language: string }
+interface Tab { id: string; path?: string; name: string; content: string; saved: string; language: string; savedMtime?: number; conflict?: boolean }
 const LANGS = ['plaintext', 'javascript', 'typescript', 'json', 'html', 'css', 'scss', 'markdown', 'python', 'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'php', 'ruby', 'sql', 'shell', 'powershell', 'bat', 'yaml', 'xml', 'ini', 'dart', 'kotlin', 'swift', 'lua', 'r', 'perl', 'dockerfile', 'graphql']
 
 const SESSION_KEY = 'dh-editor-tabs-v1'
@@ -71,7 +71,7 @@ export default function Editor() {
   tabsRef.current = tabs
 
   // Restore previous session once (file tabs are re-read from disk so external
-  // edits are never masked by a stale buffer).
+  // edits are never masked by a stale buffer). Oversized files are skipped.
   useEffect(() => {
     if (restored) return
     setRestored(true)
@@ -82,8 +82,10 @@ export default function Editor() {
       for (const s of stashed) {
         if (s.path) {
           try {
+            const st = await invoke<{ size: number; modified: number }>('fs:stat', s.path)
+            if (st.size > 20 * 1024 * 1024) continue
             const content = await invoke<string>('fs:readText', s.path)
-            next.push({ id: uid(), path: s.path, name: stripPath(s.path), content, saved: content, language: extToLang(s.path.split('.').pop() || '') })
+            next.push({ id: uid(), path: s.path, name: stripPath(s.path), content, saved: content, savedMtime: st.modified, language: extToLang(s.path.split('.').pop() || '') })
           } catch { /* file moved/deleted — skip */ }
         } else if (s.content) {
           next.push({ id: uid(), name: s.name, content: s.content, saved: s.content, language: s.language })
@@ -93,41 +95,72 @@ export default function Editor() {
     })()
   }, [restored])
 
-  // Stash the tab list whenever it changes (debounced via the tab object identity).
-  useEffect(() => { stashTabs(tabs) }, [tabs])
+  // Stash the tab list whenever it changes (debounced: typing fires per keystroke).
+  useEffect(() => {
+    const i = setTimeout(() => stashTabs(tabsRef.current), 500)
+    return () => clearTimeout(i)
+  }, [tabs])
 
-  // Auto-save dirty tabs that have a file path (skips untitled tabs)
+  // Auto-save dirty tabs that have a file path (skips untitled tabs).
+  // External edits win: if mtime moved under us, autosave pauses for that tab
+  // and warns once instead of silently clobbering (manual Save still works).
+  const conflictWarned = useRef(new Set<string>())
   useEffect(() => {
     const sec = settings.autoSaveIntervalSec
     if (!sec || sec <= 0) return
-    const i = setInterval(() => {
+    const i = setInterval(async () => {
+      if (document.hidden) return
       for (const tb of tabsRef.current) {
-        if (!tb.path || tb.content === tb.saved) continue
-        invoke('fs:writeText', tb.path, tb.content)
-          .then(() => setTabs((s) => s.map((x) => (x.id === tb.id ? { ...x, saved: tb.content } : x))))
-          .catch(() => {})
+        if (!tb.path || tb.content === tb.saved || tb.conflict) continue
+        try {
+          const st = await invoke<{ modified: number }>('fs:stat', tb.path)
+          if (tb.savedMtime !== undefined && st.modified !== tb.savedMtime) {
+            setTabs((s) => s.map((x) => (x.id === tb.id ? { ...x, conflict: true } : x)))
+            if (!conflictWarned.current.has(tb.id)) {
+              conflictWarned.current.add(tb.id)
+              toast(t('editor.externalChange', { name: tb.name }), 'warning')
+            }
+            continue
+          }
+          await invoke('fs:writeText', tb.path, tb.content)
+          const fresh = await invoke<{ modified: number }>('fs:stat', tb.path).catch(() => null)
+          setTabs((s) => s.map((x) => (x.id === tb.id ? { ...x, saved: tb.content, savedMtime: fresh?.modified ?? x.savedMtime, conflict: false } : x)))
+        } catch { /* retry next tick */ }
       }
     }, sec * 1000)
     return () => clearInterval(i)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.autoSaveIntervalSec])
 
   const openPath = async (p: string) => {
-    const ex = tabs.find((x) => x.path === p); if (ex) return setCur(ex.id)
+    const ex = tabsRef.current.find((x) => x.path === p); if (ex) return setCur(ex.id)
     try {
+      const st = await invoke<{ size: number; modified: number }>('fs:stat', p)
+      if (st.size > 20 * 1024 * 1024) { toast(t('files.tooLargeEditor'), 'warning'); return }
       const content = await invoke<string>('fs:readText', p)
       const name = stripPath(p)
-      const tb: Tab = { id: uid(), path: p, name, content, saved: content, language: extToLang(name.split('.').pop() || '') }
+      const tb: Tab = { id: uid(), path: p, name, content, saved: content, savedMtime: st.modified, language: extToLang(name.split('.').pop() || '') }
+      conflictWarned.current.delete(tb.id)
       setTabs((s) => [...s, tb]); setCur(tb.id)
     } catch (e: any) { toast(e.message, 'error') }
   }
   const openedParam = useRef<string | null>(null)
   useEffect(() => {
     const p = pageParams.path as string | undefined
-    if (p && openedParam.current !== `${p}`) { openedParam.current = `${p}`; openPath(p) }
+    if (p) {
+      if (openedParam.current !== `${p}` || !tabsRef.current.some((x) => x.path === p)) {
+        openedParam.current = `${p}`
+        openPath(p)
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageParams])
 
-  const openDialog = async () => { const ps = await invoke<string[]>('dialog:openFile', { multi: true }); for (const p of ps) await openPath(p) }
+  const openDialog = async () => {
+    const ps = await invoke<string[]>('dialog:openFile', { multi: true })
+    // Cap multi-open: each file spins IO + a Monaco model.
+    for (const p of ps.slice(0, 10)) await openPath(p)
+  }
   const newTab = () => {
     // uid-based names can never collide after closing tabs (count-based names could).
     const tb: Tab = { id: uid(), name: `untitled-${uid().slice(0, 6)}.txt`, content: '', saved: '', language: 'plaintext' }
@@ -137,23 +170,35 @@ export default function Editor() {
     if (!tab) return
     let p = tab.path
     if (!p || as) { p = (await invoke<string | null>('dialog:save', { defaultPath: tab.name })) || undefined; if (!p) return }
-    try { await invoke('fs:writeText', p, tab.content); setTabs((s) => s.map((x) => (x.id === tab.id ? { ...x, path: p, name: stripPath(p!), saved: x.content, language: extToLang(p!.split('.').pop() || '') } : x))); toast(t('toast.saved')) } catch (e: any) { toast(e.message, 'error') }
+    try {
+      await invoke('fs:writeText', p, tab.content)
+      const fresh = await invoke<{ modified: number }>('fs:stat', p).catch(() => null)
+      conflictWarned.current.delete(tab.id)
+      setTabs((s) => s.map((x) => (x.id === tab.id ? { ...x, path: p, name: stripPath(p!), saved: x.content, savedMtime: fresh?.modified ?? x.savedMtime, conflict: false, language: extToLang(p!.split('.').pop() || '') } : x)))
+      toast(t('toast.saved'))
+    } catch (e: any) { toast(e.message, 'error') }
   }
   const close = async (id: string) => {
-    const tb = tabs.find((x) => x.id === id)
+    const tb = tabsRef.current.find((x) => x.id === id)
     if (tb && tb.content !== tb.saved && !(await invoke('dialog:confirm', t('editor.unsaved'), tb.name))) return
-    const rest = tabs.filter((x) => x.id !== id); setTabs(rest); if (cur === id) setCur(rest[rest.length - 1]?.id ?? null)
+    conflictWarned.current.delete(id)
+    const rest = tabsRef.current.filter((x) => x.id !== id); setTabs(rest); if (cur === id) setCur(rest[rest.length - 1]?.id ?? null)
   }
+  // Stable keyboard shortcuts: refs avoid re-subscribing on every keystroke.
+  const saveRef = useRef(save); saveRef.current = save
+  const miscRef = useRef({ openDialog, newTab, close, tabs, cur })
+  miscRef.current = { openDialog, newTab, close, tabs, cur }
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 's') { e.preventDefault(); save(e.shiftKey) }
-      if (e.ctrlKey && e.key === 'o') { e.preventDefault(); openDialog() }
-      if (e.ctrlKey && e.key === 'n') { e.preventDefault(); newTab() }
-      if (e.ctrlKey && e.key === 'w' && cur) { e.preventDefault(); close(cur) }
-      if (e.ctrlKey && e.key === 'Tab' && tabs.length > 1) { e.preventDefault(); const i = tabs.findIndex((x) => x.id === cur); setCur(tabs[(i + 1) % tabs.length].id) }
+      const { tabs: tl, cur: c } = miscRef.current
+      if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveRef.current(e.shiftKey) }
+      if (e.ctrlKey && e.key === 'o') { e.preventDefault(); miscRef.current.openDialog() }
+      if (e.ctrlKey && e.key === 'n') { e.preventDefault(); miscRef.current.newTab() }
+      if (e.ctrlKey && e.key === 'w' && c) { e.preventDefault(); miscRef.current.close(c) }
+      if (e.ctrlKey && e.key === 'Tab' && tl.length > 1) { e.preventDefault(); const i = tl.findIndex((x) => x.id === c); setCur(tl[(i + 1) % tl.length].id) }
     }
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h)
-  }, [tab, tabs, cur])
+  }, [])
 
   // Theme follows the app setting (reactive) instead of a one-time DOM read.
   const isDark = settings.theme === 'system'
@@ -170,8 +215,8 @@ export default function Editor() {
         <div className="flex items-center border-b border-surface-300/60 overflow-x-auto shrink-0">
           {tabs.map((x) => (
             <div key={x.id} onClick={() => setCur(x.id)} onAuxClick={(e) => e.button === 1 && close(x.id)} className={cn('group flex items-center gap-2 px-3 py-2 text-xs border-e border-surface-300/40 cursor-pointer shrink-0 transition-colors', cur === x.id ? 'bg-surface-200 text-surface-900 border-b-2 border-b-accent' : 'text-surface-600 hover:bg-surface-200/50')}>
-              <span className={cn(x.content !== x.saved && 'italic')}>{x.name}</span>{x.content !== x.saved && <span className="h-2 w-2 rounded-full bg-accent" />}
-              <button className="opacity-0 group-hover:opacity-100 hover:text-rose-500" onClick={(e) => { e.stopPropagation(); close(x.id) }}><X size={13} /></button>
+              <span className={cn(x.content !== x.saved && 'italic')}>{x.name}</span>{x.content !== x.saved && <span className="h-2 w-2 rounded-full bg-accent" />}{x.conflict && <span className="text-[10px] text-amber-500">⚠</span>}
+              <button className="opacity-60 hover:opacity-100 focus-visible:opacity-100 hover:text-rose-500" aria-label={t('common.close')} onClick={(e) => { e.stopPropagation(); close(x.id) }}><X size={13} /></button>
             </div>
           ))}
         </div>
@@ -181,10 +226,10 @@ export default function Editor() {
               <MonacoEditor key={tab.id} height="100%" language={tab.language} value={tab.content} theme={isDark ? 'vs-dark' : 'light'}
                 onChange={(v) => setTabs((s) => s.map((x) => (x.id === tab.id ? { ...x, content: v ?? '' } : x)))}
                 onMount={(ed) => { edRef.current = ed; ed.onDidChangeCursorPosition((e) => setPos({ l: e.position.lineNumber, c: e.position.column })) }}
-                options={{ fontSize: settings.editorFontSize, wordWrap: settings.editorWordWrap ? 'on' : 'off', minimap: { enabled: settings.editorMinimap }, tabSize: settings.editorTabSize, fontFamily: 'JetBrains Mono, Cascadia Code, Consolas, monospace', fontLigatures: true, smoothScrolling: true, cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on', renderWhitespace: 'selection', bracketPairColorization: { enabled: true }, automaticLayout: true, padding: { top: 12 }, scrollBeyondLastLine: false, formatOnPaste: true }} />
+                options={{ fontSize: settings.editorFontSize, wordWrap: settings.editorWordWrap ? 'on' : 'off', minimap: { enabled: settings.editorMinimap }, tabSize: settings.editorTabSize, fontFamily: 'JetBrains Mono, Cascadia Code, Consolas, monospace', fontLigatures: false, smoothScrolling: false, cursorBlinking: 'blink', cursorSmoothCaretAnimation: 'off', renderWhitespace: 'selection', bracketPairColorization: { enabled: true }, automaticLayout: true, padding: { top: 12 }, scrollBeyondLastLine: false, formatOnPaste: true }} />
             </div>
             <footer className="flex items-center gap-3 px-3 py-1 border-t border-surface-300/60 text-[11px] text-surface-600 shrink-0">
-              <span>{t('editor.line')} {pos.l}, {t('editor.col')} {pos.c}</span><span>{tab.content.length} chars</span>
+              <span>{t('editor.line')} {pos.l}, {t('editor.col')} {pos.c}</span><span>{t('notes.chars', { count: tab.content.length })}</span>
               <span className="ms-auto flex items-center gap-2">
                 <button className="btn-icon p-1" title={t('editor.find')} onClick={() => edRef.current?.getAction('actions.find')?.run()}><Search size={13} /></button>
                 <button className={cn('btn-icon p-1', settings.editorWordWrap && 'text-accent')} title={t('editor.wordWrap')} onClick={() => setSettings({ editorWordWrap: !settings.editorWordWrap })}><WrapText size={13} /></button>

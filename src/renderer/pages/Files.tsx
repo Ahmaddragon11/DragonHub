@@ -2,10 +2,20 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, Folder, File, FileText, FileImage, FileVideo, FileAudio, FileArchive, FileCode, ArrowLeft, ArrowRight, ArrowUp, RefreshCw, Home, Monitor, Download, Image as ImgIcon, Film, Music, HardDrive, Plus, Search, LayoutGrid, List, Eye, EyeOff, Copy, Scissors, Clipboard, Trash2, Pencil, Info, ExternalLink, Hash, Archive, Code2, Star, Columns } from 'lucide-react'
 import { useApp } from '@/store'
-import { PageHeader, ContextMenu, Modal, Field } from '@/components/ui'
+import { PageHeader, ContextMenu, Modal, Field, Empty } from '@/components/ui'
 import { invoke, toFileUrl } from '@/lib/api'
 import { formatBytes, formatDate, cn, IMAGE_EXT, VIDEO_EXT, AUDIO_EXT, ARCHIVE_EXT, TEXT_EXT, extToLang } from '@/lib/utils'
 import type { FileEntry, DriveInfo } from '@shared/types'
+
+/** Client-side name guard: mirrors main safePath + blocks traversal/reserved/ADS. */
+function validName(n: string): boolean {
+  const t = n.trim()
+  if (!t || t.length > 255 || t === '.' || t === '..') return false
+  if (!/^[^\\/:\*\?"<>\|]+$/.test(t)) return false
+  if (/^(CON|PRN|AUX|NUL|COM\d|LPT\d)$/i.test(t)) return false
+  if (/[. ]$/.test(t)) return false
+  return true
+}
 
 function iconFor(e: FileEntry, size = 18) {
   if (e.isDirectory) return <Folder size={size} className="text-amber-400 fill-amber-400/30" />
@@ -39,11 +49,18 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   const [sort, setSort] = useState<{ k: 'name' | 'size' | 'modified' | 'ext'; d: 1 | -1 }>({ k: 'name', d: 1 })
   const pathInput = useRef<HTMLInputElement>(null)
   const [pathEdit, setPathEdit] = useState<string | null>(null)
+  const loadSeq = useRef(0)
 
   const load = useCallback(async (p = path) => {
+    const id = ++loadSeq.current
     setLoading(true)
-    try { setEntries(await invoke<FileEntry[]>('fs:list', p, settings.showHiddenFiles)); setSel(new Set()) } catch (e: any) { toast(e.message, 'error') } finally { setLoading(false) }
-  }, [path, settings.showHiddenFiles])
+    try {
+      const ents = await invoke<FileEntry[]>('fs:list', p, settings.showHiddenFiles)
+      // Race guard: a slow stale response must never overwrite a newer folder.
+      if (loadSeq.current !== id) return
+      setEntries(ents); setSel(new Set())
+    } catch (e: any) { if (loadSeq.current === id) toast(e.message, 'error') } finally { if (loadSeq.current === id) setLoading(false) }
+  }, [path, settings.showHiddenFiles, toast])
   useEffect(() => { load() }, [path, settings.showHiddenFiles])
   // Report the live path upward so the parent's "add favorite" uses the folder
   // actually shown — not the pane's initial root.
@@ -92,12 +109,14 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   }
   const doRename = async () => {
     if (!renaming || !newName.trim()) return
+    if (!validName(newName)) { toast(t('common.error'), 'error'); return }
     const dest = await invoke<string>('fs:join', path, newName.trim())
     try { await invoke('fs:rename', renaming.path, dest); load(); toast(t('toast.updated')) } catch (e: any) { toast(e.message, 'error') }
     setRenaming(null)
   }
   const doCreate = async () => {
     if (!creating || !newName.trim()) return
+    if (!validName(newName)) { toast(t('common.error'), 'error'); return }
     const p = await invoke<string>('fs:join', path, newName.trim())
     try { await invoke(creating === 'folder' ? 'fs:mkdir' : 'fs:createFile', p); load(); toast(t('toast.created')) } catch (e: any) { toast(e.message, 'error') }
     setCreating(null); setNewName('')
@@ -119,6 +138,13 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   }), [entries, q, sort])
 
   const crumbs = path.split(/[\\/]/).filter(Boolean)
+  const isWinPane = typeof window !== 'undefined' && (window.dh?.platform === 'win32')
+  // Preserve the filesystem root: '/' on POSIX, '\\server\share' UNC, '' + drive fix on Windows.
+  const rootPrefix = path.startsWith('/') ? '/' : path.startsWith('\\\\') ? '\\\\' : ''
+  const crumbGo = (i: number) => {
+    const joined = crumbs.slice(0, i + 1).join(isWinPane ? '\\' : '/')
+    go(rootPrefix + joined + (i === 0 && isWinPane && !rootPrefix ? '\\' : ''))
+  }
   const ctxItems = ctx?.e ? [
     { label: t('common.open'), icon: <ExternalLink size={14} />, onClick: () => openEntry(ctx.e!) },
     ...(!ctx.e.isDirectory ? [{ label: t('files.openWith'), icon: <ExternalLink size={14} />, onClick: () => invoke('fs:open', ctx.e!.path) }] : []),
@@ -134,7 +160,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
     { label: t('files.showInExplorer'), icon: <FolderOpen size={14} />, onClick: () => invoke('fs:showInFolder', ctx.e!.path) },
     { sep: true, label: '' },
     { label: ARCHIVE_EXT.has(ctx.e.ext) ? t('files.extractHere') : t('files.compressHere'), icon: <Archive size={14} />, onClick: () => onOpenIn('compress', ctx.e!.path) },
-    ...(!ctx.e.isDirectory ? [{ label: t('files.hash'), icon: <Hash size={14} />, onClick: async () => { const h = await invoke<string>('fs:hash', ctx.e!.path, 'sha256'); setProps({ e: ctx.e!, hash: h }) } }] : []),
+    ...(!ctx.e.isDirectory ? [{ label: t('files.hash'), icon: <Hash size={14} />, onClick: async () => { const target = ctx.e!; const h = await invoke<string>('fs:hash', target.path, 'sha256'); setProps((p) => (p && p.e.path === target.path ? { e: target, hash: h } : p)) } }] : []),
     { label: t('files.properties'), icon: <Info size={14} />, onClick: () => showProps(ctx.e!) },
     { sep: true, label: '' },
     { label: settings.useRecycleBin ? t('files.moveToTrash') : t('common.delete'), icon: <Trash2 size={14} />, onClick: () => doDelete(false), danger: true },
@@ -150,19 +176,24 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   ]
 
   const onKey = (e: React.KeyboardEvent) => {
+    // Never hijack typing inside the search box (Delete/Ctrl+A/Ctrl+C must edit text).
+    if ((e.target as HTMLElement).closest?.('input,textarea,select')) return
     if (e.key === 'Delete') doDelete(e.shiftKey)
     if (e.key === 'F2' && selected[0]) { setRenaming(selected[0]); setNewName(selected[0].name) }
     if (e.key === 'F5') load()
-    if (e.key === 'Backspace' && !(e.target as HTMLElement).matches('input')) up()
-    if (e.ctrlKey && e.key === 'c') doCopy(false)
-    if (e.ctrlKey && e.key === 'x') doCopy(true)
-    if (e.ctrlKey && e.key === 'v') doPaste()
+    if (e.key === 'Backspace') up()
+    if (e.ctrlKey && !e.shiftKey && e.key === 'c') doCopy(false)
+    if (e.ctrlKey && !e.shiftKey && e.key === 'x') doCopy(true)
+    if (e.ctrlKey && !e.shiftKey && e.key === 'v') doPaste()
     if (e.ctrlKey && e.key === 'a') { e.preventDefault(); setSel(new Set(entries.map((x) => x.path))) }
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); setCreating('folder'); setNewName('') }
+    if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); setPathEdit(path) }
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') { e.preventDefault(); invoke('clipboard:write', selected[0]?.path || path).then(() => toast(t('toast.copied'))) }
     if (e.key === 'Enter' && selected[0]) openEntry(selected[0])
     if (e.altKey && e.key === 'ArrowLeft') back()
     if (e.altKey && e.key === 'ArrowRight') fwd()
     if (e.altKey && e.key === 'ArrowUp') up()
-    if (e.key === ' ' && selected[0] && !(e.target as HTMLElement).matches('input')) { e.preventDefault(); doPreview(selected[0]) }
+    if (e.key === ' ' && selected[0]) { e.preventDefault(); doPreview(selected[0]) }
   }
 
   return (
@@ -176,7 +207,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
           <input ref={pathInput} autoFocus className="input flex-1 py-1 font-mono text-xs" dir="ltr" value={pathEdit} onChange={(e) => setPathEdit(e.target.value)} onBlur={() => setPathEdit(null)} onKeyDown={(e) => { if (e.key === 'Enter') { go(pathEdit); setPathEdit(null) } if (e.key === 'Escape') setPathEdit(null) }} />
         ) : (
           <div className="flex-1 flex items-center gap-0.5 overflow-hidden rounded-lg bg-surface-200/60 px-2 py-1 text-xs cursor-text" dir="ltr" onClick={() => setPathEdit(path)}>
-            {crumbs.map((c, i) => <React.Fragment key={i}><button className="hover:text-accent px-1 rounded truncate max-w-[140px]" onClick={(e) => { e.stopPropagation(); go(crumbs.slice(0, i + 1).join(window.dh.platform === 'win32' ? '\\' : '/') + (i === 0 && window.dh.platform === 'win32' ? '\\' : i === 0 ? '' : '')) }}>{c}</button>{i < crumbs.length - 1 && <span className="text-surface-500">›</span>}</React.Fragment>)}
+            {crumbs.map((c, i) => <React.Fragment key={i}><button className="hover:text-accent px-1 rounded truncate max-w-[140px]" onClick={(e) => { e.stopPropagation(); crumbGo(i) }}>{c}</button>{i < crumbs.length - 1 && <span className="text-surface-500">›</span>}</React.Fragment>)}
           </div>
         )}
         <div className="relative w-40"><Search size={13} className="absolute start-2.5 top-2 text-surface-500" /><input className="input ps-8 py-1 text-xs" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -186,7 +217,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
       <div className="flex-1 overflow-auto" onContextMenu={(e) => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY }) }} onClick={(e) => { if (e.target === e.currentTarget) setSel(new Set()) }}>
         {view === 'list' ? (
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-surface-100/95 backdrop-blur text-[11px] text-surface-600 uppercase tracking-wide">
+            <thead className="sticky top-0 bg-surface-100 text-[11px] text-surface-600 uppercase tracking-wide">
               <tr>{([['name', t('common.name')], ['ext', t('common.type')], ['size', t('common.size')], ['modified', t('common.modified')]] as const).map(([k, l]) => <th key={k} className={cn('text-start px-3 py-2 cursor-pointer hover:text-accent select-none', k === 'size' && 'text-end w-24', k === 'ext' && 'w-20', k === 'modified' && 'w-44')} onClick={() => setSort((s) => ({ k, d: s.k === k ? (s.d * -1) as 1 | -1 : 1 }))}>{l}{sort.k === k && (sort.d === 1 ? ' ↑' : ' ↓')}</th>)}</tr>
             </thead>
             <tbody>
@@ -206,13 +237,13 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
             {list.map((e) => (
               <button key={e.path} onClick={(ev) => { const n = new Set(ev.ctrlKey ? sel : []); n.has(e.path) ? n.delete(e.path) : n.add(e.path); setSel(n) }} onDoubleClick={() => openEntry(e)} onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); setSel(new Set([e.path])); setCtx({ x: ev.clientX, y: ev.clientY, e }) }}
                 className={cn('flex flex-col items-center gap-2 rounded-xl p-3 transition-all duration-300', sel.has(e.path) ? 'bg-accent/20' : 'hover:bg-surface-200/60')}>
-                {IMAGE_EXT.has(e.ext) && e.size < 15e6 ? <img src={toFileUrl(e.path)} className="h-12 w-12 object-cover rounded-lg" loading="lazy" /> : <span className="h-12 flex items-center">{iconFor(e, 36)}</span>}
+                {IMAGE_EXT.has(e.ext) && e.size < 15e6 ? <img src={toFileUrl(e.path)} className="h-12 w-12 object-cover rounded-lg" loading="lazy" decoding="async" /> : <span className="h-12 flex items-center">{iconFor(e, 36)}</span>}
                 <span className="text-xs truncate w-full text-center">{e.name}</span>
               </button>
             ))}
           </div>
         )}
-        {list.length === 0 && !loading && <p className="text-center text-sm text-surface-500 p-10">{t('common.empty')}</p>}
+        {list.length === 0 && !loading && <Empty icon={<FolderOpen size={40} />} text={t('common.empty')} action={<div className="flex gap-2"><button className="btn-soft" onClick={() => { setCreating('folder'); setNewName('') }}><Plus size={15} />{t('files.newFolder')}</button><button className="btn-soft" onClick={() => { setCreating('file'); setNewName('') }}><Plus size={15} />{t('files.newFile')}</button></div>} />}
       </div>
       <footer className="flex items-center gap-3 px-3 py-1.5 border-t border-surface-300/60 text-[11px] text-surface-500">
         <span>{t('common.items', { count: entries.length })}</span>{sel.size > 0 && <span>• {t('common.selected', { count: sel.size })} ({formatBytes(selected.reduce((a, e) => a + e.size, 0))})</span>}
@@ -232,7 +263,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
         </div>}
       </Modal>
       <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.e.name} wide>
-        {preview && (IMAGE_EXT.has(preview.e.ext) ? <img src={toFileUrl(preview.e.path)} className="max-h-[70vh] mx-auto rounded-xl" /> : VIDEO_EXT.has(preview.e.ext) ? <video src={toFileUrl(preview.e.path)} controls className="max-h-[70vh] w-full rounded-xl" /> : AUDIO_EXT.has(preview.e.ext) ? <audio src={toFileUrl(preview.e.path)} controls className="w-full" /> : preview.text !== undefined ? <pre className="text-xs font-mono max-h-[70vh] overflow-auto selectable whitespace-pre-wrap" dir="ltr">{preview.text}</pre> : <p className="text-center text-surface-500 p-10">{t('files.noPreview')}</p>)}
+        {preview && (IMAGE_EXT.has(preview.e.ext) ? <img src={toFileUrl(preview.e.path)} className="max-h-[70vh] mx-auto rounded-xl" /> : VIDEO_EXT.has(preview.e.ext) ? <video src={toFileUrl(preview.e.path)} controls preload="metadata" className="max-h-[70vh] w-full rounded-xl" /> : AUDIO_EXT.has(preview.e.ext) ? <audio src={toFileUrl(preview.e.path)} controls preload="metadata" className="w-full" /> : preview.text !== undefined ? <pre className="text-xs font-mono max-h-[70vh] overflow-auto selectable whitespace-pre-wrap" dir="ltr">{preview.text.slice(0, 20000)}{preview.text.length > 20000 ? '\n… (truncated)' : ''}</pre> : <p className="text-center text-surface-500 p-10">{t('files.noPreview')}</p>)}
       </Modal>
     </div>
   )
@@ -256,6 +287,15 @@ export default function Files() {
     })
   }, [])
   const goTo = (p: string) => { setRoots((r) => { const n: [string, string] = r ? [...r] as any : [p, p]; n[active] = p; return n }); setKey((k) => k + 1) }
+  // Deep-link while mounted (e.g. "show in folder" twice): first mount consumes
+  // pageParams.path via the loader above; later navigations re-target the pane.
+  const paramsSeen = useRef(false)
+  useEffect(() => {
+    if (!paramsSeen.current) { paramsSeen.current = true; return }
+    const p = pageParams.path as string | undefined
+    if (p && roots) goTo(p)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageParams])
   const onOpenIn = (kind: 'editor' | 'images' | 'video' | 'compress', p: string) => navigate(kind, { path: p })
   const qa = special ? [['home', special.home, <Home size={15} />], ['desktop', special.desktop, <Monitor size={15} />], ['documents', special.documents, <FileText size={15} />], ['downloads', special.downloads, <Download size={15} />], ['pictures', special.pictures, <ImgIcon size={15} />], ['videos', special.videos, <Film size={15} />], ['music', special.music, <Music size={15} />]] as const : []
   if (!roots) return null

@@ -11,6 +11,12 @@ import type { VaultItem, VaultItemType, VaultMeta } from '@shared/types'
 const TYPES: VaultItemType[] = ['password', 'token', 'api_key', 'note', 'card', 'ssh']
 const TYPE_COLOR: Record<VaultItemType, string> = { password: 'bg-violet-500', token: 'bg-cyan-500', api_key: 'bg-amber-500', note: 'bg-emerald-500', card: 'bg-rose-500', ssh: 'bg-blue-500' }
 
+/** Date -> yyyy-mm-dd in LOCAL time (avoids UTC off-by-one day shifts). */
+function toLocalDate(ts: number): string {
+  const d = new Date(ts)
+  return new Date(ts - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}
+
 function StrengthBar({ pw }: { pw: string }) {
   const { t } = useTranslation()
   const [s, setS] = useState<{ score: number; entropy: number } | null>(null)
@@ -31,7 +37,12 @@ function Generator({ onUse }: { onUse: (pw: string) => void }) {
   const [opts, setOpts] = useState({ length: 20, upper: true, lower: true, digits: true, symbols: true, excludeAmbiguous: false })
   const [pw, setPw] = useState('')
   const gen = () => invoke('vault:generate', opts).then(setPw).catch(() => {})
-  useEffect(() => { gen() }, [JSON.stringify(opts)])
+  // Debounced: slider drags must not spam IPC password generation.
+  useEffect(() => {
+    const i = setTimeout(gen, 300)
+    return () => clearTimeout(i)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(opts)])
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
@@ -225,7 +236,7 @@ export default function Vault() {
                 {edit.type === 'password' && <StrengthBar pw={edit.secret} />}
               </Field>
             </div>
-            <Field label={t('vault.expires')}><input type="date" className="input" value={edit.expiresAt ? new Date(edit.expiresAt).toISOString().slice(0, 10) : ''} onChange={(e) => setEdit({ ...edit, expiresAt: e.target.value ? new Date(e.target.value).getTime() : undefined })} /></Field>
+            <Field label={t('vault.expires')}><input type="date" className="input" value={edit.expiresAt ? toLocalDate(edit.expiresAt) : ''} onChange={(e) => setEdit({ ...edit, expiresAt: e.target.value ? new Date(e.target.value + 'T12:00:00').getTime() : undefined })} /></Field>
             <Field label={t('common.tags')}><TagInput tags={edit.tags} onChange={(tags) => setEdit({ ...edit, tags })} /></Field>
             <div className="col-span-2">
               <div className="flex items-center justify-between mb-1"><span className="label">{t('vault.customFields')}</span><button className="btn-ghost text-xs" onClick={() => setEdit({ ...edit, fields: [...edit.fields, { label: '', value: '', hidden: false }] })}><Plus size={12} /> {t('vault.addField')}</button></div>

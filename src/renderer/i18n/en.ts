@@ -1,8 +1,8 @@
 export default {
-  app: { name: 'DragonHub', tagline: 'Your all-in-one productivity hub', by: 'Developed by', version: 'Version', loading: 'Loading your workspace…' },
+  app: { name: 'DragonHub', tagline: 'Your all-in-one productivity hub', by: 'Developed by', version: 'Version', loading: 'Loading your workspace…', loadFailed: 'Failed to load data — running with defaults' },
   nav: {
     dashboard: 'Dashboard', notes: 'Notes', projects: 'Projects & Ideas', tasks: 'Tasks', files: 'File Manager', editor: 'Editor',
-    downloads: 'Downloads', compress: 'Compression', images: 'Image Studio', video: 'Video & Audio', vault: 'Vault', network: 'Network',
+    downloads: 'Downloads', compress: 'Compression', images: 'Image Studio', video: 'Video & Audio', vault: 'Vault', network: 'Network', resources: 'Resources',
     shortcuts: 'Shortcuts', settings: 'Settings', about: 'About',
   },
   common: {
@@ -14,13 +14,13 @@ export default {
     done: 'Done', error: 'Error', success: 'Success', warning: 'Warning', info: 'Info', loading: 'Loading…', processing: 'Processing…', selectFile: 'Select file', selectFolder: 'Select folder',
     selected: '{{count}} selected', items: '{{count}} items', today: 'Today', yesterday: 'Yesterday', untitled: 'Untitled', pinned: 'Pinned', favorites: 'Favorites', archived: 'Archived',
     sortBy: 'Sort by', view: 'View', grid: 'Grid', list: 'List', filter: 'Filter', export: 'Export', import: 'Import', reset: 'Reset', apply: 'Apply', preview: 'Preview',
-    confirmDelete: 'Are you sure you want to delete this?', irreversible: 'This action cannot be undone.', optional: 'optional', required: 'required',
+    confirmDelete: 'Are you sure you want to delete this?', irreversible: 'This action cannot be undone.', optional: 'optional', required: 'required', clear: 'Clear', retry: 'Retry', cancelAction: 'Cancel operation',
   },
   dashboard: {
     welcome: 'Welcome back', subtitle: 'Here is what is happening in your hub today', quickActions: 'Quick actions', recentNotes: 'Recent notes',
     upcomingTasks: 'Upcoming tasks', activeProjects: 'Active projects', activeDownloads: 'Active downloads', system: 'System', stats: 'Overview',
     newNote: 'New note', newTask: 'New task', newProject: 'New project', newDownload: 'New download', openEditor: 'Open editor', openVault: 'Open vault',
-    notesCount: 'Notes', tasksCount: 'Open tasks', projectsCount: 'Projects', vaultCount: 'Vault items', memory: 'Memory', cpu: 'CPU', uptime: 'Uptime',
+    notesCount: 'Notes', tasksCount: 'Open tasks', projectsCount: 'Projects', vaultCount: 'Vault items', memory: 'Memory', cpu: 'CPU', uptime: 'Uptime', cores: 'cores', viewAll: 'View all',
   },
   notes: {
     title: 'Notes', newNote: 'New note', placeholderTitle: 'Note title', placeholderBody: 'Write in Markdown… **bold**, *italic*, - lists, # headings, `code`, - [ ] tasks',
@@ -38,7 +38,7 @@ export default {
     status: { todo: 'To do', in_progress: 'In progress', review: 'Review', done: 'Done' },
     priority: { low: 'Low', medium: 'Medium', high: 'High', urgent: 'Urgent' },
     overdue: 'Overdue', dueToday: 'Due today', completed: 'Completed', showCompleted: 'Show completed', recurring: 'Recurring', none: 'None', daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly',
-    reminder: 'Reminder', reminderBody: 'Reminder: task is due',
+    reminder: 'Reminder', reminderBody: 'Reminder: task is due', dragHint: 'Drag to move between columns',
   },
   files: {
     title: 'File Manager', drives: 'Drives', quickAccess: 'Quick access', home: 'Home', desktop: 'Desktop', documents: 'Documents', downloads: 'Downloads', pictures: 'Pictures', videos: 'Videos', music: 'Music',
@@ -50,7 +50,7 @@ export default {
   editor: {
     title: 'Editor', openFile: 'Open file', newFile: 'New file', save: 'Save', saveAs: 'Save as…', unsaved: 'Unsaved changes', language: 'Language', wordWrap: 'Word wrap', minimap: 'Minimap',
     fontSize: 'Font size', find: 'Find', replace: 'Replace', format: 'Format document', goToLine: 'Go to line', noFile: 'Open a file or create a new one to start editing',
-    line: 'Ln', col: 'Col', tabs: 'Tabs', closeOthers: 'Close others', closeAll: 'Close all', closeSaved: 'Close saved',
+    line: 'Ln', col: 'Col', tabs: 'Tabs', closeOthers: 'Close others', closeAll: 'Close all', closeSaved: 'Close saved', externalChange: 'Changed externally: {{name}} — auto-save paused for it',
   },
   downloads: {
     title: 'Downloads', addUrl: 'Paste a URL to download…', add: 'Download', direct: 'Direct file', media: 'Media (YouTube & 1000+ sites)', segments: 'Connections', folder: 'Save to', queue: 'Queue',
@@ -59,7 +59,8 @@ export default {
     audioOnly: 'Audio only (MP3)', bestQuality: 'Best quality', fetchInfo: 'Fetch info', ytdlpInstalling: 'Preparing media engine (first run)…', noDownloads: 'No downloads yet',
     invalidUrl: 'Please enter a valid http/https URL',
   },
-  net: { title: 'Network & Usage', live: 'Live', down: 'Download', up: 'Upload', today: 'Today', used: 'Used', remaining: 'Remaining', limit: 'Limit', dailyCap: 'Daily cap', blockOnCap: 'Block internet when cap exceeded', restoreMidnight: 'Restore at midnight', restoreQuit: 'Unblock when app closes', monitoring: 'Monitoring', blockNow: 'Block internet now', unblock: 'Unblock', blocked: 'Internet blocked', unblocked: 'Internet active', needsAdmin: 'Blocking requires admin (run as administrator)', plan: 'Plan', planName: 'Plan name', quotaGB: 'Quota (GB)', cycle: 'Cycle', daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', custom: 'Custom', cycleDays: 'Days count', startDate: 'Cycle start', savePlan: 'Save plan', clearPlan: 'Clear plan', allowance: 'Daily allowance', history: 'Usage history', date: 'Date', total: 'Total', noData: 'No data yet', confirmBlock: 'This will block internet for the whole PC. Continue?', daysLeft: 'Days left', quota: 'Quota', perDay: 'per day', footnote: 'Counters cover whole-system usage since boot and reset at midnight.' },
+  net: { title: 'Network & Usage', live: 'Live', down: 'Download', up: 'Upload', today: 'Today', used: 'Used', remaining: 'Remaining', limit: 'Limit', dailyCap: 'Daily cap', blockOnCap: 'Block internet when cap exceeded', restoreMidnight: 'Restore at midnight', restoreQuit: 'Unblock when app closes', monitoring: 'Monitoring', blockNow: 'Block internet now', unblock: 'Unblock', blocked: 'Internet blocked', unblocked: 'Internet active', needsAdmin: 'Blocking requires admin (run as administrator)', plan: 'Plan', planName: 'Plan name', quotaGB: 'Quota (GB)', cycle: 'Cycle', daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', custom: 'Custom', cycleDays: 'Days count', startDate: 'Cycle start', savePlan: 'Save plan', clearPlan: 'Clear plan', allowance: 'Daily allowance', history: 'Usage history', date: 'Date', total: 'Total', noData: 'No data yet', confirmBlock: 'This will block internet for the whole PC. Continue?', daysLeft: 'Days left', quota: 'Quota', perDay: 'per day', footnote: 'Counters cover whole-system usage since boot and reset at midnight.', tabOverview: 'Overview', tabPlan: 'Plan', tabLimits: 'Limits', tabHistory: 'History', tabTools: 'Tools', connInfo: 'Current connection', ssid: 'SSID', signal: 'Signal', radio: 'Radio type', adapter: 'Adapter', connState: 'State', unknown: 'Unknown', unavailable: 'Unavailable', radar: 'Active connections radar', radarDesc: 'Which app is connected right now (TCP)', noConns: 'No active connections', remote: 'Remote', local: 'Local', process: 'Process', appBlock: 'Block a single app', appBlockDesc: 'Firewall rule for one .exe (requires admin)', pickExe: 'Pick an .exe…', blockApp: 'Block app', unblockApp: 'Unblock app', invalidExe: 'Pick a valid absolute .exe path', depletion: 'Quota depletion forecast', depletionOk: 'Usage is within the daily target', depletionEta: 'Cap runs out in ~{{h}}h at current speed', depletionExceeded: 'Daily cap exceeded', avgDay: 'Daily average', bestDay: 'Best day', worstDay: 'Worst day', alert80: 'Alerts at 80% and 90% of cap', speedTest: 'Speed test (optional)', speedTestDesc: 'Uses real data from your quota!', speedTestRun: 'Start test (10MB)', speedTestRunning: 'Testing…', speedTestResult: 'Speed: {{s}}', exportCsv: 'Export history CSV' },
+  res: { title: 'Resources & Consumption', subtitle: 'Live CPU, memory, disk and GPU monitor', cpu: 'CPU', ram: 'Memory', disk: 'Disk', gpu: 'GPU', health: 'System health', cores: 'Cores', temp: 'Temp', processes: 'Processes', topApps: 'Top consuming apps', searchApps: 'Search apps…', name: 'Name', pid: 'PID', kill: 'Kill', killConfirm1: 'Terminate {{name}} (PID {{pid}})?', killConfirm2: 'Final confirmation: the process stops immediately. Continue?', killDone: 'Process terminated', killBlocked: 'Blocked: system process or DragonHub itself', freeze: 'Freeze', unfreeze: 'Resume', export: 'Export report', compact: 'Compact', comfortable: 'Comfortable', hideSystem: 'Hide system processes', sources: 'Data source status', alerts: 'Alerts', alertCpu: 'CPU threshold %', alertMemory: 'Memory threshold %', alertFired: '{{what}} exceeded {{v}}% for 30s+', noData: 'Waiting for first sample…', topProcess: 'Top consumer', openCard: 'Open floating card', cardOpened: 'Floating card is live — hide the main window and it keeps updating', perCore: 'Per core', pagefile: 'Pagefile', uptime: 'Uptime', capacity: 'Capacity', activity: 'Activity', ok: 'OK', degraded: 'Degraded', unavailable: 'Unavailable', settings: 'Monitoring settings', interval: 'Sample interval (s)', topN: 'Process count', alertsOn: 'Enable alerts' },
   compress: {
     title: 'Compression Center', compressTab: 'Compress', extractTab: 'Extract', browseTab: 'Browse archive', addFiles: 'Add files', addFolder: 'Add folder', clear: 'Clear', format: 'Format', level: 'Level',
     levels: { 0: 'Store', 1: 'Fastest', 3: 'Fast', 5: 'Normal', 7: 'Maximum', 9: 'Ultra' }, password: 'Password (AES-256)', solid: 'Solid archive', split: 'Split into volumes (MB)', deleteAfter: 'Delete source after compression',
@@ -103,5 +104,7 @@ export default {
     changelog: 'Changelog', versionInfo: 'Version info', techStack: 'Built with Electron, React, TypeScript, Tailwind, Monaco, FFmpeg, sharp & 7-Zip', checkUpdate: 'Get updates via Telegram', updatesNote: 'No auto-updater is built in yet — new releases are announced on the Telegram channel.', upToDate: 'You are on the latest version',
   },
   palette: { placeholder: 'Type a command or search…', noMatch: 'No matching commands', navigate: 'Navigate', actions: 'Actions', theme: 'Toggle theme', lang: 'Switch language' },
+  focus: { title: 'Focus timer', work: 'Work', short: 'Break', long: 'Long break', workDone: 'Work session done — take a break', breakDone: 'Break over — back to work', sessions: '{{count}} sessions today' },
+  side: { main: 'Main', productivity: 'Productivity', files: 'Files & Tools', media: 'Media', security: 'Security', system: 'System', collapse: 'Collapse sidebar', expand: 'Expand sidebar' },
   toast: { saved: 'Saved', deleted: 'Deleted', copied: 'Copied to clipboard', error: 'Something went wrong', created: 'Created', updated: 'Updated' },
 }

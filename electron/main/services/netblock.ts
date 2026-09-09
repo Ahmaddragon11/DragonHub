@@ -245,3 +245,86 @@ export function cleanupStaleRulesSync(): void {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Per-application internet block (Network v2 — "block internet for one app").
+// Same safety contract as the global kill-switch: netsh only, arg arrays,
+// no shell, no elevation attempts. Without admin rights the call reports
+// { blocked: <actual>, needsAdmin: true } and fails open.
+// Per-app rules are intentionally persistent (user choice) — startup cleanup
+// only touches the global RULE_OUT/RULE_IN pair, never per-app rules.
+// ---------------------------------------------------------------------------
+
+import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+
+const APP_RULE_PREFIX = 'DragonHub-App-';
+
+export interface AppBlockResult { blocked: boolean; needsAdmin: boolean; exePath: string }
+
+function sanitizeExePath(exePath: unknown): string {
+  if (typeof exePath !== 'string') throw new Error('Invalid application path');
+  const p = exePath.trim();
+  if (!p || p.length > 1024 || p.includes('\0') || p.includes('"')) throw new Error('Invalid application path');
+  if (!/^[A-Za-z]:[\\/].*\.exe$/i.test(p)) throw new Error('Only absolute .exe paths can be blocked');
+  if (p.includes('..')) throw new Error('Invalid application path');
+  return p;
+}
+
+function appRuleName(exePath: string): string {
+  const base = (exePath.split(/[\\/]/).pop() || 'app').replace(/\.exe$/i, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'app';
+  const hash = createHash('sha1').update(exePath.toLowerCase()).digest('hex').slice(0, 10);
+  const name = `${APP_RULE_PREFIX}${base}-${hash}`;
+  assertSafeRuleName(name);
+  return name;
+}
+
+async function addAppRule(ruleName: string, exePath: string): Promise<void> {
+  assertSafeRuleName(ruleName);
+  try {
+    await runNetsh([
+      'advfirewall', 'firewall', 'add', 'rule',
+      `name="${ruleName}"`, 'dir=out', 'action=block', 'enable=yes', 'profile=any',
+      `program="${exePath}"`,
+    ]);
+  } catch (err: unknown) {
+    throw toShortError(toolText(err), `Failed to block ${exePath}`);
+  }
+}
+
+export async function isAppBlocked(exePath: string): Promise<boolean> {
+  const p = sanitizeExePath(exePath);
+  return hasRule(appRuleName(p));
+}
+
+export async function setAppBlocked(exePath: string, on: boolean): Promise<AppBlockResult> {
+  const p = sanitizeExePath(exePath);
+  const rule = appRuleName(p);
+  let current = false;
+  try { current = await hasRule(rule); } catch { current = false; }
+  if (current === !!on) return { blocked: current, needsAdmin: false, exePath: p };
+  try {
+    if (on) {
+      await deleteRule(rule).catch(() => {});
+      await addAppRule(rule, p);
+    } else {
+      await deleteRule(rule);
+    }
+  } catch (err: unknown) {
+    const text = toolText(err);
+    if (ADMIN_PATTERN.test(text)) {
+      let actual = current;
+      try { actual = await hasRule(rule); } catch { /* keep pre-attempt state */ }
+      return { blocked: actual, needsAdmin: true, exePath: p };
+    }
+    throw toShortError(text, on ? 'Failed to block application' : 'Failed to unblock application');
+  }
+  let blocked = !!on;
+  try { blocked = await hasRule(rule); } catch { /* trust requested state */ }
+  return { blocked, needsAdmin: false, exePath: p };
+}
+
+/** Best-effort existence check so the UI can warn about moved/uninstalled apps. */
+export function appExeExists(exePath: string): boolean {
+  try { return fs.existsSync(sanitizeExePath(exePath)); } catch { return false; }
+}

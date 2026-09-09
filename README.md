@@ -393,13 +393,13 @@ Tomorrow, it can become your entire workspace.
 
 ---
 
-# 📄 Project Documentation (v1.3.0)
+# 📄 Project Documentation (v1.4.0)
 
-> The following is the in-project README shipped with the v1.3.0 source.
+> The following is the in-project README shipped with the v1.4.0 source.
 
 ---
 
-# DragonHub v1.3.0 — by AHMADDRAGON (https://t.me/ahmaddragon)
+# DragonHub v1.4.0 — by AHMADDRAGON (https://t.me/ahmaddragon)
 
 **دراغون هب** — مركز تحكم مكتبي مشفّر يعمل محلياً (Windows 10/11 x64):
 ملاحظات، مشاريع وأفكار، مهام (Kanban)، مدير ملفات بلوحتين، محرر أكواد (Monaco)،
@@ -413,7 +413,7 @@ Tomorrow, it can become your entire workspace.
 npm install
 npm run typecheck   # فحص الأخطاء (بدون بناء)
 npm run build       # بناء الواجهة + Electron
-npm run dist        # -> release/1.3.0/*.exe (مثبّت + نسخة محمولة)
+npm run dist        # -> release/1.4.0/*.exe (مثبّت + نسخة محمولة)
 npm run dev         # وضع التطوير
 ```
 
@@ -427,8 +427,8 @@ npm run dev         # وضع التطوير
 تنزيله، أنشئ Tag يبدأ بحرف `v` وادفعه إلى GitHub:
 
 ```bash
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.4.0
+git push origin v1.4.0
 ```
 
 سيبني GitHub Actions نسخة NSIS ونسخة Portable ويرفقهما تلقائياً بصفحة Releases.
@@ -446,6 +446,7 @@ git push origin v1.3.0
 | نسخ أمان الخزنة | `vault.bin.bak` / `.pre-import.bak` (تُنشأ تلقائياً عند تغيير كلمة المرور أو الاستيراد) |
 | التنزيلات الافتراضية | `~\Downloads\DragonHub` (قابل للتغيير من الإعدادات) |
 | الشبكة (العدادات/السقف اليومي/الخطط/السجل) | `%APPDATA%\DragonHub\dragonhub-data.json` مفاتيح `net.*` (محلية فقط، بلا سحابة) |
+| الموارد (إعدادات المراقبة/البطاقة العائمة/حجب التطبيقات) | مفاتيح `resConfig` و `resCardConfig` و `netAppBlocks` في نفس الملف |
 
 فتح مجلد البيانات مباشرة: الإعدادات ← البيانات ← «فتح مجلد البيانات».
 
@@ -481,6 +482,18 @@ git push origin v1.3.0
 - حدود صريحة: إجماليات على مستوى النظام (لا تفصيل لكل تطبيق بدون driver/ETW)، العدّادات تُصفَّر عند إعادة التشغيل
   (يُعالَج بإعادة التأسيس rebasing)، حظر الجدار الناري يحتاج مسؤولاً، ولا مزامنة سحابية/هاتف.
 - التفاصيل الكاملة: `NETWORK.md`.
+
+## الجديد في 1.4.0
+
+- صفحة «الموارد والاستهلاك»: CPU (إجمالي + شبكة حرارية لكل نواة) و RAM وأقراص (سعة + نشاط)
+  و GPU وحرارة، مع حلقات متحركة ورسوم حيّة، وجدول أعلى التطبيقات (بحث + فرز + إخفاء عمليات النظام)،
+  ومؤشر صحة النظام وتنبيهات عتبات ووضع تجميد وتصدير CSV/JSON — بدون صلاحيات مدير.
+- البطاقة العائمة (rescard): نافذة صغيرة دائمة الظهور وقابلة للسحب (CPU/RAM/سرعة/قرص/أعلى تطبيق)،
+  تبقى تُحدَّث بعد إخفاء النافذة الرئيسية إلى التراي (نفس العملية).
+- الشبكة v2: تبويبات (نظرة عامة/الخطة/الحدود/السجل/الأدوات)، معلومات الاتصال (SSID وقوة الإشارة)،
+  رادار الاتصالات النشطة، حجب إنترنت لتطبيق واحد (قاعدة جدار حماية لكل .exe، تتطلب المسؤول)،
+  رسوم أعمدة للسجل، توقّع نفاد الباقة، تنبيهات 80%/90%، اختبار سرعة اختياري (يستهلك ~10MB بموافقة صريحة)، وتصدير CSV.
+- التفاصيل: `CHANGELOG.md`.
 
 ## القيود المعروفة (باختصار)
 

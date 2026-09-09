@@ -30,9 +30,9 @@ export default function Notes() {
     if (consumedParams.current === key) return
     consumedParams.current = key
     if (pageParams.create) create()
-    if (pageParams.open) setSel(pageParams.open as string)
+    if (pageParams.open && notes.some((n) => n.id === pageParams.open)) setSel(pageParams.open as string)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageParams])
+  }, [pageParams, notes])
 
   const update = (id: string, patch: Partial<Note>) => saveNotes(notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: Date.now() } : n)))
   const remove = async (id: string) => {
@@ -48,6 +48,8 @@ export default function Notes() {
     .sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || (sort === 'title' ? a.title.localeCompare(b.title) : sort === 'created' ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt)),
   [notes, filter, tagFilter, q, sort])
   const cur = notes.find((n) => n.id === sel)
+  // Avoid re-rendering markdown on every unrelated keystroke/parent render.
+  const mdHtml = useMemo(() => (cur ? renderMarkdown(cur.content) : ''), [cur?.id, cur?.content])
   const exportMd = async () => {
     if (!cur) return
     const p = await invoke<string | null>('dialog:save', { defaultPath: (cur.title || 'note') + '.md', filters: [{ name: 'Markdown', extensions: ['md'] }] })
@@ -67,7 +69,7 @@ export default function Notes() {
         </select>
         <button className="btn-primary" onClick={create}><Plus size={16} />{t('notes.newNote')}</button>
       </PageHeader>
-      <div className="flex-1 min-h-0 grid grid-cols-[300px_1fr] gap-4">
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
         <aside className="card flex flex-col min-h-0 overflow-hidden">
           <div className="p-3 space-y-2 border-b border-surface-300/60">
             <div className="relative"><Search size={14} className="absolute start-3 top-2.5 text-surface-500" /><input className="input ps-9" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -93,7 +95,7 @@ export default function Notes() {
               <div className="flex items-center gap-2 p-3 border-b border-surface-300/60 flex-wrap">
                 <input className="flex-1 bg-transparent text-lg font-semibold outline-none min-w-[200px]" placeholder={t('notes.placeholderTitle')} value={cur.title} onChange={(e) => update(cur.id, { title: e.target.value })} />
                 <div className="flex items-center rounded-lg bg-surface-200 p-0.5">
-                  {([['edit', <Pencil size={14} />], ['split', <Columns size={14} />], ['preview', <Eye size={14} />]] as const).map(([m, ic]) => <button key={m} title={t(`notes.${m}Mode`)} onClick={() => setMode(m)} className={cn('p-1.5 rounded-md transition-colors', mode === m ? 'bg-accent text-accent-fg' : 'hover:bg-surface-300')}>{ic}</button>)}
+                  {([['edit', <Pencil size={14} />], ['split', <Columns size={14} />], ['preview', <Eye size={14} />]] as const).map(([m, ic]) => <button key={m} title={t(`notes.${m}Mode`)} aria-label={t(`notes.${m}Mode`)} aria-pressed={mode === m} onClick={() => setMode(m)} className={cn('p-1.5 rounded-md transition-colors', mode === m ? 'bg-accent text-accent-fg' : 'hover:bg-surface-300')}>{ic}</button>)}
                 </div>
                 <button className="btn-icon" title={cur.pinned ? t('notes.unpin') : t('notes.pin')} onClick={() => update(cur.id, { pinned: !cur.pinned })}>{cur.pinned ? <PinOff size={16} /> : <Pin size={16} />}</button>
                 <button className="btn-icon" title={t('notes.favorite')} onClick={() => update(cur.id, { favorite: !cur.favorite })}><Star size={16} className={cur.favorite ? 'fill-amber-500 text-amber-500' : ''} /></button>
@@ -105,9 +107,9 @@ export default function Notes() {
                 <ColorPicker value={cur.color} onChange={(c) => update(cur.id, { color: c })} colors={COLORS} />
                 <div className="flex-1"><TagInput tags={cur.tags} onChange={(tags) => update(cur.id, { tags })} placeholder={t('notes.addTag')} /></div>
               </div>
-              <div className={cn('flex-1 min-h-0 grid', mode === 'split' ? 'grid-cols-2' : 'grid-cols-1')}>
+              <div className={cn('flex-1 min-h-0 grid', mode === 'split' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1')}>
                 {mode !== 'preview' && <textarea className="h-full w-full resize-none bg-transparent p-4 outline-none font-mono text-sm leading-6 selectable" placeholder={t('notes.placeholderBody')} value={cur.content} onChange={(e) => update(cur.id, { content: e.target.value })} spellCheck />}
-                {mode !== 'edit' && <div className={cn('h-full overflow-auto p-4 prose-dh selectable', mode === 'split' && 'border-s border-surface-300/60')} dangerouslySetInnerHTML={{ __html: renderMarkdown(cur.content) }} onClick={(e) => { const a = (e.target as HTMLElement).closest('a[data-ext]'); if (a) { e.preventDefault(); invoke('app:openExternal', (a as HTMLAnchorElement).href) } }} />}
+                {mode !== 'edit' && <div className={cn('h-full overflow-auto p-4 prose-dh selectable', mode === 'split' && 'border-s border-surface-300/60')} dangerouslySetInnerHTML={{ __html: mdHtml }} onClick={(e) => { const a = (e.target as HTMLElement).closest('a[data-ext]'); if (a) { e.preventDefault(); invoke('app:openExternal', (a as HTMLAnchorElement).href) } }} />}
               </div>
               <footer className="flex items-center gap-4 px-4 py-1.5 border-t border-surface-300/60 text-[11px] text-surface-500">
                 <span>{t('notes.wordCount', { count: words })}</span><span>{t('notes.chars', { count: cur.content.length })}</span><span className="ms-auto">{relTime(cur.updatedAt, settings.language)}</span>

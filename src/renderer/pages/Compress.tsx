@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Archive, FilePlus, FolderPlus, X, Lock, Package, FolderOpen, ShieldCheck, Loader2, FileArchive, Folder, File } from 'lucide-react'
 import { useApp } from '@/store'
@@ -30,13 +30,18 @@ export default function Compress() {
   const [busy, setBusy] = useState(false)
   const [testResult, setTestResult] = useState<boolean | null>(null)
 
-  useEffect(() => on('job:progress', (p: any) => setJob(p)), [])
+  useEffect(() => on('job:progress', (p: any) => { if (p && typeof p.id === 'string' && (p.id.startsWith('zip-') || p.id === 'c' || p.id === 'x')) setJob(p) }), [])
+  // Consume the incoming path once: later navigations with a new path re-apply,
+  // but unrelated param changes must not clobber the user's inputs.
+  const consumedPath = useRef<string | null>(null)
   useEffect(() => {
     const p = pageParams.path as string | undefined
-    if (!p) return
+    if (!p || consumedPath.current === p) return
+    consumedPath.current = p
     const ext = p.split('.').pop()?.toLowerCase() || ''
     if (ARCHIVE_EXT.has(ext)) { setArchive(p); setTab('extract'); invoke<{ dir: string; name: string }>('fs:pathInfo', p).then((i) => setDest(`${i.dir}${window.dh.platform === 'win32' ? '\\' : '/'}${i.name}`)) }
     else { setInputs([p]); setTab('compress'); invoke<{ dir: string; name: string }>('fs:pathInfo', p).then((i) => { setOutDir(i.dir); setOutName(i.name) }) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageParams])
 
   const addFiles = async () => { const ps = await invoke<string[]>('dialog:openFile', { multi: true }); if (ps.length) { setInputs((s) => Array.from(new Set([...s, ...ps]))); if (!outDir) invoke<{ dir: string; name: string }>('fs:pathInfo', ps[0]).then((i) => { setOutDir(i.dir); if (outName === 'archive') setOutName(i.name) }) } }
@@ -48,7 +53,7 @@ export default function Compress() {
     setBusy(true); setJob({ id: 'c', percent: 0, done: false })
     try {
       const out = await invoke<string>('fs:join', outDir, `${outName}.${fmtInfo.ext}`)
-      const id = uid()
+      const id = 'zip-' + uid()
       const res = await invoke<string>('zip:compressJob', id, inputs, out, { format, level, password: fmtInfo.enc && pw ? pw : undefined, solid, splitSizeMB: split || undefined, deleteAfter: delAfter })
       toast(`${t('compress.done')}: ${stripPath(res)}`)
     } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false); setJob(null) }
@@ -57,7 +62,7 @@ export default function Compress() {
   const doExtract = async () => {
     if (!archive || !dest) return
     setBusy(true); setJob({ id: 'x', percent: 0, done: false })
-    try { await invoke('zip:extract', uid(), archive, dest, xpw || undefined); toast(t('compress.extracted')) } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false); setJob(null) }
+    try { await invoke('zip:extract', 'zip-' + uid(), archive, dest, xpw || undefined); toast(t('compress.extracted')) } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false); setJob(null) }
   }
   const doList = async () => { if (!archive) return; setBusy(true); try { setEntries(await invoke<ArchiveEntry[]>('zip:list', archive, xpw || undefined)); setTab('browse') } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false) } }
   const doTest = async () => { if (!archive) return; setBusy(true); try { const ok = await invoke<boolean>('zip:test', archive, xpw || undefined); setTestResult(ok); toast(ok ? t('compress.valid') : t('compress.invalid'), ok ? 'success' : 'error') } finally { setBusy(false) } }

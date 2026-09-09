@@ -15,13 +15,14 @@ import Images from '@/pages/Images'
 import Video from '@/pages/Video'
 import Vault from '@/pages/Vault'
 import Network from '@/pages/Network'
+import Resources from '@/pages/Resources'
 import Shortcuts from '@/pages/Shortcuts'
 import Settings from '@/pages/Settings'
 import About from '@/pages/About'
 
 const Editor = React.lazy(() => import('@/pages/Editor'))
 
-const PAGES: Record<string, React.ComponentType> = { dashboard: Dashboard, notes: Notes, projects: Projects, tasks: Tasks, files: Files, editor: Editor, downloads: Downloads, compress: Compress, images: Images, video: Video, vault: Vault, network: Network, shortcuts: Shortcuts, settings: Settings, about: About }
+const PAGES: Record<string, React.ComponentType> = { dashboard: Dashboard, notes: Notes, projects: Projects, tasks: Tasks, files: Files, editor: Editor, downloads: Downloads, compress: Compress, images: Images, video: Video, vault: Vault, network: Network, resources: Resources, shortcuts: Shortcuts, settings: Settings, about: About }
 
 /** Fires a desktop notification + toast once per task when its reminder time arrives. */
 function useReminders() {
@@ -48,6 +49,14 @@ function useReminders() {
 
     const check = () => {
       const now = Date.now()
+      // Bound memory in long sessions: drop old keys once the set grows.
+      if (fired.current.size > 500) {
+        const keep = new Set<string>()
+        for (const k of tasksRef.current) {
+          if (k.reminderAt && k.reminderAt > now - 86400000) keep.add(`${k.id}:${k.reminderAt}`)
+        }
+        fired.current = keep
+      }
       for (const k of tasksRef.current) {
         if (k.status === 'done' || !k.reminderAt || k.reminderAt > now) continue
         const key = `${k.id}:${k.reminderAt}`
@@ -77,10 +86,12 @@ export default function App() {
   useEffect(() => { init() }, [])
   const Page = PAGES[page] || Dashboard
   const anim = settings.animations !== 'off'
+  const animFull = settings.animations === 'full'
+  const speed = Math.min(2, Math.max(0.5, Number(settings.animationSpeed) || 1))
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-surface-50 text-surface-900 relative">
-      <div className="aurora fixed inset-0 pointer-events-none" />
+      {anim && <div className="aurora fixed inset-0 pointer-events-none" />}
       <AnimatePresence>{!ready && <Splash key="splash" />}</AnimatePresence>
       {ready && (
         <div className="relative flex flex-col h-full">
@@ -89,7 +100,7 @@ export default function App() {
             <Sidebar />
             <main className="flex-1 min-w-0 min-h-0 relative">
               <AnimatePresence mode="wait" initial={false}>
-                <motion.div key={page} className="absolute inset-0 overflow-y-auto p-4 lg:p-6" initial={anim ? { opacity: 0, y: 12, scale: 0.995 } : false} animate={{ opacity: 1, y: 0, scale: 1 }} exit={anim ? { opacity: 0, y: -8 } : undefined} transition={{ duration: 0.28 / settings.animationSpeed, ease: [0.22, 1, 0.36, 1] }}>
+                <motion.div key={page} className="absolute inset-0 overflow-y-auto p-4 lg:p-6" initial={anim ? { opacity: 0, y: 12 } : false} animate={{ opacity: 1, y: 0 }} exit={anim ? { opacity: 0, y: -8 } : undefined} transition={{ duration: (animFull ? 0.22 : 0.15) / speed, ease: [0.22, 1, 0.36, 1] }}>
                   <div className="min-h-full max-w-[1600px] mx-auto"><Suspense fallback={<div className="h-full flex items-center justify-center"><div className="splash-ring w-10 h-10" /></div>}><Page /></Suspense></div>
                 </motion.div>
               </AnimatePresence>

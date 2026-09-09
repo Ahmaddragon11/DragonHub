@@ -409,3 +409,164 @@ export function getHistory(days: number): { date: string; downMB: number; upMB: 
     .map((d) => ({ date: d.date, downMB: r3(d.downMB), upMB: r3(d.upMB) }))
   return [...stored, today]
 }
+
+// ---------------------------------------------------------------------------
+// Network v2 helpers: connection info (no admin) + active-connections radar.
+// Both degrade gracefully: on Linux dev machines or parse failures they
+// return empty/unknown values instead of throwing, so the UI shows
+// "unavailable" badges rather than breaking the page.
+// ---------------------------------------------------------------------------
+
+export interface NetConnectionInfo {
+  ssid: string | null
+  signalPct: number | null
+  radioType: string | null
+  adapter: string | null
+  state: string | null
+}
+
+export interface NetConnection {
+  proto: string
+  local: string
+  remote: string
+  state: string
+  pid: number
+  process: string
+}
+
+let connInfoCache: { at: number; value: NetConnectionInfo } | null = null
+let connsCache: { at: number; value: NetConnection[] } | null = null
+
+function pickLine(out: string, re: RegExp): string | null {
+  for (const line of out.split(/\r?\n/)) {
+    const m = re.exec(line)
+    if (m) return (m[1] ?? '').trim() || null
+  }
+  return null
+}
+
+/** Current Wi-Fi link via `netsh wlan show interfaces` (no admin). */
+export async function getConnectionInfo(): Promise<NetConnectionInfo> {
+  if (connInfoCache && Date.now() - connInfoCache.at < 8000) return connInfoCache.value
+  const empty: NetConnectionInfo = { ssid: null, signalPct: null, radioType: null, adapter: null, state: null }
+  if (process.platform !== 'win32') { connInfoCache = { at: Date.now(), value: empty }; return empty }
+  try {
+    const { stdout } = await execFileP('netsh', ['wlan', 'show', 'interfaces'], { windowsHide: true, timeout: 8000 })
+    const ssid = pickLine(stdout, /^\s*SSID\s*:\s*(.+?)\s*$/)
+    const sigRaw = pickLine(stdout, /^\s*Signal\s*:\s*(\d+)\s*%/)
+    const radio = pickLine(stdout, /^\s*Radio type\s*:\s*(.+?)\s*$/)
+    const state = pickLine(stdout, /^\s*State\s*:\s*(.+?)\s*$/)
+    const adapter = pickLine(stdout, /^\s*Name\s*:\s*(.+?)\s*$/)
+    const signalPct = sigRaw !== null ? Math.min(100, Math.max(0, parseInt(sigRaw, 10))) : null
+    const value: NetConnectionInfo = {
+      ssid: ssid && !/^$/i.test(ssid) ? ssid : null,
+      signalPct: Number.isFinite(signalPct as number) ? (signalPct as number) : null,
+      radioType: radio,
+      adapter,
+      state,
+    }
+    connInfoCache = { at: Date.now(), value }
+    return value
+  } catch {
+    connInfoCache = { at: Date.now(), value: empty }
+    return empty
+  }
+}
+
+/**
+ * Optional speed test (Network v2 → Tools tab). Downloads a fixed-size test
+ * file and measures throughput. NEVER runs implicitly: the renderer calls it
+ * only after an explicit user confirmation + data-usage warning, because it
+ * genuinely consumes ~10MB of the user's quota.
+ */
+export async function speedTest(bytes = 10_000_000): Promise<{ mbps: number; bytes: number; ms: number }> {
+  const want = Math.min(Math.max(Math.floor(Number(bytes) || 10_000_000), 1_000_000), 50_000_000)
+  const targets = [
+    `https://speed.cloudflare.com/__down?bytes=${want}`,
+    'https://cachefly.cachefly.net/10mb.test',
+  ]
+  let lastErr: unknown = null
+  for (const url of targets) {
+    try {
+      const started = Date.now()
+      const received = await new Promise<number>((resolve, reject) => {
+        void (async () => {
+          try {
+            const mod = await import('node:https')
+            const req = mod.get(url, { timeout: 30000 }, (res) => {
+              if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+                res.resume()
+                reject(new Error(`Speed test HTTP ${res.statusCode}`))
+                return
+              }
+              let n = 0
+              res.on('data', (c: Buffer) => { n += c.length })
+              res.on('end', () => resolve(n))
+              res.on('error', reject)
+            })
+            req.on('timeout', () => { req.destroy(new Error('Speed test timed out')) })
+            req.on('error', reject)
+          } catch (e) { reject(e) }
+        })()
+      })
+      const ms = Math.max(1, Date.now() - started)
+      const mbps = (received * 8) / (ms / 1000) / 1_000_000
+      if (!Number.isFinite(mbps) || mbps <= 0) throw new Error('Speed test produced no data')
+      return { mbps: Math.round(mbps * 100) / 100, bytes: received, ms }
+    } catch (e) { lastErr = e }
+  }
+  throw new Error(lastErr instanceof Error ? lastErr.message : 'Speed test failed')
+}
+
+/** Active TCP connections via `netstat -ano` joined with PID → process names. */
+export async function getActiveConnections(): Promise<NetConnection[]> {
+  if (connsCache && Date.now() - connsCache.at < 4000) return connsCache.value
+  const done = (v: NetConnection[]): NetConnection[] => { connsCache = { at: Date.now(), value: v }; return v }
+  try {
+    const [{ stdout }, pidNames] = await Promise.all([
+      execFileP('netstat', ['-ano', '-p', 'TCP'], { windowsHide: true, timeout: 8000 }).catch(() =>
+        execFileP('netstat', ['-ano'], { windowsHide: true, timeout: 8000 }),
+      ),
+      (async (): Promise<Map<number, string>> => {
+        const map = new Map<number, string>()
+        try {
+          const { stdout: ps } = await execFileP(
+            'powershell.exe',
+            ['-NoProfile', '-NonInteractive', '-Command', 'Get-Process | ForEach-Object { "$($_.Id)|$($_.ProcessName)" }'],
+            { windowsHide: true, timeout: 8000, maxBuffer: 4 * 1024 * 1024 },
+          )
+          for (const line of ps.split(/\r?\n/)) {
+            const [id, name] = line.trim().split('|')
+            const pid = parseInt(id, 10)
+            if (Number.isFinite(pid) && name) map.set(pid, name.slice(0, 64))
+          }
+        } catch { /* PID names optional — rows still useful without them */ }
+        return map
+      })(),
+    ])
+    const rows: NetConnection[] = []
+    for (const line of stdout.split(/\r?\n/)) {
+      const m = /^\s*(TCP)\s+(\S+)\s+(\S+)\s+(\S+)?\s+(\d+)\s*$/.exec(line.trim())
+      if (!m) continue
+      const pid = parseInt(m[5], 10)
+      if (!Number.isFinite(pid)) continue
+      rows.push({
+        proto: 'TCP',
+        local: m[2].slice(0, 64),
+        remote: m[3].slice(0, 64),
+        state: (m[4] || '').slice(0, 32),
+        pid,
+        process: pidNames.get(pid) || '',
+      })
+      if (rows.length >= 120) break
+    }
+    // Most interesting first: established connections, then listening.
+    rows.sort((a, b) => {
+      const rank = (s: string): number => (s === 'ESTABLISHED' ? 0 : s === 'SYN_SENT' ? 1 : s === 'TIME_WAIT' ? 3 : 2)
+      return rank(a.state) - rank(b.state)
+    })
+    return done(rows)
+  } catch {
+    return done([])
+  }
+}

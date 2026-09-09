@@ -75,9 +75,16 @@ export async function getMeta(): Promise<VaultMeta | null> {
 
 export function isUnlocked() { return key !== null }
 
+/** Passwords are bounded: PBKDF2 on a 100MB string would be a CPU/memory DoS via IPC. */
+function assertPassword(pw: unknown, min = 8) {
+  if (typeof pw !== 'string' || pw.length < min || pw.length > 256) {
+    throw new Error(`Master password must be ${min}..256 characters`)
+  }
+}
+
 export async function init(password: string): Promise<VaultMeta> {
   if (await getMeta()) throw new Error('Vault already initialized')
-  if (password.length < 8) throw new Error('Master password must be at least 8 characters')
+  assertPassword(password)
   await fsp.mkdir(vaultDir(), { recursive: true })
   const salt = crypto.randomBytes(32)
   const k = deriveKey(password, salt)
@@ -94,6 +101,7 @@ export async function init(password: string): Promise<VaultMeta> {
 }
 
 export async function unlock(password: string, autoLockMin: number): Promise<VaultItem[]> {
+  assertPassword(password, 1)
   const meta = await getMeta()
   if (!meta) throw new Error('Vault not initialized')
   const k = deriveKey(password, Buffer.from(meta.saltB64, 'base64'))
@@ -139,12 +147,39 @@ export function list(): VaultItem[] {
   return cache
 }
 
+/** Renderer-supplied items are schema-checked: no unbounded strings, no prototype keys. */
+function assertVaultItem(item: VaultItem) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Invalid vault item')
+  const it = item as unknown as Record<string, unknown>
+  if (typeof it.id !== 'string' || !it.id || it.id.length > 128) throw new Error('Invalid vault item id')
+  if (typeof it.type !== 'string' || (it.type as string).length > 32) throw new Error('Invalid vault item type')
+  for (const k of ['title', 'username', 'secret', 'url', 'notes'] as const) {
+    const v = it[k]
+    if (v !== undefined && (typeof v !== 'string' || v.length > 64000)) throw new Error(`Vault item field too large: ${k}`)
+  }
+  const fields = it.fields
+  if (fields !== undefined) {
+    if (!Array.isArray(fields) || fields.length > 100) throw new Error('Too many custom fields')
+    for (const f of fields) {
+      if (!f || typeof f !== 'object') throw new Error('Invalid custom field')
+      const ff = f as Record<string, unknown>
+      if (typeof ff.label !== 'string' || ff.label.length > 256 || typeof ff.value !== 'string' || ff.value.length > 64000) {
+        throw new Error('Custom field too large')
+      }
+    }
+  }
+}
+
 export async function upsert(item: VaultItem) {
   if (!key || !cache) throw new Error('Vault locked')
-  const i = cache.findIndex((x) => x.id === item.id)
+  assertVaultItem(item)
   item.updatedAt = Date.now()
-  if (i >= 0) cache[i] = item
-  else { item.createdAt = item.createdAt || Date.now(); cache.unshift(item) }
+  const next = cache.some((x) => x.id === item.id)
+    ? cache.map((x) => (x.id === item.id ? item : x))
+    : [{ ...item, createdAt: item.createdAt || Date.now() }, ...cache]
+  // Bound total vault size so one giant item can't OOM decrypt/unlock.
+  if (JSON.stringify(next).length > 5 * 1024 * 1024) throw new Error('Vault too large (max 5MB)')
+  cache = next
   await saveData()
   return cache
 }
@@ -157,9 +192,10 @@ export async function remove(id: string) {
 }
 
 export async function changePassword(oldPw: string, newPw: string) {
+  assertPassword(oldPw, 1)
+  assertPassword(newPw)
   const meta = await getMeta()
   if (!meta) throw new Error('Vault not initialized')
-  if (newPw.length < 8) throw new Error('Master password must be at least 8 characters')
   const oldK = deriveKey(oldPw, Buffer.from(meta.saltB64, 'base64'))
   try {
     const v = decrypt(oldK, Buffer.from(meta.verifierB64, 'base64')).toString()

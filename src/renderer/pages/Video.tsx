@@ -31,10 +31,19 @@ export default function Video() {
 
   useEffect(() => on<JobProgress>('job:progress', (p) => {
     if (!p.id.startsWith('vid-')) return
-    setProgress(p)
+    // Throttle ffmpeg ticks: re-render at most ~2/sec, always on done/error.
+    setProgress((prev) => {
+      if (p.done || p.error || !prev || prev.id !== p.id) return p
+      return Math.abs((prev.percent ?? 0) - (p.percent ?? 0)) >= 1 ? p : prev
+    })
     if (p.done) { setJobId(null); if (p.error) toast(p.error, 'error'); else toast(t('common.done'), 'success') }
-  }), [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [t])
   useEffect(() => { if (pageParams?.path) load(String(pageParams.path)) }, [pageParams?.path])
+  // Stop playback when leaving the page (audio must not keep playing).
+  useEffect(() => () => {
+    try { vid.current?.pause(); vid.current?.removeAttribute('src'); vid.current?.load() } catch { /* */ }
+  }, [])
 
   const load = async (p: string) => {
     setSrc(p); setProgress(null)
@@ -53,9 +62,14 @@ export default function Video() {
     const out = await invoke('dialog:save', { defaultPath: `${pi.dir}${pi.sep}${pi.name}-out.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] })
     if (!out) return
     const id = 'vid-' + uid(); setJobId(id); setProgress({ id, percent: 0, done: false })
+    const dur = Math.floor(info?.duration || 0)
+    // Guard cleared number inputs ('' -> 0): end must be > start and within duration.
+    const trim = info && start >= 0 && end > start && end <= Math.max(dur, start + 1) && (start > 0 || end < dur)
+      ? { start, end }
+      : undefined
     const op: VideoOp = {
       input: src, output: out, format,
-      trim: info && (start > 0 || end < Math.floor(info.duration)) ? { start, end } : undefined,
+      trim,
       resize: !isAudio && (w || h) && (+w !== info?.width || +h !== info?.height) ? { width: w ? +w : undefined, height: h ? +h : undefined } : undefined,
       videoCodec: isAudio || AFMT.includes(format) ? undefined : vcodec, audioCodec: mute ? 'none' : acodec, crf, preset,
       fps: fps ? +fps : undefined, speed: speed !== 1 ? speed : undefined, volume: volume !== 1 ? volume : undefined,
@@ -96,8 +110,8 @@ export default function Video() {
         <div className="flex-1 flex flex-col gap-3 min-h-0">
           <div className="card flex-1 flex items-center justify-center overflow-hidden bg-black/60 relative">
             {!src ? <Empty icon={<Film size={48} />} text={t('video.noMedia')} action={<button className="btn-primary" onClick={openFile}>{t('video.open')}</button>} />
-              : isAudio ? <div className="flex flex-col items-center gap-6 p-8"><Music size={80} className="text-accent animate-float" /><audio src={toFileUrl(src)} controls className="w-96" /></div>
-              : <video ref={vid} src={toFileUrl(src)} controls className="max-w-full max-h-full" style={{ transform: `rotate(${rotate}deg)` }} />}
+              : isAudio ? <div className="flex flex-col items-center gap-6 p-8"><Music size={80} className="text-accent" /><audio src={toFileUrl(src)} controls preload="metadata" className="w-96" /></div>
+              : <video ref={vid} src={toFileUrl(src)} controls preload="metadata" className="max-w-full max-h-full" style={{ transform: `rotate(${rotate}deg)` }} />}
           </div>
           {info && (
             <div className="card p-3 grid grid-cols-6 gap-3 text-xs">

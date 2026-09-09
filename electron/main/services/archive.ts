@@ -25,8 +25,9 @@ const MAX_ARCHIVE_ENTRIES = 200_000
 const MAX_ARCHIVE_TOTAL_BYTES = 50 * 1024 * 1024 * 1024 // 50 GiB uncompressed
 
 function assertSafeEntryName(name: string) {
-  const n = name.replace(/\\/g, '/')
-  if (!n || n.startsWith('/') || /^[a-zA-Z]:\//.test(n) || n.startsWith('\\\\')) {
+  const n = String(name || '').replace(/\\/g, '/')
+  // After normalization there are no backslashes: UNC shows as '//', drives as 'C:...'.
+  if (!n || n.startsWith('/') || n.startsWith('//') || /^[a-zA-Z]:/.test(n)) {
     throw new Error(`Blocked unsafe archive entry (absolute path): ${name}`)
   }
   for (const part of n.split('/')) {
@@ -55,7 +56,7 @@ export async function compress(win: BrowserWindow | null, jobId: string, inputs:
   validateCompressInputs(ins, opts)
   const single = ['gzip', 'bzip2', 'xz'].includes(opts.format)
   // gzip/bzip2/xz only compress single files -> wrap in tar first for multiple/dirs
-  if (single && (ins.length > 1 || fs.statSync(ins[0]).isDirectory())) {
+  if (single && (ins.length > 1 || (await fsp.stat(ins[0]).catch(() => null))?.isDirectory())) {
     const tarPath = out.replace(/\.(gz|bz2|xz)$/i, '')
     await new Promise<void>((res, rej) => {
       const s = Seven.add(tarPath, ins, { $bin: bin, archiveType: 'tar', recursive: true, $progress: true })
@@ -107,16 +108,8 @@ export async function extract(win: BrowserWindow | null, jobId: string, archive:
   const d = safePath(dest)
   // Pre-scan the listing: refuse path-traversal entries and obvious zip bombs
   // BEFORE anything is written to disk.
-  const entries = await listArchive(a, password).catch(() => null)
-  if (entries) {
-    if (entries.length > MAX_ARCHIVE_ENTRIES) throw new Error(`Archive blocked: too many entries (${entries.length})`)
-    let total = 0
-    for (const e of entries) {
-      assertSafeEntryName(e.name)
-      total += e.size || 0
-      if (total > MAX_ARCHIVE_TOTAL_BYTES) throw new Error('Archive blocked: uncompressed size exceeds 50 GiB safety limit')
-    }
-  }
+  const entries = await listArchive(a, password)
+  validateArchiveEntries(entries)
   await fsp.mkdir(d, { recursive: true })
   await new Promise<void>((res, rej) => {
     // overwrite 'u': auto-rename instead of silently overwriting existing files
@@ -129,6 +122,7 @@ export async function extract(win: BrowserWindow | null, jobId: string, archive:
   const inner = (await fsp.readdir(d)).filter((f) => /\.tar$/i.test(f))
   if (inner.length === 1 && /\.(tgz|tar\.gz|tar\.xz|tar\.bz2)$/i.test(a)) {
     const tarP = path.join(d, inner[0])
+    validateArchiveEntries(await listArchive(tarP))
     await new Promise<void>((res, rej) => {
       const s = Seven.extractFull(tarP, d, { $bin: bin } as never)
       s.on('end', () => res()); s.on('error', rej)
@@ -137,6 +131,16 @@ export async function extract(win: BrowserWindow | null, jobId: string, archive:
   }
   progress(win, { id: jobId, percent: 100, done: true, output: d })
   return d
+}
+
+function validateArchiveEntries(entries: ArchiveEntry[]) {
+  if (entries.length > MAX_ARCHIVE_ENTRIES) throw new Error(`Archive blocked: too many entries (${entries.length})`)
+  let total = 0
+  for (const e of entries) {
+    assertSafeEntryName(e.name)
+    total += e.size || 0
+    if (total > MAX_ARCHIVE_TOTAL_BYTES) throw new Error('Archive blocked: uncompressed size exceeds 50 GiB safety limit')
+  }
 }
 
 export async function listArchive(archive: string, password?: string): Promise<ArchiveEntry[]> {

@@ -1,5 +1,39 @@
 # DragonHub Changelog
 
+## v1.4.0 — 2026-09-09 (resources monitor + floating card + network v2)
+
+### Added
+- New "Resources" page (الموارد والاستهلاك): live CPU (total + per-core heat grid),
+  RAM, disks (capacity + activity), GPU and temperature with animated rings and sparklines.
+- Top-consumers table: which app uses what (CPU/RAM), searchable and sortable,
+  with system-process filter, compact mode and double-confirmed safe termination
+  (never PID 0/4, protected system names, or DragonHub itself).
+- System health score (0–100), sustained-threshold alerts (CPU/RAM 90% for 30s,
+  customizable), freeze mode, data-source status badges and CSV/JSON report export.
+- Floating monitor card (rescard): draggable always-on-top mini window (CPU/RAM rings,
+  up/down speeds, disk use, top app) with small/medium sizes, opacity and position lock;
+  it keeps updating while the main window is hidden to tray (same process).
+- Network v2: tabbed page (Overview / Plan / Limits / History / Tools) with skeletons,
+  saved active tab, current-connection info (SSID, signal, radio via `netsh wlan`),
+  active-connections radar (`netstat -ano` + PID → process name).
+- Per-application internet block (firewall rule per .exe, requires admin, same
+  fail-open + needsAdmin contract as the global kill-switch).
+- History bar charts (SVG) with daily average / best / worst day, quota-depletion
+  forecast (`projectDepletion`, previously unused), 80%/90% cap banners, history CSV export.
+- Optional speed test (~10MB, explicit confirmation + data-usage warning, rate-limited).
+
+### Changed
+- Network history retention readable up to 30 days in the UI (store keeps 90 days).
+- Tray menu gains Show/Hide monitor card; `window-all-closed` no longer quits while
+  the card is open; quit-restore firewall semantics unchanged.
+
+### Security
+- All new IPC channels (`res:*`, `net:connInfo`, `net:connections`, `net:appBlocked*`,
+  `net:speedTest`, `res:card:*`) whitelisted in preload with the same single-sender
+  (main + card windows) + rate-limit guards; `res:killProcess`/`net:speedTest` strictly limited.
+- Per-app firewall rule names are derived server-side (basename + sha1 hash) and
+  exe paths strictly validated (absolute `.exe`, no quotes/null bytes, no `..`).
+
 ## v1.3.0 — 2026-09-05 (network monitor & kill-switch)
 
 ### Added

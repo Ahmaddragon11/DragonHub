@@ -90,11 +90,22 @@ function sanitizeVideoOp(op: VideoOp): VideoOp {
   return out
 }
 
+// Pixel-bomb guard: refuse absurd inputs before sharp/ffmpeg allocate.
+// Images decode fully into RAM (strict cap); video streams (generous cap for movies).
+const MAX_IMAGE_INPUT_BYTES = 200 * 1024 * 1024
+const MAX_VIDEO_INPUT_BYTES = 20 * 1024 * 1024 * 1024
+async function assertSaneInput(p: string, max = MAX_IMAGE_INPUT_BYTES) {
+  const st = await fsp.stat(p).catch(() => null)
+  if (!st) throw new Error('Input file not found')
+  if (st.size > max) throw new Error('Input file too large')
+}
+
 // ---------------- IMAGES (sharp) ----------------
 export async function imageInfo(p: string) {
   const sharp = (await import('sharp')).default
   const sp = safePath(p)
-  const meta = await sharp(sp).metadata()
+  await assertSaneInput(sp)
+  const meta = await sharp(sp, { limitInputPixels: 268_435_456 }).metadata()
   const st = await fsp.stat(sp)
   return {
     width: meta.width, height: meta.height, format: meta.format, space: meta.space, channels: meta.channels,
@@ -108,8 +119,9 @@ export async function imageProcess(win: BrowserWindow | null, jobId: string, raw
   const sharp = (await import('sharp')).default
   const input = safePath(op.input)
   const output = safePath(op.output)
+  await assertSaneInput(input)
   progress(win, { id: jobId, percent: 10, done: false })
-  let img = sharp(input, { failOn: 'none' })
+  let img = sharp(input, { failOn: 'error', limitInputPixels: 268_435_456 })
   if (!op.removeMetadata) img = img.withMetadata()
   if (op.rotate) img = img.rotate(op.rotate)
   if (op.flip) img = img.flip()
@@ -146,8 +158,10 @@ export async function imageProcess(win: BrowserWindow | null, jobId: string, raw
 
 export async function imageThumbnail(p: string, size = 256): Promise<string> {
   const sharp = (await import('sharp')).default
+  const sp = safePath(p)
+  await assertSaneInput(sp)
   const s = Math.min(1024, Math.max(32, Math.round(Number(size) || 256)))
-  const buf = await sharp(safePath(p), { failOn: 'none' }).resize(s, s, { fit: 'inside' }).webp({ quality: 70 }).toBuffer()
+  const buf = await sharp(sp, { failOn: 'error', limitInputPixels: 268_435_456 }).resize(s, s, { fit: 'inside' }).webp({ quality: 70 }).toBuffer()
   return 'data:image/webp;base64,' + buf.toString('base64')
 }
 
@@ -185,6 +199,7 @@ export async function videoProcess(win: BrowserWindow | null, jobId: string, raw
   const ff = await ffmpeg()
   const input = safePath(op.input)
   const output = safePath(op.output)
+  await assertSaneInput(input, MAX_VIDEO_INPUT_BYTES)
   const info = await mediaInfo(input).catch(() => null)
   const totalDur = op.trim ? op.trim.end - op.trim.start : info?.duration || 0
 

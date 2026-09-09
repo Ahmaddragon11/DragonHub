@@ -1,6 +1,6 @@
 // Minimal, safe Markdown -> HTML renderer (no raw HTML passthrough; everything escaped)
 function esc(s: string) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 function inline(s: string): string {
   let out = esc(s)

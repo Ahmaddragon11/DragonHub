@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, Link, Play, Pause, X, Trash2, FolderOpen, ExternalLink, RotateCcw, Eraser, Youtube, Music, Loader2, FolderInput } from 'lucide-react'
 import { useApp } from '@/store'
@@ -7,9 +7,42 @@ import { invoke, on } from '@/lib/api'
 import { formatBytes, formatDuration, cn } from '@/lib/utils'
 import type { DownloadItem } from '@shared/types'
 
+const STATUS_C: Record<string, string> = { queued: 'text-surface-500', downloading: 'text-accent', paused: 'text-amber-500', completed: 'text-emerald-500', error: 'text-rose-500', cancelled: 'text-surface-500' }
+const isActive = (d: DownloadItem) => ['downloading', 'queued', 'paused'].includes(d.status)
+
+const DownloadRow = React.memo(function DownloadRow({ d, onAct, onRemove }: {
+  d: DownloadItem; onAct: (ch: string, ...a: unknown[]) => void; onRemove: (id: string, deleteFile: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const pct = d.kind === 'media' ? d.received : d.size ? (d.received / d.size) * 100 : 0
+  return (
+    <div className="card p-4">
+      <div className="flex items-center gap-3">
+        <span className="p-2 rounded-xl bg-surface-200 text-accent">{d.kind === 'media' ? <Youtube size={18} /> : <Download size={18} />}</span>
+        <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate" title={d.savePath}>{d.filename || d.url}</p><p className="text-[11px] text-surface-500 truncate" dir="ltr">{d.url}</p></div>
+        <div className="text-end text-xs shrink-0">
+          <p className={cn('font-semibold', STATUS_C[d.status])}>{t(`downloads.status.${d.status}`)}{d.status === 'downloading' && d.kind === 'direct' && d.supportsRange && d.segments > 1 && <span className="text-surface-500 font-normal"> ×{d.segments}</span>}</p>
+          <p className="text-surface-500 font-mono">{d.status === 'downloading' ? `${formatBytes(d.speed)}/s • ${formatDuration(d.eta)}` : d.kind === 'media' ? '' : `${formatBytes(d.received)}${d.size ? ` / ${formatBytes(d.size)}` : ''}`}</p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {d.status === 'downloading' && d.kind === 'direct' && <button className="btn-icon" title={t('common.pause')} aria-label={t('common.pause')} onClick={() => onAct('dl:pause', d.id)}><Pause size={15} /></button>}
+          {(d.status === 'paused' || d.status === 'queued') && d.kind === 'direct' && <button className="btn-icon" title={t('common.resume')} aria-label={t('common.resume')} onClick={() => onAct('dl:resume', d.id)}><Play size={15} /></button>}
+          {(d.status === 'error' || d.status === 'cancelled') && d.kind === 'direct' && <button className="btn-icon" title={t('common.retry')} aria-label={t('common.retry')} onClick={() => onAct('dl:resume', d.id)}><RotateCcw size={15} /></button>}
+          {isActive(d) && <button className="btn-icon hover:text-rose-500" title={t('common.cancelAction')} aria-label={t('common.cancelAction')} onClick={() => onAct('dl:cancel', d.id)}><X size={15} /></button>}
+          {d.status === 'completed' && <><button className="btn-icon" title={t('downloads.openFile')} onClick={() => invoke('fs:open', d.savePath)}><ExternalLink size={15} /></button><button className="btn-icon" title={t('downloads.openFolder')} onClick={() => invoke('fs:showInFolder', d.savePath)}><FolderOpen size={15} /></button></>}
+          <button className="btn-icon hover:text-rose-500" title={`${t('common.delete')} — Shift: ${t('downloads.removeWithFile')}`} onClick={(e) => onRemove(d.id, e.shiftKey)}><Trash2 size={15} /></button>
+        </div>
+      </div>
+      {isActive(d) && <div className="mt-3 flex items-center gap-3"><Progress value={pct} /><span className="text-xs font-mono w-12 text-end">{pct.toFixed(0)}%</span></div>}
+      {d.error && <p className="text-xs text-rose-500 mt-2">{d.error}</p>}
+    </div>
+  )
+})
+
 export default function Downloads() {
   const { t } = useTranslation()
-  const { downloads, setDownloads, settings, setSettings, toast } = useApp()
+  const { downloads, setDownloads, settings, setSettings, toast, pageParams, consumeParams } = useApp()
+  const urlRef = useRef<HTMLInputElement>(null)
   const [url, setUrl] = useState('')
   const [kind, setKind] = useState<'direct' | 'media'>('direct')
   const [segments, setSegments] = useState(settings.downloadSegments)
@@ -20,7 +53,14 @@ export default function Downloads() {
   const [ytStatus, setYtStatus] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'failed'>('all')
 
-  useEffect(() => on('downloads:ytdlp-status', (s: any) => setYtStatus(s.status === 'installing' ? t('downloads.ytdlpInstalling') : null)), [])
+  // Never leave the form stuck if the main process hangs: 30s timeout.
+  const withTimeout = <T,>(p: Promise<T>, ms = 30000): Promise<T> =>
+    Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))])
+
+  useEffect(() => on('downloads:ytdlp-status', (s: any) => setYtStatus(s.status === 'installing' ? t('downloads.ytdlpInstalling') : null)), [t])
+  useEffect(() => { if (pageParams.focus) { urlRef.current?.focus(); consumeParams() } }, [pageParams, consumeParams])
+  // Follow settings changes made elsewhere (Settings page).
+  useEffect(() => { setSegments(settings.downloadSegments) }, [settings.downloadSegments])
   const valid = /^https?:\/\/\S+$/i.test(url.trim())
   useEffect(() => { if (/youtu\.?be|vimeo|tiktok|twitter|x\.com|instagram|facebook|twitch|soundcloud|dailymotion|reddit/i.test(url)) setKind('media') }, [url])
 
@@ -28,19 +68,33 @@ export default function Downloads() {
     if (!valid) return toast(t('downloads.invalidUrl'), 'error')
     setBusy(true)
     try {
-      if (kind === 'direct') await invoke('dl:add', url.trim(), { segments })
-      else await invoke('dl:mediaDownload', url.trim(), { audioOnly, format: fmt || undefined })
+      if (kind === 'direct') await withTimeout(invoke('dl:add', url.trim(), { segments }))
+      else await withTimeout(invoke('dl:mediaDownload', url.trim(), { audioOnly, format: fmt || undefined }), 60000)
       setUrl(''); setInfo(null); setFmt(''); toast(t('toast.created'))
     } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false) }
   }
-  const fetchInfo = async () => { if (!valid) return; setBusy(true); try { setInfo(await invoke('dl:mediaInfo', url.trim())) } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false) } }
-  const act = async (ch: string, ...a: unknown[]) => { try { await invoke(ch, ...a); setDownloads(await invoke<DownloadItem[]>('dl:list')) } catch (e: any) { toast(e.message, 'error') } }
+  const fetchInfo = async () => { if (!valid) return; setBusy(true); try { setInfo(await withTimeout(invoke('dl:mediaInfo', url.trim()), 30000)) } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false) } }
+  const act = useCallback(async (ch: string, ...a: unknown[]) => {
+    try { await withTimeout(invoke(ch, ...a)); setDownloads(await withTimeout(invoke<DownloadItem[]>('dl:list'))) } catch (e: any) { toast(e.message, 'error') }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const removeItem = useCallback(async (id: string, deleteFile: boolean) => {
+    const s = useApp.getState()
+    if (s.settings.confirmDelete && !(await invoke('dialog:confirm', t('common.confirmDelete'), deleteFile ? t('downloads.removeWithFile') : undefined))) return
+    await act('dl:remove', id, deleteFile)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t, act])
   const chooseDir = async () => { const d = await invoke<string | null>('dialog:openFolder'); if (d) setSettings({ downloadDir: d }) }
-  const isActive = (d: DownloadItem) => ['downloading', 'queued', 'paused'].includes(d.status)
   const matches = (d: DownloadItem, f: typeof filter) => f === 'all' || (f === 'active' ? isActive(d) : f === 'completed' ? d.status === 'completed' : ['error', 'cancelled'].includes(d.status))
-  const list = downloads.filter((d) => matches(d, filter))
-  const totalSpeed = downloads.filter((d) => d.status === 'downloading').reduce((a, d) => a + d.speed, 0)
-  const STATUS_C: Record<string, string> = { queued: 'text-surface-500', downloading: 'text-accent', paused: 'text-amber-500', completed: 'text-emerald-500', error: 'text-rose-500', cancelled: 'text-surface-500' }
+  const list = useMemo(() => downloads.filter((d) => matches(d, filter)), [downloads, filter])
+  const totalSpeed = useMemo(() => downloads.filter((d) => d.status === 'downloading').reduce((a, d) => a + d.speed, 0), [downloads])
+  const counts = useMemo(() => ({
+    all: downloads.length,
+    active: downloads.filter((d) => matches(d, 'active')).length,
+    completed: downloads.filter((d) => matches(d, 'completed')).length,
+    failed: downloads.filter((d) => matches(d, 'failed')).length,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [downloads])
 
   return (
     <div className="page-enter h-full flex flex-col">
@@ -51,7 +105,7 @@ export default function Downloads() {
       </PageHeader>
       <section className="card p-4 mb-4">
         <div className="flex gap-2">
-          <div className="relative flex-1"><Link size={15} className="absolute start-3 top-3 text-surface-500" /><input dir="ltr" className="input ps-9 py-2.5" placeholder={t('downloads.addUrl')} value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
+          <div className="relative flex-1"><Link size={15} className="absolute start-3 top-3 text-surface-500" /><input ref={urlRef} dir="ltr" className="input ps-9 py-2.5" placeholder={t('downloads.addUrl')} value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
           {kind === 'media' && <button className="btn-soft" onClick={fetchInfo} disabled={!valid || busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Youtube size={15} />}{t('downloads.fetchInfo')}</button>}
           <button className="btn-primary px-6" onClick={add} disabled={!valid || busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}{t('downloads.add')}</button>
         </div>
@@ -71,34 +125,10 @@ export default function Downloads() {
           </div>
         )}
       </section>
-      <div className="flex gap-1 mb-3 text-xs">{(['all', 'active', 'completed', 'failed'] as const).map((f) => <button key={f} onClick={() => setFilter(f)} className={cn('px-3 py-1.5 rounded-lg transition-colors', filter === f ? 'bg-accent text-accent-fg' : 'bg-surface-200 hover:bg-surface-300')}>{t(f === 'all' ? 'common.all' : `downloads.${f}`)} ({downloads.filter((d) => matches(d, f)).length})</button>)}</div>
-      <div className="flex-1 min-h-0 overflow-auto space-y-2 stagger">
-        {list.length === 0 && <Empty icon={<Download size={40} />} text={t('downloads.noDownloads')} />}
-        {list.map((d) => {
-          const pct = d.kind === 'media' ? d.received : d.size ? (d.received / d.size) * 100 : 0
-          return (
-            <div key={d.id} className="card p-4">
-              <div className="flex items-center gap-3">
-                <span className="p-2 rounded-xl bg-surface-200 text-accent">{d.kind === 'media' ? <Youtube size={18} /> : <Download size={18} />}</span>
-                <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate" title={d.savePath}>{d.filename || d.url}</p><p className="text-[11px] text-surface-500 truncate" dir="ltr">{d.url}</p></div>
-                <div className="text-end text-xs shrink-0">
-                  <p className={cn('font-semibold', STATUS_C[d.status])}>{t(`downloads.status.${d.status}`)}{d.status === 'downloading' && d.kind === 'direct' && d.supportsRange && d.segments > 1 && <span className="text-surface-500 font-normal"> ×{d.segments}</span>}</p>
-                  <p className="text-surface-500 font-mono">{d.status === 'downloading' ? `${formatBytes(d.speed)}/s • ${formatDuration(d.eta)}` : d.kind === 'media' ? '' : `${formatBytes(d.received)}${d.size ? ` / ${formatBytes(d.size)}` : ''}`}</p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {d.status === 'downloading' && d.kind === 'direct' && <button className="btn-icon" onClick={() => act('dl:pause', d.id)}><Pause size={15} /></button>}
-                  {(d.status === 'paused' || d.status === 'queued') && d.kind === 'direct' && <button className="btn-icon" onClick={() => act('dl:resume', d.id)}><Play size={15} /></button>}
-                  {(d.status === 'error' || d.status === 'cancelled') && d.kind === 'direct' && <button className="btn-icon" onClick={() => act('dl:resume', d.id)}><RotateCcw size={15} /></button>}
-                  {isActive(d) && <button className="btn-icon hover:text-rose-500" onClick={() => act('dl:cancel', d.id)}><X size={15} /></button>}
-                  {d.status === 'completed' && <><button className="btn-icon" title={t('downloads.openFile')} onClick={() => invoke('fs:open', d.savePath)}><ExternalLink size={15} /></button><button className="btn-icon" title={t('downloads.openFolder')} onClick={() => invoke('fs:showInFolder', d.savePath)}><FolderOpen size={15} /></button></>}
-                  <button className="btn-icon hover:text-rose-500" title={t('common.delete')} onClick={(e) => act('dl:remove', d.id, e.shiftKey)}><Trash2 size={15} /></button>
-                </div>
-              </div>
-              {isActive(d) && <div className="mt-3 flex items-center gap-3"><Progress value={pct} /><span className="text-xs font-mono w-12 text-end">{pct.toFixed(0)}%</span></div>}
-              {d.error && <p className="text-xs text-rose-500 mt-2">{d.error}</p>}
-            </div>
-          )
-        })}
+      <div className="flex gap-1 mb-3 text-xs">{(['all', 'active', 'completed', 'failed'] as const).map((f) => <button key={f} onClick={() => setFilter(f)} className={cn('px-3 py-1.5 rounded-lg transition-colors', filter === f ? 'bg-accent text-accent-fg' : 'bg-surface-200 hover:bg-surface-300')}>{t(f === 'all' ? 'common.all' : `downloads.${f}`)} ({counts[f]})</button>)}</div>
+      <div className="flex-1 min-h-0 overflow-auto space-y-2">
+        {list.length === 0 && <Empty icon={<Download size={40} />} text={t('downloads.noDownloads')} action={<button className="btn-primary" onClick={() => urlRef.current?.focus()}><Download size={16} />{t('downloads.add')}</button>} />}
+        {list.map((d) => <DownloadRow key={d.id} d={d} onAct={act} onRemove={removeItem} />)}
       </div>
     </div>
   )
