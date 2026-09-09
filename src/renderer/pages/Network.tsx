@@ -43,7 +43,7 @@ function Bars({ rows }: { rows: NetDay[] }) {
   const W = 560, H = 140, gap = 6
   const bw = rows.length > 0 ? (W - gap * (rows.length - 1)) / rows.length : 0
   return (
-    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" dir="ltr" role="img">
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" style={{ direction: 'ltr' }}>
       {rows.map((d, i) => {
         const tot = (d.downMB ?? 0) + (d.upMB ?? 0)
         const h = max > 0 ? Math.max(2, (tot / max) * (H - 20)) : 2

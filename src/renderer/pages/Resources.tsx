@@ -30,7 +30,7 @@ function Spark({ data, stroke = 'rgb(var(--accent))', h = 44 }: { data: number[]
     return `${x.toFixed(1)},${y.toFixed(1)}`
   }).join(' ')
   return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" dir="ltr" aria-hidden="true">
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true" style={{ direction: 'ltr' }}>
       <polyline points={pts} fill="none" stroke={stroke} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   )

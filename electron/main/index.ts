@@ -30,6 +30,20 @@ function cardUrlSuffix(): string {
   return VITE_DEV_SERVER_URL ? `${VITE_DEV_SERVER_URL}?card=1` : ''
 }
 
+// Runtime icon for BrowserWindow/Tray. In dev it lives in <repo>/build,
+// in the packaged app electron-builder unpacks it (extraResources) next to
+// the asar at <resources>/build/.
+function iconFileName(): string {
+  return process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+}
+
+function runtimeIconPath(): string {
+  try {
+    if (app.isPackaged) return path.join(process.resourcesPath, 'build', iconFileName())
+  } catch { /* fall through to dev path */ }
+  return path.join(process.env.APP_ROOT!, 'build', iconFileName())
+}
+
 function createCardWindow(): BrowserWindow | null {
   if (cardWin && !cardWin.isDestroyed()) { cardWin.show(); cardWin.focus(); return cardWin }
   try {
@@ -50,7 +64,7 @@ function createCardWindow(): BrowserWindow | null {
       skipTaskbar: true,
       resizable: false,
       hasShadow: false,
-      icon: path.join(process.env.APP_ROOT!, 'build', 'icon.ico'),
+      icon: runtimeIconPath(),
       webPreferences: {
         preload: path.join(MAIN_DIST, 'preload/index.js'),
         contextIsolation: true,
@@ -129,7 +143,7 @@ function createWindow() {
     frame: false,
     titleBarStyle: 'hidden',
     backgroundColor: s.theme === 'light' ? '#f5f6fa' : '#0b0d14',
-    icon: path.join(process.env.APP_ROOT!, 'build', 'icon.ico'),
+    icon: runtimeIconPath(),
     webPreferences: {
       preload: path.join(MAIN_DIST, 'preload/index.js'),
       contextIsolation: true,
@@ -184,7 +198,7 @@ function createWindow() {
 
 function createTray() {
   try {
-    const iconPath = path.join(process.env.APP_ROOT!, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+    const iconPath = runtimeIconPath()
     if (!fs.existsSync(iconPath)) return
     tray = new Tray(iconPath)
     tray.setToolTip('DragonHub — by AHMADDRAGON')

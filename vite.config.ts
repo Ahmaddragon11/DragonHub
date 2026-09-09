@@ -37,6 +37,8 @@ export default defineConfig({
     renderer(),
   ],
   build: { outDir: 'dist', emptyOutDir: true, chunkSizeWarningLimit: 4000 },
+  // Relative asset URLs so the renderer also works via file:// in Electron.
+  base: './',
   server: { port: 5173, strictPort: true },
   clearScreen: false,
 })

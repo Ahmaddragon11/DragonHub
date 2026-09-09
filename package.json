@@ -17,6 +17,7 @@
     "build:renderer": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "icons": "node scripts/generate-icons.mjs",
     "dist": "npm run build && electron-builder --win --x64",
     "dist:dir": "npm run build && electron-builder --win --x64 --dir",
     "release": "npm run dist",
@@ -72,6 +73,16 @@
       "dist/**/*",
       "dist-electron/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "build/icon.ico"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "build/icon.png"
+      }
     ],
     "asarUnpack": [
       "node_modules/@ffmpeg-installer/**",

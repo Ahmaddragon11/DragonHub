@@ -37,12 +37,14 @@ const COLLAPSED_W = 76
 
 export function Logo({ size = 28 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="rgb(var(--accent-soft))" /><stop offset="1" stopColor="rgb(var(--accent))" /></linearGradient></defs>
-      <path d="M32 4 L56 16 V36 C56 48 44 58 32 60 C20 58 8 48 8 36 V16 Z" fill="url(#lg)" />
-      <path d="M22 24 C22 18 30 16 34 20 C38 24 36 30 30 32 L38 40 M26 40 L30 32" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <circle cx="42" cy="24" r="3" fill="white" />
-    </svg>
+    <img
+      src="./icon.png"
+      width={size}
+      height={size}
+      alt="DragonHub"
+      draggable={false}
+      style={{ width: size, height: size, borderRadius: Math.max(4, Math.round(size * 0.22)), objectFit: 'cover' }}
+    />
   )
 }
 

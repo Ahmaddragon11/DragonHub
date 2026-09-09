@@ -78,14 +78,14 @@ export default function ResCard() {
       {/* drag strip */}
       <div
         className="flex items-center gap-2 px-3 pt-2 pb-1 select-none"
-        style={{ WebkitAppRegion: (cfg.locked ? 'no-drag' : 'drag') as unknown as React.CSSProperties['WebkitAppRegion'] }}
+        style={{ WebkitAppRegion: cfg.locked ? 'no-drag' : 'drag' } as unknown as React.CSSProperties}
       >
         <span className="text-[11px] font-bold gradient-text">DragonHub</span>
         <span className="flex-1" />
         <span className="text-[10px] opacity-50 font-mono" dir="ltr">{snap ? `${snap.cpuPercent.toFixed(0)}%` : '…'}</span>
       </div>
 
-      <div className="flex items-center justify-around px-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <div className="flex items-center justify-around px-3" style={{ WebkitAppRegion: 'no-drag' } as unknown as React.CSSProperties}>
         <div className="flex flex-col items-center">
           <Ring value={snap?.cpuPercent ?? 0} size={small ? 64 : 76} stroke={8}>
             <span className="text-sm font-bold font-mono" dir="ltr">{snap ? `${snap.cpuPercent.toFixed(0)}%` : '—'}</span>
