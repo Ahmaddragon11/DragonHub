@@ -11,8 +11,12 @@ import type { FileEntry, DriveInfo } from '@shared/types'
 function validName(n: string): boolean {
   const t = n.trim()
   if (!t || t.length > 255 || t === '.' || t === '..') return false
+  // Block traversal sequences anywhere (a..b, ../, ..\, etc.).
+  if (t.includes('..')) return false
+  // Block / \ : * ? " < > | (colon also blocks ADS "name:stream").
   if (!/^[^\\/:\*\?"<>\|]+$/.test(t)) return false
-  if (/^(CON|PRN|AUX|NUL|COM\d|LPT\d)$/i.test(t)) return false
+  // Windows reserved names incl. with extension (CON, CON.txt, NUL, COM1, ...).
+  if (/^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..*)?$/i.test(t)) return false
   if (/[. ]$/.test(t)) return false
   return true
 }
@@ -68,7 +72,12 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
 
   const go = (p: string, push = true) => {
     setPath(p); setQ('')
-    if (push) { const h = [...hist.slice(0, hi + 1), p]; setHist(h); setHi(h.length - 1) }
+    if (push) {
+      const base = [...hist.slice(0, hi + 1), p]
+      // Cap history at 50 entries (drop oldest).
+      const h = base.length > 50 ? base.slice(base.length - 50) : base
+      setHist(h); setHi(h.length - 1)
+    }
   }
   const back = () => { if (hi > 0) { setHi(hi - 1); go(hist[hi - 1], false) } }
   const fwd = () => { if (hi < hist.length - 1) { setHi(hi + 1); go(hist[hi + 1], false) } }
@@ -94,9 +103,18 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   const doPaste = async () => {
     if (!clipboardState) return
     for (const src of clipboardState.paths) {
-      const info = await invoke<{ base: string }>('fs:pathInfo', src)
-      const dest = await invoke<string>('fs:join', path, info.base)
-      try { await invoke(clipboardState.op === 'cut' ? 'fs:move' : 'fs:copy', src, dest) } catch (e: any) { toast(e.message, 'error') }
+      try {
+        const info = await invoke<{ base: string }>('fs:pathInfo', src)
+        const dest = await invoke<string>('fs:join', path, info.base)
+        // Same-path copy/move guard + pre-existence check with overwrite confirm.
+        if (dest === src) continue
+        try {
+          if (await invoke<boolean>('fs:exists', dest)) {
+            if (!(await invoke<boolean>('dialog:confirm', t('files.overwriteConfirm'), dest))) continue
+          }
+        } catch { /* exists check best-effort — let main enforce */ }
+        try { await invoke(clipboardState.op === 'cut' ? 'fs:move' : 'fs:copy', src, dest) } catch (e: any) { toast(e.message, 'error') }
+      } catch (e: any) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
     }
     if (clipboardState.op === 'cut') clipboardState = null
     load(); toast(t('common.done'))
@@ -109,15 +127,25 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   }
   const doRename = async () => {
     if (!renaming || !newName.trim()) return
-    if (!validName(newName)) { toast(t('common.error'), 'error'); return }
+    if (!validName(newName)) { toast(t('files.invalidName'), 'error'); return }
     const dest = await invoke<string>('fs:join', path, newName.trim())
+    if (dest !== renaming.path) {
+      try {
+        if (await invoke<boolean>('fs:exists', dest)) {
+          if (!(await invoke<boolean>('dialog:confirm', t('files.overwriteConfirm'), dest))) return
+        }
+      } catch { /* best-effort */ }
+    }
     try { await invoke('fs:rename', renaming.path, dest); load(); toast(t('toast.updated')) } catch (e: any) { toast(e.message, 'error') }
     setRenaming(null)
   }
   const doCreate = async () => {
     if (!creating || !newName.trim()) return
-    if (!validName(newName)) { toast(t('common.error'), 'error'); return }
+    if (!validName(newName)) { toast(t('files.invalidName'), 'error'); return }
     const p = await invoke<string>('fs:join', path, newName.trim())
+    try {
+      if (await invoke<boolean>('fs:exists', p)) { toast(t('files.overwriteConfirm'), 'error'); return }
+    } catch { /* best-effort */ }
     try { await invoke(creating === 'folder' ? 'fs:mkdir' : 'fs:createFile', p); load(); toast(t('toast.created')) } catch (e: any) { toast(e.message, 'error') }
     setCreating(null); setNewName('')
   }
@@ -148,7 +176,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   const ctxItems = ctx?.e ? [
     { label: t('common.open'), icon: <ExternalLink size={14} />, onClick: () => openEntry(ctx.e!) },
     ...(!ctx.e.isDirectory ? [{ label: t('files.openWith'), icon: <ExternalLink size={14} />, onClick: () => invoke('fs:open', ctx.e!.path) }] : []),
-    ...(!ctx.e.isDirectory ? [{ label: t('files.editInEditor'), icon: <Code2 size={14} />, onClick: () => onOpenIn('editor', ctx.e!.path) }] : []),
+    ...(!ctx.e.isDirectory && TEXT_EXT.has(ctx.e.ext) ? [{ label: t('files.editInEditor'), icon: <Code2 size={14} />, onClick: () => onOpenIn('editor', ctx.e!.path) }] : []),
     ...(IMAGE_EXT.has(ctx.e.ext) ? [{ label: t('files.editImage'), icon: <ImgIcon size={14} />, onClick: () => onOpenIn('images', ctx.e!.path) }] : []),
     ...(VIDEO_EXT.has(ctx.e.ext) || AUDIO_EXT.has(ctx.e.ext) ? [{ label: t('files.editVideo'), icon: <Film size={14} />, onClick: () => onOpenIn('video', ctx.e!.path) }] : []),
     { label: t('common.preview'), icon: <Eye size={14} />, onClick: () => doPreview(ctx.e!) },
@@ -199,10 +227,10 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   return (
     <div tabIndex={0} onKeyDown={onKey} onMouseDown={onActivate} className={cn('card flex flex-col min-h-0 overflow-hidden outline-none transition-shadow duration-300', active && 'ring-1 ring-accent/50')}>
       <div className="flex items-center gap-1 p-2 border-b border-surface-300/60">
-        <button className="btn-icon" onClick={back} disabled={hi === 0}><ArrowLeft size={16} className="rtl:rotate-180" /></button>
-        <button className="btn-icon" onClick={fwd} disabled={hi >= hist.length - 1}><ArrowRight size={16} className="rtl:rotate-180" /></button>
-        <button className="btn-icon" onClick={up}><ArrowUp size={16} /></button>
-        <button className="btn-icon" onClick={() => load()}><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /></button>
+        <button className="btn-icon" title={t('common.back')} aria-label={t('common.back')} onClick={back} disabled={hi === 0}><ArrowLeft size={16} className="rtl:rotate-180" /></button>
+        <button className="btn-icon" title={t('common.forward')} aria-label={t('common.forward')} onClick={fwd} disabled={hi >= hist.length - 1}><ArrowRight size={16} className="rtl:rotate-180" /></button>
+        <button className="btn-icon" title={t('common.up')} aria-label={t('common.up')} onClick={up}><ArrowUp size={16} /></button>
+        <button className="btn-icon" title={t('common.refresh')} aria-label={t('common.refresh')} onClick={() => load()}><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /></button>
         {pathEdit !== null ? (
           <input ref={pathInput} autoFocus className="input flex-1 py-1 font-mono text-xs" dir="ltr" value={pathEdit} onChange={(e) => setPathEdit(e.target.value)} onBlur={() => setPathEdit(null)} onKeyDown={(e) => { if (e.key === 'Enter') { go(pathEdit); setPathEdit(null) } if (e.key === 'Escape') setPathEdit(null) }} />
         ) : (
@@ -210,8 +238,8 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
             {crumbs.map((c, i) => <React.Fragment key={i}><button className="hover:text-accent px-1 rounded truncate max-w-[140px]" onClick={(e) => { e.stopPropagation(); crumbGo(i) }}>{c}</button>{i < crumbs.length - 1 && <span className="text-surface-500">›</span>}</React.Fragment>)}
           </div>
         )}
-        <div className="relative w-40"><Search size={13} className="absolute start-2.5 top-2 text-surface-500" /><input className="input ps-8 py-1 text-xs" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <button className="btn-icon" onClick={() => setView(view === 'list' ? 'grid' : 'list')}>{view === 'list' ? <LayoutGrid size={15} /> : <List size={15} />}</button>
+        <div className="relative w-40 shrink-0"><Search size={13} className="absolute start-2.5 top-2 text-surface-500" /><input className="input ps-8 py-1 text-xs" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <button className="btn-icon" title={t('common.view')} aria-label={t('common.view')} onClick={() => setView(view === 'list' ? 'grid' : 'list')}>{view === 'list' ? <LayoutGrid size={15} /> : <List size={15} />}</button>
         <button className="btn-icon" title={t('files.hidden')} onClick={() => setSettings({ showHiddenFiles: !settings.showHiddenFiles })}>{settings.showHiddenFiles ? <Eye size={15} /> : <EyeOff size={15} />}</button>
       </div>
       <div className="flex-1 overflow-auto" onContextMenu={(e) => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY }) }} onClick={(e) => { if (e.target === e.currentTarget) setSel(new Set()) }}>
@@ -281,11 +309,14 @@ export default function Files() {
   const [key, setKey] = useState(0)
   // Live paths of the two panes (they navigate internally); favorites use these.
   const liveRef = useRef<[string, string]>(['', ''])
-  useEffect(() => {
+  const [loadError, setLoadError] = useState(false)
+  const loadRoots = useCallback(() => {
+    setLoadError(false)
     Promise.all([invoke<Record<string, string>>('fs:special'), invoke<DriveInfo[]>('fs:drives'), invoke<string[]>('data:get', 'fileFavorites', [])]).then(([s, d, f]) => {
       setSpecial(s); setDrives(d); setFavs(f); setRoots([(pageParams.path as string) || s.home, s.documents])
-    })
-  }, [])
+    }).catch(() => setLoadError(true))
+  }, [pageParams.path])
+  useEffect(() => { loadRoots() }, [loadRoots])
   const goTo = (p: string) => { setRoots((r) => { const n: [string, string] = r ? [...r] as any : [p, p]; n[active] = p; return n }); setKey((k) => k + 1) }
   // Deep-link while mounted (e.g. "show in folder" twice): first mount consumes
   // pageParams.path via the loader above; later navigations re-target the pane.
@@ -298,14 +329,14 @@ export default function Files() {
   }, [pageParams])
   const onOpenIn = (kind: 'editor' | 'images' | 'video' | 'compress', p: string) => navigate(kind, { path: p })
   const qa = special ? [['home', special.home, <Home size={15} />], ['desktop', special.desktop, <Monitor size={15} />], ['documents', special.documents, <FileText size={15} />], ['downloads', special.downloads, <Download size={15} />], ['pictures', special.pictures, <ImgIcon size={15} />], ['videos', special.videos, <Film size={15} />], ['music', special.music, <Music size={15} />]] as const : []
-  if (!roots) return null
+  if (!roots) return loadError ? <Empty icon={<FolderOpen size={40} />} text={t('app.loadFailed')} action={<button className="btn-primary" onClick={loadRoots}><RefreshCw size={15} />{t('common.retry')}</button>} /> : <Empty icon={<RefreshCw size={40} className="animate-spin" />} text={t('common.loading')} />
   return (
     <div className="page-enter h-full flex flex-col">
       <PageHeader icon={<FolderOpen size={22} />} title={t('files.title')}>
         <button className={cn('btn-soft', dual && 'bg-accent text-accent-fg')} onClick={() => setDual(!dual)}><Columns size={15} />{t('files.dualPane')}</button>
       </PageHeader>
-      <div className="flex-1 min-h-0 grid grid-cols-[200px_1fr] gap-3">
-        <aside className="card p-2 overflow-auto space-y-3">
+      <div className="flex-1 min-h-0 grid grid-cols-[minmax(150px,200px)_minmax(0,1fr)] gap-3">
+        <aside className="card p-2 overflow-auto space-y-3 min-w-0">
           <div><p className="label px-2 mb-1">{t('files.quickAccess')}</p>{qa.map(([k, p, ic]) => <button key={k} onClick={() => goTo(p)} className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm hover:bg-surface-200 transition-colors"><span className="text-accent">{ic}</span>{t(`files.${k}`)}</button>)}</div>
           {favs.length > 0 && <div><p className="label px-2 mb-1">{t('common.favorites')}</p>{favs.map((f) => <button key={f} onClick={() => goTo(f)} onContextMenu={(e) => { e.preventDefault(); const n = favs.filter((x) => x !== f); setFavs(n); invoke('data:set', 'fileFavorites', n) }} className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm hover:bg-surface-200 truncate"><Star size={14} className="text-amber-500 shrink-0" /><span className="truncate">{f.split(/[\\/]/).filter(Boolean).pop()}</span></button>)}</div>}
           <div><p className="label px-2 mb-1">{t('files.drives')}</p>{drives.map((d) => <button key={d.path} onClick={() => goTo(d.path)} className="w-full rounded-lg px-2.5 py-1.5 text-sm hover:bg-surface-200 transition-colors text-start">
@@ -314,7 +345,7 @@ export default function Files() {
           </button>)}</div>
           <button className="btn-soft w-full text-xs" onClick={() => { const p = liveRef.current[active] || roots[active]; if (!favs.includes(p)) { const n = [...favs, p]; setFavs(n); invoke('data:set', 'fileFavorites', n) } }}><Star size={13} />{t('common.add')} {t('common.favorites')}</button>
         </aside>
-        <div className={cn('grid gap-3 min-h-0', dual ? 'grid-cols-2' : 'grid-cols-1')}>
+        <div className={cn('grid gap-3 min-h-0 min-w-0', dual ? 'grid-cols-1 2xl:grid-cols-2' : 'grid-cols-1')}>
           <Pane key={`a${key}${roots[0]}`} initial={roots[0]} active={!dual || active === 0} onActivate={() => setActive(0)} onOpenIn={onOpenIn} onPathChange={(p) => { liveRef.current[0] = p }} />
           {dual && <Pane key={`b${key}${roots[1]}`} initial={roots[1]} active={active === 1} onActivate={() => setActive(1)} onOpenIn={onOpenIn} onPathChange={(p) => { liveRef.current[1] = p }} />}
         </div>

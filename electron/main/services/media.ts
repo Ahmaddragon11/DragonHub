@@ -1,4 +1,6 @@
 import path from 'node:path'
+import fs from 'node:fs'
+import os from 'node:os'
 import fsp from 'node:fs/promises'
 import { BrowserWindow } from 'electron'
 import type { ImageOp, VideoOp, MediaInfo, JobProgress } from '../../../src/shared/types'
@@ -100,6 +102,43 @@ async function assertSaneInput(p: string, max = MAX_IMAGE_INPUT_BYTES) {
   if (st.size > max) throw new Error('Input file too large')
 }
 
+/** realpath-aware same-file compare (case-insensitive on win32/darwin). */
+function sameReal(a: string, b: string): boolean {
+  const norm = (p: string): string => {
+    try {
+      const native = (fs.realpathSync as unknown as { native?: typeof fs.realpathSync }).native ?? fs.realpathSync
+      return native(p)
+    } catch {
+      return path.resolve(p)
+    }
+  }
+  try {
+    const ra = norm(a)
+    const rb = norm(b)
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      return ra.toLowerCase() === rb.toLowerCase()
+    }
+    return ra === rb
+  } catch {
+    const ca = path.resolve(a)
+    const cb = path.resolve(b)
+    if (process.platform === 'win32' || process.platform === 'darwin') return ca.toLowerCase() === cb.toLowerCase()
+    return ca === cb
+  }
+}
+
+/** Refuse input==output and silent output overwrite (EEXIST). Processing must
+ *  always target a DIFFERENT, non-existent path so a job can never destroy
+ *  its own source or crush an unrelated file. */
+function assertFreshOutput(input: string, output: string) {
+  if (sameReal(input, output)) throw new Error('Input and output must be different files')
+  if (fs.existsSync(output)) {
+    const e = new Error(`Output already exists (EEXIST): ${output} — choose another name or remove it first`)
+    ;(e as NodeJS.ErrnoException).code = 'EEXIST'
+    throw e
+  }
+}
+
 // ---------------- IMAGES (sharp) ----------------
 export async function imageInfo(p: string) {
   const sharp = (await import('sharp')).default
@@ -120,6 +159,7 @@ export async function imageProcess(win: BrowserWindow | null, jobId: string, raw
   const input = safePath(op.input)
   const output = safePath(op.output)
   await assertSaneInput(input)
+  assertFreshOutput(input, output)
   progress(win, { id: jobId, percent: 10, done: false })
   let img = sharp(input, { failOn: 'error', limitInputPixels: 268_435_456 })
   if (!op.removeMetadata) img = img.withMetadata()
@@ -173,8 +213,13 @@ function escapeXml(s: string) {
 export async function mediaInfo(p: string): Promise<MediaInfo> {
   const ff = await ffmpeg()
   const sp = safePath(p)
+  // isFile gate: ffprobe must only ever read regular files (no dirs/devices).
+  const st = await fsp.stat(sp).catch(() => null)
+  if (!st || !st.isFile()) throw new Error('Input is not a file')
   return new Promise((res, rej) => {
+    const timer = setTimeout(() => rej(new Error('Media probe timed out (15s)')), 15_000)
     ff.ffprobe(sp, (err, data) => {
+      clearTimeout(timer)
       if (err) return rej(err)
       const v = data.streams.find((s) => s.codec_type === 'video')
       const a = data.streams.find((s) => s.codec_type === 'audio')
@@ -200,6 +245,7 @@ export async function videoProcess(win: BrowserWindow | null, jobId: string, raw
   const input = safePath(op.input)
   const output = safePath(op.output)
   await assertSaneInput(input, MAX_VIDEO_INPUT_BYTES)
+  assertFreshOutput(input, output)
   const info = await mediaInfo(input).catch(() => null)
   const totalDur = op.trim ? op.trim.end - op.trim.start : info?.duration || 0
 
@@ -266,15 +312,15 @@ export async function videoProcess(win: BrowserWindow | null, jobId: string, raw
 }
 
 export async function videoThumbnail(p: string, at = 1): Promise<string> {
-  const os = await import('node:os')
-  const crypto = await import('node:crypto')
   const safeAt = Math.min(7 * 86400, Math.max(0, Number(at) || 0))
-  const tmp = path.join(os.tmpdir(), `dh_thumb_${process.pid}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.jpg`)
+  // Unpredictable tmp dir (mkdtemp): no pid/Date.now guessing for local races.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dh-'))
+  const tmp = path.join(dir, 'thumb.jpg')
   try {
     await videoProcess(null, `thumb-${process.pid}-${Date.now()}`, { input: p, output: tmp, thumbnailAt: safeAt, resize: { width: 480 } })
     const buf = await fsp.readFile(tmp)
     return 'data:image/jpeg;base64,' + buf.toString('base64')
   } finally {
-    await fsp.rm(tmp, { force: true }).catch(() => {})
+    await fsp.rm(dir, { recursive: true, force: true }).catch(() => {})
   }
 }

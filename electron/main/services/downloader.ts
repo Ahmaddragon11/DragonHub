@@ -34,6 +34,44 @@ function insideDir(child: string, parent: string): boolean {
   return c === p || c.startsWith(p + path.sep)
 }
 
+/** realpath-aware containment for savePath checks: resolves symlinked
+ *  prefixes (native realpath with textual fallback). Non-existent children
+ *  resolve via their nearest real ancestor. */
+function insideDirReal(child: string, parent: string): boolean {
+  const real = (p: string): string => {
+    try {
+      const native = (fs.realpathSync as unknown as { native?: typeof fs.realpathSync }).native ?? fs.realpathSync
+      return native(p)
+    } catch {
+      return path.resolve(p)
+    }
+  }
+  try {
+    let rp: string
+    try {
+      rp = real(parent)
+    } catch {
+      rp = path.resolve(parent)
+    }
+    let rc: string
+    try {
+      rc = real(child)
+    } catch {
+      try {
+        rc = path.join(real(path.dirname(path.resolve(child))), path.basename(path.resolve(child)))
+      } catch {
+        rc = path.resolve(child)
+      }
+    }
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      return rc.toLowerCase() === rp.toLowerCase() || rc.toLowerCase().startsWith(rp.toLowerCase() + path.sep)
+    }
+    return rc === rp || rc.startsWith(rp + path.sep)
+  } catch {
+    return insideDir(child, parent)
+  }
+}
+
 /** Download targets always live under the configured download dir: renderer-supplied
  *  dirs are only honored when they match it (dirs are chosen via trusted dialogs). */
 function resolveTargetDir(optsDir: string | undefined): string {
@@ -122,8 +160,13 @@ function isBlockedAddress(host: string) {
   if (mapped) return isBlockedAddress(mapped[1])
   if (net.isIPv4(normalized)) {
     const parts = normalized.split('.').map(Number)
-    return parts[0] === 0 || parts[0] === 10 || parts[0] === 127 || parts[0] === 169 && parts[1] === 254 ||
-      parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31 || parts[0] === 192 && parts[1] === 168
+    if (parts[0] === 0 || parts[0] === 10 || parts[0] === 127 || parts[0] === 169 && parts[1] === 254 ||
+      parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31 || parts[0] === 192 && parts[1] === 168) return true
+    // Carrier-grade NAT 100.64.0.0/10, IETF 192.0.0.0/24, benchmarking 198.18.0.0/15.
+    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true
+    if (parts[0] === 192 && parts[1] === 0 && parts[2] === 0) return true
+    if (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19)) return true
+    return false
   }
   if (net.isIPv6(normalized)) {
     return normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe8') ||
@@ -154,10 +197,10 @@ async function validateRemoteUrl(url: string) {
   return clean
 }
 
-async function fetchSafe(url: string, init: RequestInit = {}, maxBytes = MAX_DOWNLOAD_BYTES): Promise<Response> {
+async function fetchSafe(url: string, init: RequestInit = {}, maxBytes = MAX_DOWNLOAD_BYTES, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   let current = await validateRemoteUrl(url)
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
-    const signal = init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    const signal = init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs)
     const response = await fetch(current, { ...init, signal, redirect: 'manual' })
     if (![301, 302, 303, 307, 308].includes(response.status)) {
       const length = Number(response.headers.get('content-length'))
@@ -183,11 +226,20 @@ async function uniquePath(dir: string, name: string) {
   return p
 }
 
+/** Atomically commit part -> dest without silent overwrite (O_EXCL semantics
+ *  via COPYFILE_EXCL): a file planted at dest between uniquePath() and commit
+ *  causes EEXIST instead of being crushed. Caller regenerates uniquePath. */
+async function commitPartAtomic(part: string, dest: string): Promise<void> {
+  await fsp.copyFile(part, dest, fs.constants.COPYFILE_EXCL)
+  await fsp.rm(part, { force: true })
+}
+
 export function list() {
   return items
 }
 
 export async function add(win: BrowserWindow | null, url: string, opts?: { filename?: string; dir?: string; segments?: number }) {
+  if (items.length >= 100) throw new Error('Download queue is full (max 100) — finish, cancel or remove existing downloads first')
   const cleanUrl = validateUrl(url)
   const s = settingsStore.get()
   const dir = resolveTargetDir(opts?.dir)
@@ -233,22 +285,48 @@ async function run(win: BrowserWindow | null, item: DownloadItem) {
   update({ status: 'downloading', error: undefined })
   const base = resolveTargetDir(undefined)
   // Never write part files outside the download dir (poisoned persisted rows).
-  if (item.savePath && !insideDir(path.dirname(item.savePath), base)) item.savePath = ''
+  if (item.savePath && !insideDirReal(path.dirname(item.savePath), base)) item.savePath = ''
   const dir = path.dirname(item.savePath || path.join(base, 'x'))
   const partPath = () => item.savePath + '.dhpart'
 
+  // Probe caps: tiny body + short timeout; content-range beyond 20GB rejected.
+  const PROBE_MAX_BYTES = 256 * 1024
+  const PROBE_TIMEOUT_MS = 15_000
+  async function consumeProbeBody(res: Response): Promise<void> {
+    const body = res.body
+    if (!body) return
+    const reader = body.getReader()
+    let n = 0
+    const deadline = Date.now() + PROBE_TIMEOUT_MS
+    try {
+      for (;;) {
+        if (Date.now() > deadline) throw new Error('Probe timed out (15s)')
+        const { done, value } = await reader.read()
+        if (done) break
+        n += value.byteLength
+        if (n > PROBE_MAX_BYTES) throw new Error('Probe response too large (max 256KB)')
+      }
+    } finally {
+      try { reader.releaseLock() } catch { /* ignore */ }
+      try { await res.arrayBuffer().catch(() => undefined) } catch { /* drained */ }
+    }
+  }
+
   try {
     // HEAD / probe
-    const probe = await fetchSafe(item.url, { method: 'GET', headers: { Range: 'bytes=0-0' }, signal: abort.signal })
+    const probe = await fetchSafe(item.url, { method: 'GET', headers: { Range: 'bytes=0-0' }, signal: abort.signal }, MAX_DOWNLOAD_BYTES, PROBE_TIMEOUT_MS)
     if (!probe.ok && probe.status !== 206) throw new Error(`HTTP ${probe.status}`)
     const supportsRange = probe.status === 206 && !!probe.headers.get('content-range')
     let size = 0
     const cr = probe.headers.get('content-range')
-    if (cr) size = Number(cr.split('/')[1]) || 0
-    else size = Number(probe.headers.get('content-length')) || 0
+    if (cr) {
+      const total = Number(cr.split('/')[1])
+      if (!Number.isFinite(total) || total > MAX_DOWNLOAD_BYTES) throw new Error('Download exceeds the maximum allowed size (max 20GB)')
+      size = total || 0
+    } else size = Number(probe.headers.get('content-length')) || 0
     if (size > MAX_DOWNLOAD_BYTES) throw new Error('Download exceeds the maximum allowed size')
-    // consume tiny body
-    try { await probe.arrayBuffer() } catch { /* */ }
+    // consume tiny body (capped at 256KB, 15s timeout)
+    try { await consumeProbeBody(probe) } catch { /* */ }
 
     if (!item.filename) item.filename = filenameFromResponse(item.url, probe)
     if (!item.savePath) item.savePath = await uniquePath(dir, item.filename)
@@ -275,9 +353,16 @@ async function run(win: BrowserWindow | null, item: DownloadItem) {
       clearInterval(tick)
     }
 
-    await fsp.rename(partPath(), item.savePath)
-    update({ status: 'completed', completedAt: Date.now(), speed: 0, eta: 0, received: item.size || item.received })
-  } catch (e: any) {
+    try {
+      await commitPartAtomic(partPath(), item.savePath)
+    } catch (e: unknown) {
+      if ((e as NodeJS.ErrnoException)?.code === 'EEXIST') {
+        // Lost the claim race (planted file): pick a fresh name once, then commit.
+        item.savePath = await uniquePath(dir, item.filename)
+        await commitPartAtomic(partPath(), item.savePath)
+      } else throw e
+    }
+    update({ status: 'completed', completedAt: Date.now(), speed: 0, eta: 0, received: item.size || item.received })  } catch (e: any) {
     if (abort.signal.aborted) {
       const c = controllers.get(item.id)
       update({ status: c?.paused ? 'paused' : 'cancelled', speed: 0, eta: 0 })
@@ -366,7 +451,7 @@ export function resume(win: BrowserWindow | null, id: string) {
   if (it.kind === 'media') throw new Error('Media downloads cannot be resumed — please add the URL again')
   // A persisted savePath outside the download dir is never trusted (re-target instead).
   const base = resolveTargetDir(undefined)
-  if (it.savePath && !insideDir(path.dirname(it.savePath), base)) it.savePath = ''
+  if (it.savePath && !insideDirReal(path.dirname(it.savePath), base)) it.savePath = ''
   it.status = 'queued'; it.received = 0
   emit(win, it); persist(); pump(win)
 }
@@ -376,7 +461,16 @@ export async function cancel(id: string) {
   if (c) { c.paused = false; c.abort.abort() }
   else {
     const it = items.find((i) => i.id === id)
-    if (it) { it.status = 'cancelled'; try { await fsp.rm(it.savePath + '.dhpart', { force: true }) } catch { /* */ } }
+    if (it?.savePath) {
+      // Only delete the .dhpart inside the download dir (poisoned rows must
+      // not become delete primitives): realpath-aware containment.
+      try {
+        if (insideDirReal(path.dirname(it.savePath), resolveTargetDir(undefined))) {
+          await fsp.rm(it.savePath + '.dhpart', { force: true })
+        }
+      } catch { /* */ }
+    }
+    if (it) it.status = 'cancelled'
   }
   persist()
 }
@@ -389,7 +483,7 @@ export async function remove(id: string, deleteFile: boolean) {
       // Only ever delete real files inside the download dir: media rows store a
       // directory in savePath, and poisoned rows must not become delete primitives.
       const st = await fsp.lstat(it.savePath).catch(() => null)
-      if (st && !st.isDirectory() && insideDir(path.dirname(it.savePath), resolveTargetDir(undefined))) {
+      if (st && !st.isDirectory() && insideDirReal(path.dirname(it.savePath), resolveTargetDir(undefined))) {
         await fsp.rm(it.savePath, { force: true })
       }
     } catch { /* */ }
@@ -413,10 +507,21 @@ async function ensureYtDlp(win: BrowserWindow | null): Promise<string> {
   const bin = path.join(binDir, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
   const existing = await fsp.lstat(bin).catch(() => null)
   // Refuse pre-planted junk: only a real non-empty file is executed, else re-download.
-  if (!existing || !existing.isFile() || existing.size < 1024) {
+  // NOTE: downloadFromGithub() performs NO checksum/signature verification —
+  // the fetched binary is executed as-is. The 1MB minimum below is only a
+  // junk/placeholder filter, NOT an authenticity check. On failure, refuse to
+  // execute rather than running a truncated payload.
+  const MIN_YTDLP_BYTES = 1024 * 1024
+  if (!existing || !existing.isFile() || existing.size < MIN_YTDLP_BYTES) {
     if (existing) await fsp.rm(bin, { force: true }).catch(() => {})
     win?.webContents.send('downloads:ytdlp-status', { status: 'installing' })
     await YTDlpWrap.downloadFromGithub(bin)
+    // Post-download gate: refuse to execute truncated/placeholder payloads.
+    const fresh = await fsp.lstat(bin).catch(() => null)
+    if (!fresh || !fresh.isFile() || fresh.size < MIN_YTDLP_BYTES) {
+      await fsp.rm(bin, { force: true }).catch(() => {})
+      throw new Error('yt-dlp download failed verification (size < 1MB) — refusing to execute')
+    }
     win?.webContents.send('downloads:ytdlp-status', { status: 'ready' })
   }
   ytdlpPath = bin
@@ -429,21 +534,27 @@ export async function mediaInfo(win: BrowserWindow | null, url: string) {
   const bin = ytdlpPath || (await ensureYtDlp(win))
   const y = new YTDlpWrap(bin)
   const meta = await y.getVideoInfo(url)
-  let thumbnailDataUrl: string | undefined
+  // Thumbnail: validated URL, 5MB cap, 15s timeout, SVG rejected (scriptable
+  // image). Never return the raw remote URL to the renderer — null on failure
+  // so the UI cannot be pointed at an attacker URL.
+  const MAX_THUMB_FETCH_BYTES = 5 * 1024 * 1024
+  const THUMB_TIMEOUT_MS = 15_000
+  let thumbnailDataUrl: string | null = null
   if (meta.thumbnail) {
     try {
-      const res = await fetchSafe(meta.thumbnail, {}, MAX_THUMBNAIL_BYTES)
-      if (res.ok && (res.headers.get('content-type') || '').toLowerCase().startsWith('image/')) {
-        const buf = Buffer.from(await res.arrayBuffer())
-        if (buf.byteLength > MAX_THUMBNAIL_BYTES) throw new Error('Thumbnail is too large')
-        const ct = res.headers.get('content-type') || 'image/jpeg'
-        thumbnailDataUrl = `data:${ct};base64,${buf.toString('base64')}`
-      }
-    } catch { /* thumbnail optional */ }
+      const cleanThumb = validateUrl(String(meta.thumbnail))
+      const res = await fetchSafe(cleanThumb, {}, MAX_THUMB_FETCH_BYTES, THUMB_TIMEOUT_MS)
+      const ct = (res.headers.get('content-type') || '').toLowerCase().split(';')[0].trim()
+      if (!res.ok) throw new Error(`Thumbnail HTTP ${res.status}`)
+      if (!ct.startsWith('image/') || ct === 'image/svg+xml') throw new Error('Thumbnail type blocked')
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.byteLength > MAX_THUMB_FETCH_BYTES) throw new Error('Thumbnail is too large (max 5MB)')
+      thumbnailDataUrl = `data:${ct || 'image/jpeg'};base64,${buf.toString('base64')}`
+    } catch { thumbnailDataUrl = null }
   }
   return {
     title: meta.title,
-    thumbnail: thumbnailDataUrl || meta.thumbnail,
+    thumbnail: thumbnailDataUrl,
     duration: meta.duration,
     uploader: meta.uploader,
     formats: (meta.formats || []).slice(-30).map((f: any) => ({
@@ -459,11 +570,14 @@ export async function mediaDownload(win: BrowserWindow | null, url: string, opts
   const dir = resolveTargetDir(opts.dir)
   await fsp.mkdir(dir, { recursive: true })
   if (opts.format !== undefined) {
-    // Format selectors are allow-listed by shape: no leading dashes (flag injection),
-    // bounded length, yt-dlp selector charset only.
-    if (typeof opts.format !== 'string' || opts.format.length > 128 || /^\s*-/.test(opts.format) ||
-      !/^[A-Za-z0-9_+/.()[\],=*?:-]+$/.test(opts.format)) {
-      throw new Error('Invalid format selector')
+    // Format selector allowlist: named presets (best / bestaudio /
+    // bestvideo+bestaudio) or a tight safe pattern (lowercase alnum + _ + - /
+    // with length < 64). No leading dashes (flag injection), no selector
+    // metachars (* ? : = , ( ) [ ] .) that widen yt-dlp filter power.
+    if (typeof opts.format !== 'string' || opts.format.length === 0 || opts.format.length >= 64 || /^\s*-/.test(opts.format) ||
+      !(opts.format === 'best' || opts.format === 'bestaudio' || opts.format === 'bestvideo+bestaudio' ||
+        /^[a-z0-9_+\-/]+$/.test(opts.format))) {
+      throw new Error('Invalid format selector (allowed: best, bestaudio, bestvideo+bestaudio, or [a-z0-9_+/-] <64 chars)')
     }
   }
   const item: DownloadItem = {

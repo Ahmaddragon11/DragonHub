@@ -36,7 +36,13 @@ function sanitizePatch(patch: Partial<AppSettings>): Partial<AppSettings> {
     const pages = new Set(['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about'])
     out.startPage = (pages.has(patch.startPage) ? patch.startPage : d.startPage).slice(0, 32)
   }
-  if (patch.downloadDir !== undefined && typeof patch.downloadDir === 'string') out.downloadDir = patch.downloadDir.slice(0, 1024)
+  if (patch.downloadDir !== undefined && typeof patch.downloadDir === 'string') {
+    const v = patch.downloadDir
+    // Reject null bytes, enforce length + absolute path (instead of slice-only).
+    if (!v.includes('\0') && v.length > 0 && v.length <= 1024 && path.isAbsolute(v)) {
+      out.downloadDir = v
+    }
+  }
   if (patch.maxParallelDownloads !== undefined) out.maxParallelDownloads = Math.round(clamp(patch.maxParallelDownloads, 1, 10, d.maxParallelDownloads))
   if (patch.downloadSegments !== undefined) out.downloadSegments = Math.round(clamp(patch.downloadSegments, 1, 32, d.downloadSegments))
   if (patch.autoSaveIntervalSec !== undefined) out.autoSaveIntervalSec = Math.round(clamp(patch.autoSaveIntervalSec, 0, 600, d.autoSaveIntervalSec))

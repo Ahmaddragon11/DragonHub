@@ -27,6 +27,8 @@
  */
 
 import { execFile as execFileCb, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /** Outbound kill-switch rule: blocks all egress (all programs/protocols). */
 export const RULE_OUT = 'DragonHub-Block-Out' as const;
@@ -48,6 +50,21 @@ const NO_RULES_MATCH = 'No rules match';
 const ADMIN_PATTERN = /administrator|elevation|access is denied|0x80070005|0x80070422/i;
 const ENABLED_PATTERN = /Enabled:\s*Yes/i;
 
+/** Absolute System32 netsh (no PATH-hijack); bare-name fallback for dev hosts. */
+function netshBin(): string {
+  const abs = 'C:\\Windows\\System32\\netsh.exe';
+  try {
+    if (fs.existsSync(abs)) return abs;
+  } catch { /* ignore */ }
+  try {
+    if (process.env.SystemRoot) {
+      const cand = path.join(process.env.SystemRoot, 'System32', 'netsh.exe');
+      if (fs.existsSync(cand)) return cand;
+    }
+  } catch { /* ignore */ }
+  return 'netsh';
+}
+
 /** Defense in depth: rule names are internal constants, but never let a
  *  crafted name smuggle extra netsh tokens (netsh re-splits spaces). */
 function assertSafeRuleName(ruleName: string): void {
@@ -57,7 +74,7 @@ function assertSafeRuleName(ruleName: string): void {
 /** Run netsh with an argument array (no shell). Rejects with stdout/stderr attached. */
 function runNetsh(args: readonly string[]): Promise<NetshResult> {
   return new Promise<NetshResult>((resolve, reject) => {
-    execFileCb('netsh', [...args], { windowsHide: true, timeout: NETSH_TIMEOUT_MS }, (error, stdout, stderr) => {
+    execFileCb(netshBin(), [...args], { windowsHide: true, timeout: NETSH_TIMEOUT_MS }, (error, stdout, stderr) => {
       if (error) {
         const wrapped = error as NodeJS.ErrnoException & {
           stdout?: unknown;
@@ -123,7 +140,15 @@ async function hasRule(ruleName: string): Promise<boolean> {
     throw toShortError(text, `netsh show rule failed for ${ruleName}`);
   }
   if (combined.includes(NO_RULES_MATCH)) return false;
-  return combined.includes(ruleName) && ENABLED_PATTERN.test(combined);
+  // Exact rule-name match: parse "Rule Name:" lines and compare with ===
+  // (substring includes() would match e.g. "DragonHub-Block-Out2" or an
+  // attacker rule named "x DragonHub-Block-Out x").
+  const names: string[] = [];
+  for (const line of combined.split(/\r?\n/)) {
+    const m = /^\s*Rule Name:\s*(.+?)\s*$/.exec(line);
+    if (m) names.push(m[1].trim());
+  }
+  return names.some((n) => n === ruleName) && ENABLED_PATTERN.test(combined);
 }
 
 async function addRule(ruleName: string, dir: 'in' | 'out'): Promise<void> {
@@ -235,7 +260,7 @@ export async function cleanupStaleRules(): Promise<void> {
 export function cleanupStaleRulesSync(): void {
   for (const name of [RULE_OUT, RULE_IN]) {
     try {
-      spawnSync('netsh', ['advfirewall', 'firewall', 'delete', 'rule', `name="${name}"`], {
+      spawnSync(netshBin(), ['advfirewall', 'firewall', 'delete', 'rule', `name="${name}"`], {
         windowsHide: true,
         timeout: 5000,
         stdio: 'ignore',
@@ -255,7 +280,6 @@ export function cleanupStaleRulesSync(): void {
 // only touches the global RULE_OUT/RULE_IN pair, never per-app rules.
 // ---------------------------------------------------------------------------
 
-import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const APP_RULE_PREFIX = 'DragonHub-App-';

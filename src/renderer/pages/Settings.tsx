@@ -36,7 +36,7 @@ function DSlider({ value, min, max, step, onCommit }: { value: number; min: numb
 
 export default function Settings() {
   const { t } = useTranslation()
-  const { settings: s, setSettings, resetSettings, toast } = useApp()
+  const { settings: s, setSettings, resetSettings, reloadCollections, toast } = useApp()
   const set = (p: Partial<AppSettings>) => setSettings(p)
 
   return (
@@ -96,7 +96,7 @@ export default function Settings() {
           <Section icon={<Database size={16} />} title={t('settings.data')}>
             <div className="flex flex-wrap gap-2">
               <button className="btn" onClick={async () => { try { const r = await invoke('data:exportAll'); if (r) toast(`${t('settings.exported')} ${r}`) } catch (e: any) { toast(e.message, 'error') } }}><Save size={14} /> {t('settings.exportData')}</button>
-              <button className="btn" onClick={async () => { try { const r = await invoke('data:importAll'); if (r) toast(t('settings.imported')) } catch (e: any) { toast(e.message, 'error') } }}><Upload size={14} /> {t('settings.importData')}</button>
+              <button className="btn" onClick={async () => { try { const r = await invoke('data:importAll'); if (r) { await reloadCollections(); toast(t('settings.imported')) } } catch (e: any) { toast(e.message, 'error') } }}><Upload size={14} /> {t('settings.importData')}</button>
               <button className="btn" onClick={() => invoke('app:openUserData')}><FolderOpen size={14} /> {t('settings.openData')}</button>
               <button className="btn-danger" onClick={async () => { if (await invoke('dialog:confirm', t('settings.resetAll'), '')) { await resetSettings(); toast(t('common.done')) } }}><RotateCcw size={14} /> {t('settings.resetAll')}</button>
             </div>

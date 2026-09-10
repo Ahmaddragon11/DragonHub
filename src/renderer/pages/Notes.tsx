@@ -60,6 +60,22 @@ export default function Notes() {
     }
   }
   const words = cur ? cur.content.trim().split(/\s+/).filter(Boolean).length : 0
+  const openExtSafe = (raw: string) => {
+    const url = (raw || '').trim()
+    if (!/^https?:\/\//i.test(url) || /^(javascript|file|data):/i.test(url)) {
+      toast(t('common.blockedUrl'), 'error')
+      return
+    }
+    invoke('app:openExternal', url).catch((e: unknown) => toast(e instanceof Error ? e.message : t('toast.error'), 'error'))
+  }
+  const handleExtNav = (e: React.MouseEvent) => {
+    const a = (e.target as HTMLElement).closest?.('a[data-ext]') as HTMLAnchorElement | null
+    if (!a) return
+    // Never navigate inside Electron (incl. middle-click / Ctrl+click): open externally only.
+    e.preventDefault()
+    e.stopPropagation()
+    openExtSafe(a.href || a.getAttribute('href') || '')
+  }
 
   return (
     <div className="page-enter h-full flex flex-col">
@@ -109,7 +125,7 @@ export default function Notes() {
               </div>
               <div className={cn('flex-1 min-h-0 grid', mode === 'split' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1')}>
                 {mode !== 'preview' && <textarea className="h-full w-full resize-none bg-transparent p-4 outline-none font-mono text-sm leading-6 selectable" placeholder={t('notes.placeholderBody')} value={cur.content} onChange={(e) => update(cur.id, { content: e.target.value })} spellCheck />}
-                {mode !== 'edit' && <div className={cn('h-full overflow-auto p-4 prose-dh selectable', mode === 'split' && 'border-s border-surface-300/60')} dangerouslySetInnerHTML={{ __html: mdHtml }} onClick={(e) => { const a = (e.target as HTMLElement).closest('a[data-ext]'); if (a) { e.preventDefault(); invoke('app:openExternal', (a as HTMLAnchorElement).href) } }} />}
+                {mode !== 'edit' && <div className={cn('h-full overflow-auto p-4 prose-dh selectable', mode === 'split' && 'border-s border-surface-300/60')} dangerouslySetInnerHTML={{ __html: mdHtml }} onClick={handleExtNav} onAuxClick={handleExtNav} />}
               </div>
               <footer className="flex items-center gap-4 px-4 py-1.5 border-t border-surface-300/60 text-[11px] text-surface-500">
                 <span>{t('notes.wordCount', { count: words })}</span><span>{t('notes.chars', { count: cur.content.length })}</span><span className="ms-auto">{relTime(cur.updatedAt, settings.language)}</span>

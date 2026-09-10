@@ -79,6 +79,7 @@ export default function Vault() {
   const { t, i18n } = useTranslation()
   const { toast, settings } = useApp()
   const [meta, setMeta] = useState<VaultMeta | null>(null)
+  const [metaLoading, setMetaLoading] = useState(true)
   const [unlocked, setUnlocked] = useState(false)
   const [pw, setPw] = useState(''); const [pw2, setPw2] = useState(''); const [err, setErr] = useState('')
   const [items, setItems] = useState<VaultItem[]>([])
@@ -94,8 +95,17 @@ export default function Vault() {
   const closeEdit = () => { setEdit(null); setShowSecret(false) }
   const closeChangePw = () => { setChOpen(false); setOldPw(''); setNewPw(''); setErr('') }
 
-  const refresh = async () => { setMeta(await invoke('vault:meta')); const u = await invoke('vault:isUnlocked'); setUnlocked(u); if (u) setItems(await invoke('vault:list')) }
-  useEffect(() => { refresh() }, [])
+  const refresh = async () => {
+    try {
+      setMeta(await invoke('vault:meta'))
+      const u = await invoke('vault:isUnlocked')
+      setUnlocked(u)
+      if (u) setItems(await invoke('vault:list'))
+    } finally {
+      setMetaLoading(false)
+    }
+  }
+  useEffect(() => { refresh().catch((e: any) => setErr(String(e?.message || e))) }, [])
   useEffect(() => on('vault:locked', () => { setUnlocked(false); setItems([]); setSel(null); setEdit(null); setReveal({}) }), [])
   useEffect(() => {
     if (!unlocked) return
@@ -114,8 +124,18 @@ export default function Vault() {
   const unlock = async () => { setErr(''); try { await invoke('vault:unlock', pw); setPw(''); await refresh() } catch (e: any) { setErr(String(e.message || e)) } }
   const lock = async () => { await invoke('vault:lock'); setUnlocked(false); setItems([]); setSel(null); closeEdit(); setReveal({}); setPw(''); setPw2(''); setErr('') }
   const copy = async (text: string) => { await invoke('clipboard:write', text, settings.vaultClearClipboardSec); toast(t('vault.copiedClear', { s: settings.vaultClearClipboardSec }), 'success') }
+  const openExternalSafe = (raw?: string) => {
+    const url = (raw || '').trim()
+    // Allow only http(s) — reject javascript:/file:/data: and other schemes.
+    if (!/^https?:\/\//i.test(url)) { toast(t('common.blockedUrl'), 'error'); return }
+    invoke('app:openExternal', url).catch((e: unknown) => toast(e instanceof Error ? e.message : t('toast.error'), 'error'))
+  }
   const save = async () => {
     if (!edit || !edit.title.trim()) return
+    if ((edit.secret || '').length > 20000) { toast(t('vault.secretTooLong'), 'error'); return }
+    if ((edit.tags || []).length > 20) { toast(t('vault.tooManyTags'), 'error'); return }
+    if ((edit.fields || []).length > 50) { toast(t('vault.tooManyFields'), 'error'); return }
+    if ((edit.notes || '').length > 10000) { toast(t('vault.notesTooLong'), 'error'); return }
     const it = { ...edit, updatedAt: Date.now() }
     await invoke('vault:upsert', it); setEdit(null); setSel(it); setItems(await invoke('vault:list')); toast(t('toast.saved'))
   }
@@ -129,15 +149,27 @@ export default function Vault() {
     if (newPw.length < 8) return setErr(t('vault.tooShort'))
     try { await invoke('vault:changePassword', oldPw, newPw); setChOpen(false); setOldPw(''); setNewPw(''); toast(t('toast.updated')) } catch (e: any) { setErr(String(e.message || e)) }
   }
-  const doImport = async () => { try { await invoke('vault:import'); await refresh(); toast(t('common.done')) } catch (e: any) { if (e?.message) toast(e.message, 'error') } }
+  const doImport = async () => {
+    try {
+      if (!(await invoke<boolean>('dialog:confirm', t('vault.importBackup'), t('common.irreversible')))) return
+      // Safety backup before destructive import.
+      const backup = await invoke<string | null>('vault:export')
+      if (!backup) return
+      await invoke('vault:import')
+      await refresh()
+      toast(t('common.done'))
+    } catch (e: any) { if (e?.message) toast(e.message, 'error') }
+  }
   const newItem = (type: VaultItemType = 'password'): VaultItem => ({ id: uid(), type, title: '', secret: '', tags: [], fields: [], favorite: false, createdAt: Date.now(), updatedAt: Date.now() })
 
   const filtered = useMemo(() => items.filter((i) => (typeF === 'all' || i.type === typeF) && (!q || [i.title, i.username, i.url, ...i.tags].join(' ').toLowerCase().includes(q.toLowerCase())))
     .sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt), [items, q, typeF])
   const types = t('vault.types', { returnObjects: true }) as Record<string, string>
 
-  if (!meta || !meta.initialized || !unlocked) {
-    const isSetup = !!meta && !meta.initialized
+  if (metaLoading) return <div className="h-full flex items-center justify-center page-enter"><Lock size={28} className="opacity-40 animate-pulse" /></div>
+
+  if (!meta || meta.initialized !== true || !unlocked) {
+    const isSetup = !meta || meta.initialized !== true
     return (
       <div className="h-full flex items-center justify-center page-enter">
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="card p-8 w-[420px] text-center">
@@ -202,7 +234,7 @@ export default function Vault() {
                 <div className="card divide-y divide-surface-300">
                   {sel.username && <Row label={t('vault.username')} value={sel.username} onCopy={copy} />}
                   <Row label={t('vault.secret')} value={sel.secret} secret revealed={!!reveal[sel.id]} onReveal={() => setReveal((r) => ({ ...r, [sel.id]: !r[sel.id] }))} onCopy={copy} mono />
-                  {sel.url && <Row label={t('vault.url')} value={sel.url} onCopy={copy} onOpen={() => invoke('app:openExternal', sel.url)} />}
+                  {sel.url && <Row label={t('vault.url')} value={sel.url} onCopy={copy} onOpen={() => openExternalSafe(sel.url)} />}
                   {sel.fields.map((f, i) => <Row key={i} label={f.label} value={f.value} secret={f.hidden} revealed={!!reveal[sel.id + i]} onReveal={() => setReveal((r) => ({ ...r, [sel.id + i]: !r[sel.id + i] }))} onCopy={copy} />)}
                   {sel.expiresAt && <Row label={t('vault.expires')} value={new Date(sel.expiresAt).toLocaleDateString()} />}
                 </div>

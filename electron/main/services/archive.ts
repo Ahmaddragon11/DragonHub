@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { BrowserWindow } from 'electron'
 import type { CompressOptions, ArchiveEntry, JobProgress } from '../../../src/shared/types'
-import { safePath } from './files'
+import { safePath, assertRemovable } from './files'
 
 async function sevenBin(): Promise<string> {
   const mod = await import('7zip-bin')
@@ -30,8 +30,38 @@ function assertSafeEntryName(name: string) {
   if (!n || n.startsWith('/') || n.startsWith('//') || /^[a-zA-Z]:/.test(n)) {
     throw new Error(`Blocked unsafe archive entry (absolute path): ${name}`)
   }
+  // NTFS alternate data streams (file:stream) must never materialize.
+  if (n.includes(':')) {
+    throw new Error(`Blocked unsafe archive entry (ADS colon): ${name}`)
+  }
+  const RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$/i
   for (const part of n.split('/')) {
     if (part === '..') throw new Error(`Blocked unsafe archive entry (path traversal): ${name}`)
+    if (part.length > 0 && (part.endsWith('.') || part.endsWith(' '))) {
+      throw new Error(`Blocked unsafe archive entry (trailing dot/space): ${name}`)
+    }
+    if (part && RESERVED.test(part)) {
+      throw new Error(`Blocked unsafe archive entry (reserved name): ${name}`)
+    }
+  }
+}
+
+/** Reject symlink/hardlink entries using whatever link metadata 7z surfaced
+ *  (node-7z list exposes attributes; some versions add link targets). */
+function assertNotLinkEntry(e: ArchiveEntry) {
+  const raw = e as unknown as Record<string, unknown>
+  const attr = String(raw['attributes'] ?? raw['attr'] ?? '')
+  const linkTarget = raw['link'] ?? raw['target'] ?? raw['symlink']
+  if (typeof linkTarget === 'string' && linkTarget.length > 0) {
+    throw new Error(`Blocked unsafe archive entry (link): ${e.name}`)
+  }
+  if (raw['isSymlink'] === true || raw['isLink'] === true || raw['symlink'] === true) {
+    throw new Error(`Blocked unsafe archive entry (link): ${e.name}`)
+  }
+  // 7z attributes mark links with 'l' (e.g. 'l', 'lrwxrwxrwx'); a lone/short
+  // attribute string containing 'l' is treated as a link indicator.
+  if (attr && attr.length <= 32 && /(^|[^a-z])l([^a-z]|$)/i.test(attr)) {
+    throw new Error(`Blocked unsafe archive entry (link attributes): ${e.name}`)
   }
 }
 
@@ -54,6 +84,12 @@ export async function compress(win: BrowserWindow | null, jobId: string, inputs:
   const ins = inputs.map(safePath)
   let out = safePath(output)
   validateCompressInputs(ins, opts)
+  // Never silently crush an existing archive: fail EEXIST with a clear error.
+  if (fs.existsSync(out)) {
+    const e = new Error(`Output already exists (EEXIST): ${out} — choose another name or remove it first`)
+    ;(e as NodeJS.ErrnoException).code = 'EEXIST'
+    throw e
+  }
   const single = ['gzip', 'bzip2', 'xz'].includes(opts.format)
   // gzip/bzip2/xz only compress single files -> wrap in tar first for multiple/dirs
   if (single && (ins.length > 1 || (await fsp.stat(ins[0]).catch(() => null))?.isDirectory())) {
@@ -95,7 +131,10 @@ export async function compress(win: BrowserWindow | null, jobId: string, inputs:
     // Only delete sources after verifying the archive exists and is non-empty.
     const st = await fsp.stat(out).catch(() => null)
     if (!st || st.size === 0) throw new Error('Compression produced no output — sources were kept')
-    for (const i of ins) await fsp.rm(i, { recursive: true, force: true })
+    for (const i of ins) {
+      assertRemovable(i)
+      await fsp.rm(i, { recursive: true, force: true })
+    }
   }
   progress(win, { id: jobId, percent: 100, done: true, output: out })
   return out
@@ -138,6 +177,7 @@ function validateArchiveEntries(entries: ArchiveEntry[]) {
   let total = 0
   for (const e of entries) {
     assertSafeEntryName(e.name)
+    assertNotLinkEntry(e)
     total += e.size || 0
     if (total > MAX_ARCHIVE_TOTAL_BYTES) throw new Error('Archive blocked: uncompressed size exceeds 50 GiB safety limit')
   }
@@ -149,12 +189,27 @@ export async function listArchive(archive: string, password?: string): Promise<A
   const a = safePath(archive)
   const entries: ArchiveEntry[] = []
   await new Promise<void>((res, rej) => {
+    let rejected = false
     const s = Seven.list(a, { $bin: bin, password: password || undefined } as never)
-    s.on('data', (e: any) => entries.push({
-      name: e.file, size: Number(e.size) || 0, packed: Number(e.sizeCompressed) || 0, modified: e.datetime ? String(e.datetime) : undefined,
-      isDirectory: String(e.attributes || '').startsWith('D'),
-    }))
-    s.on('end', () => res()); s.on('error', rej)
+    // Streaming guard: reject EARLY once the cap is exceeded instead of
+    // buffering an unbounded listing in memory (zip-bomb via entry count).
+    s.on('data', (e: any) => {
+      if (rejected) return
+      if (entries.length >= MAX_ARCHIVE_ENTRIES) {
+        rejected = true
+        rej(new Error(`Archive blocked: too many entries (>${MAX_ARCHIVE_ENTRIES})`))
+        return
+      }
+      entries.push({
+        name: e.file, size: Number(e.size) || 0, packed: Number(e.sizeCompressed) || 0, modified: e.datetime ? String(e.datetime) : undefined,
+        isDirectory: String(e.attributes || '').startsWith('D'),
+      })
+      // Carry raw link metadata (if any) for assertNotLinkEntry downstream.
+      const last = entries[entries.length - 1] as unknown as Record<string, unknown>
+      if (e.attributes !== undefined) last['attributes'] = e.attributes
+      if (e.link !== undefined) last['link'] = e.link
+    })
+    s.on('end', () => { if (!rejected) res() }); s.on('error', (er: unknown) => { if (!rejected) { rejected = true; rej(er) } })
   })
   return entries
 }

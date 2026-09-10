@@ -24,8 +24,9 @@ let netBlocked = false
 // ---------- floating monitor card (rescard) ----------
 // Same renderer bundle, opened as `index.html?card=1` so no second Vite
 // entry is needed. The card renders <ResCard/> instead of <App/> (see
-// src/renderer/main.tsx). It shares the main preload whitelist for v1;
-// a dedicated minimal preload is deferred hardening (see plan note).
+// src/renderer/main.tsx). Hardened: preload detects ?card=1 (location.search)
+// and exposes a minimal API (res:* + window:minimize/maximize/close/show only);
+// card window also carries the same navigation guards as the main window.
 function cardUrlSuffix(): string {
   return VITE_DEV_SERVER_URL ? `${VITE_DEV_SERVER_URL}?card=1` : ''
 }
@@ -74,6 +75,18 @@ function createCardWindow(): BrowserWindow | null {
         allowRunningInsecureContent: false,
         devTools: !app.isPackaged,
       },
+    })
+    // Security: same navigation guards as the main window — no new windows,
+    // no navigation away from the app bundle (main + sub-frames + redirects).
+    cardWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    cardWin.webContents.on('will-navigate', (e, url) => {
+      if (url !== cardWin?.webContents.getURL()) e.preventDefault()
+    })
+    ;(cardWin.webContents as unknown as { on: (ev: string, cb: (e: Electron.Event, url: string) => void) => void }).on('will-frame-navigate', (e, url) => {
+      if (url !== cardWin?.webContents.getURL()) e.preventDefault()
+    })
+    cardWin.webContents.on('will-redirect', (e, url) => {
+      if (url !== cardWin?.webContents.getURL()) e.preventDefault()
     })
     if (cfg.x !== null && cfg.y !== null) {
       try { cardWin.setPosition(Math.round(cfg.x), Math.round(cfg.y)) } catch { /* off-screen positions ignored */ }
@@ -223,30 +236,54 @@ app.whenReady().then(() => {
     contents.on('will-attach-webview', (e) => e.preventDefault())
     contents.setWindowOpenHandler(() => ({ action: 'deny' }))
   })
-  // Safe local file protocol: only serves files, never directories, path-normalized.
+  // Safe local file protocol: jailed to real files only (no directories, no
+  // dotfiles/.ssh, no userData root/tree, no symlinks escaping checks).
   // Sensitive app-state files are never served (vault / settings / data store).
   const SENSITIVE_FILES = new Set(['vault.bin', 'dragonhub-data.json', 'dragonhub-settings.json'])
   protocol.handle('dh-file', (request) => {
     try {
       const u = new URL(request.url)
-      if (u.hostname !== 'local') return new Response('Bad request', { status: 400 })
+      // Reject any hostname other than empty/'local' (DNS-rebinding style bypass).
+      if (u.hostname !== '' && u.hostname !== 'local') return new Response('Bad request', { status: 400 })
       let p = decodeURIComponent(u.pathname)
+      if (p.includes('\0')) return new Response('Bad request', { status: 400 })
       if (process.platform === 'win32') {
         // dh-file://local/C:/path -> pathname "/C:/path"
         p = p.replace(/^\/+/, '')
       }
-      const resolved = path.normalize(p)
-      const userData = path.normalize(app.getPath('userData'))
-      const inUserData = process.platform === 'win32'
-        ? resolved.toLowerCase().startsWith(userData.toLowerCase() + path.sep)
-        : resolved.startsWith(userData + path.sep)
-      if (inUserData || SENSITIVE_FILES.has(path.basename(resolved).toLowerCase())) {
-        return new Response('Forbidden', { status: 403 })
-      }
-      if (!fs.existsSync(resolved) || fs.statSync(resolved).isDirectory()) {
+      const normalized = path.normalize(p)
+      // Resolve symlinks so all checks below apply to the real target.
+      let real: string
+      try {
+        real = fs.realpathSync(normalized)
+      } catch {
         return new Response('Not found', { status: 404 })
       }
-      return net.fetch(pathToFileURL(resolved).toString())
+      let st: fs.Stats
+      try {
+        st = fs.statSync(real)
+      } catch {
+        return new Response('Not found', { status: 404 })
+      }
+      if (st.isDirectory()) return new Response('Not found', { status: 404 })
+      const userData = path.normalize(app.getPath('userData'))
+      const eq = process.platform === 'win32'
+        ? real.toLowerCase() === userData.toLowerCase()
+        : real === userData
+      const inside = process.platform === 'win32'
+        ? real.toLowerCase().startsWith(userData.toLowerCase() + path.sep)
+        : real.startsWith(userData + path.sep)
+      // Reject userData root itself and everything under it.
+      if (eq || inside) return new Response('Forbidden', { status: 403 })
+      // Reject dotfiles / .ssh / hidden trees (any dot-segment).
+      try {
+        const segs = real.split(path.sep)
+        if (segs.some((s) => s.length > 1 && s.startsWith('.'))) return new Response('Forbidden', { status: 403 })
+      } catch { return new Response('Bad request', { status: 400 }) }
+      if (SENSITIVE_FILES.has(path.basename(real).toLowerCase())) {
+        return new Response('Forbidden', { status: 403 })
+      }
+      return net.fetch(pathToFileURL(real).toString())
     } catch {
       return new Response('Bad request', { status: 400 })
     }
@@ -343,19 +380,37 @@ app.on('before-quit', () => {
 })
 
 // Window controls: same sender rule as privileged IPC (main + card windows).
-function winOnly(fn: (e: Electron.IpcMainInvokeEvent) => unknown) {
+// Default-deny + sub-frame deny + per-channel rate limit.
+const winRateHits = new Map<string, number[]>()
+function checkWinRate(channel: string) {
+  const n = 120
+  const ms = 10000
+  const now = Date.now()
+  const arr = (winRateHits.get(channel) ?? []).filter((t) => now - t < ms)
+  if (arr.length >= n) throw new Error('Rate limited, try again shortly')
+  arr.push(now)
+  winRateHits.set(channel, arr)
+}
+function winOnly(channel: string, fn: (e: Electron.IpcMainInvokeEvent) => unknown) {
   return (e: Electron.IpcMainInvokeEvent) => {
+    try {
+      if (e.senderFrame !== e.sender.mainFrame) throw new Error('Blocked: bad sender')
+    } catch (err: unknown) {
+      // e.sender destroyed mid-check — deny.
+      if (err instanceof Error && err.message === 'Blocked: bad sender') throw err
+      throw new Error('Blocked: bad sender')
+    }
     const fromMain = (() => { try { return !!win && !win.isDestroyed() && e.sender === win.webContents } catch { return false } })()
     const fromCard = (() => { try { return !!cardWin && !cardWin.isDestroyed() && e.sender === cardWin.webContents } catch { return false } })()
-    if ((win || cardWin) && !fromMain && !fromCard) throw new Error('Blocked: bad sender')
+    if (!fromMain && !fromCard) throw new Error('Blocked: bad sender')
+    checkWinRate(channel)
     return fn(e)
   }
 }
-ipcMain.handle('window:minimize', winOnly(() => win?.minimize()))
-ipcMain.handle('window:maximize', winOnly(() => { win?.isMaximized() ? win.unmaximize() : win?.maximize() }))
-ipcMain.handle('window:show', winOnly(() => { win?.show(); win?.focus() }))
-ipcMain.handle('window:close', winOnly(() => win?.close()))
-ipcMain.handle('window:isMaximized', winOnly(() => win?.isMaximized() ?? false))
-ipcMain.handle('window:fullscreen', winOnly(() => win?.setFullScreen(!win.isFullScreen())))
-ipcMain.handle('app:quit', winOnly(() => { isQuitting = true; app.quit() }))
-ipcMain.handle('app:relaunch', winOnly(() => { isQuitting = true; app.relaunch(); app.exit(0) }))
+ipcMain.handle('window:minimize', winOnly('window:minimize', () => win?.minimize()))
+ipcMain.handle('window:maximize', winOnly('window:maximize', () => { win?.isMaximized() ? win.unmaximize() : win?.maximize() }))
+ipcMain.handle('window:show', winOnly('window:show', () => { win?.show(); win?.focus() }))
+ipcMain.handle('window:close', winOnly('window:close', () => win?.close()))
+ipcMain.handle('window:isMaximized', winOnly('window:isMaximized', () => win?.isMaximized() ?? false))
+ipcMain.handle('window:fullscreen', winOnly('window:fullscreen', () => win?.setFullScreen(!win.isFullScreen())))
+ipcMain.handle('app:quit', winOnly('app:quit', () => { isQuitting = true; app.quit() }))

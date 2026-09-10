@@ -53,8 +53,8 @@ export function TitleBar() {
   const { t } = useTranslation()
   return (
     <div className="drag flex items-center h-10 px-3 gap-3 select-none shrink-0 relative z-20">
-      <div className="flex items-center gap-2 text-sm font-semibold"><Logo size={20} /><span className="gradient-text">DragonHub</span></div>
-      <button className="no-drag mx-auto flex items-center gap-2 rounded-lg bg-surface-200/60 hover:bg-surface-200 px-3 py-1 text-xs text-surface-600 transition-all w-80 max-w-[40vw]" onClick={() => setPalette(true)}>
+      <div className="flex items-center gap-2 text-sm font-semibold min-w-0 shrink"><Logo size={20} /><span className="gradient-text truncate">DragonHub</span></div>
+      <button className="no-drag mx-auto flex items-center gap-2 rounded-lg bg-surface-200/60 hover:bg-surface-200 px-3 py-1 text-xs text-surface-600 transition-all flex-1 min-w-0 w-auto max-w-md" onClick={() => setPalette(true)}>
         <Search size={13} /><span className="flex-1 text-start truncate">{t('palette.placeholder')}</span><kbd className="kbd">Ctrl K</kbd>
       </button>
       <div className="no-drag flex items-center">
@@ -194,6 +194,8 @@ export function CommandPalette() {
   const { t } = useTranslation()
   const [q, setQ] = useState('')
   const [idx, setIdx] = useState(0)
+  // Unified 3-state theme cycle (dark <-> light <-> system) — same as sidebar/global shortcut.
+  const cycleTheme = () => setSettings({ theme: settings.theme === 'dark' ? 'light' : settings.theme === 'light' ? 'system' : 'dark' })
   const cmds = useMemo(() => [
     ...NAV.map((n) => ({ id: n.id, label: t(`nav.${n.id}`), icon: n.icon, group: t('palette.navigate'), run: () => navigate(n.id) })),
     { id: 'new-note', label: t('dashboard.newNote'), icon: <StickyNote size={18} />, group: t('palette.actions'), run: () => navigate('notes', { create: true }) },
@@ -201,7 +203,7 @@ export function CommandPalette() {
     { id: 'new-project', label: t('dashboard.newProject'), icon: <Lightbulb size={18} />, group: t('palette.actions'), run: () => navigate('projects', { create: true }) },
     { id: 'new-download', label: t('dashboard.newDownload'), icon: <Download size={18} />, group: t('palette.actions'), run: () => navigate('downloads', { focus: true }) },
     { id: 'open-vault', label: t('dashboard.openVault'), icon: <ShieldCheck size={18} />, group: t('palette.actions'), run: () => navigate('vault') },
-    { id: 'theme', label: t('palette.theme'), icon: <Sun size={18} />, group: t('palette.actions'), run: () => setSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' }) },
+    { id: 'theme', label: t('palette.theme'), icon: <Sun size={18} />, group: t('palette.actions'), run: cycleTheme },
     { id: 'lang', label: t('palette.lang'), icon: <Languages size={18} />, group: t('palette.actions'), run: () => setSettings({ language: settings.language === 'ar' ? 'en' : 'ar' }) },
     { id: 'tg', label: 'Telegram @ahmaddragon', icon: <Send size={18} />, group: t('palette.actions'), run: () => invoke('app:openTelegram') },
   ], [t, settings, navigate, setSettings])
@@ -254,7 +256,7 @@ export function useGlobalShortcuts() {
         else navigate('notes', { create: true })
         return
       }
-      if (c && e.shiftKey && e.key.toLowerCase() === 'd') { e.preventDefault(); setSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' }) }
+      if (c && e.shiftKey && e.key.toLowerCase() === 'd') { e.preventDefault(); const cur = useApp.getState().settings.theme; setSettings({ theme: cur === 'dark' ? 'light' : cur === 'light' ? 'system' : 'dark' }) }
       if (c && e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); setSettings({ language: settings.language === 'ar' ? 'en' : 'ar' }) }
       if (c && e.key === ',') { e.preventDefault(); navigate('settings') }
       if (c && e.key === 'b') { e.preventDefault(); setSettings({ sidebarCollapsed: !settings.sidebarCollapsed }) }

@@ -58,6 +58,8 @@ export default function Resources() {
   const [netHist, setNetHist] = useState<number[]>([])
   const frozenRef = useRef(false)
   frozenRef.current = frozen
+  const cfgRef = useRef<ResConfig | null>(null)
+  cfgRef.current = cfg
   const overRef = useRef({ cpu: 0, mem: 0, firedCpu: false, firedMem: false })
 
   useEffect(() => {
@@ -74,6 +76,8 @@ export default function Resources() {
   }, [])
 
   // Live snapshot stream (2s tick in main).
+  // NOTE: threshold alerts are side-effects — kept OUTSIDE any setState updater
+  // (updaters must stay pure; StrictMode may double-invoke them).
   useEffect(() => {
     const off = on<ResLive>('res:update', (s) => {
       if (!s || frozenRef.current) return
@@ -82,27 +86,28 @@ export default function Resources() {
       setMemHist((h) => [...h.slice(-59), s.memoryPercent ?? 0])
       setNetHist((h) => [...h.slice(-59), (s.netDownSpeedBps ?? 0) + (s.netUpSpeedBps ?? 0)])
       // Threshold alerts: 30s sustained (15 ticks @2s).
-      const c = (() => { try { return overRef.current } catch { return overRef.current } })()
-      setCfg((prev) => {
-        if (prev?.alertsOn) {
-          const cpuT = prev.alertCpuPercent ?? 90, memT = prev.alertMemoryPercent ?? 90
-          c.cpu = (s.cpuPercent ?? 0) >= cpuT ? c.cpu + 1 : 0
-          c.mem = (s.memoryPercent ?? 0) >= memT ? c.mem + 1 : 0
-          if (c.cpu >= 15 && !c.firedCpu) {
-            c.firedCpu = true
-            toast(t('res.alertFired', { what: 'CPU', v: cpuT }), 'warning')
-            try { if ('Notification' in window && Notification.permission === 'granted') new Notification('DragonHub', { body: `CPU ≥ ${cpuT}%` }) } catch { /* best-effort */ }
-          }
-          if (c.cpu === 0) c.firedCpu = false
-          if (c.mem >= 15 && !c.firedMem) {
-            c.firedMem = true
-            toast(t('res.alertFired', { what: 'RAM', v: memT }), 'warning')
-            try { if ('Notification' in window && Notification.permission === 'granted') new Notification('DragonHub', { body: `RAM ≥ ${memT}%` }) } catch { /* best-effort */ }
-          }
-          if (c.mem === 0) c.firedMem = false
-        }
-        return prev
-      })
+      const cfgNow = cfgRef.current
+      const c = overRef.current
+      if (!cfgNow?.alertsOn) {
+        c.cpu = 0; c.mem = 0; c.firedCpu = false; c.firedMem = false
+        return
+      }
+      const cpuT = cfgNow.alertCpuPercent ?? 90
+      const memT = cfgNow.alertMemoryPercent ?? 90
+      c.cpu = (s.cpuPercent ?? 0) >= cpuT ? c.cpu + 1 : 0
+      c.mem = (s.memoryPercent ?? 0) >= memT ? c.mem + 1 : 0
+      if (c.cpu >= 15 && !c.firedCpu) {
+        c.firedCpu = true
+        toast(t('res.alertFired', { what: 'CPU', v: cpuT }), 'warning')
+        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('DragonHub', { body: `CPU ≥ ${cpuT}%` }) } catch { /* best-effort */ }
+      }
+      if (c.cpu === 0) c.firedCpu = false
+      if (c.mem >= 15 && !c.firedMem) {
+        c.firedMem = true
+        toast(t('res.alertFired', { what: 'RAM', v: memT }), 'warning')
+        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('DragonHub', { body: `RAM ≥ ${memT}%` }) } catch { /* best-effort */ }
+      }
+      if (c.mem === 0) c.firedMem = false
     })
     return off
   }, [t, toast])
@@ -299,17 +304,18 @@ export default function Resources() {
             </div>
           </section>
 
-          {/* top apps */}
+          {/* top apps (Top N only — search & export cover the loaded Top N, not all OS processes) */}
           <section className={`card ${pad}`}>
-            <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <h3 className="font-semibold text-sm opacity-80 flex-1">{t('res.topApps')}</h3>
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <h3 className="font-semibold text-sm opacity-80 flex-1">{t('res.topApps')} <span className="badge bg-surface-200 text-surface-700 font-mono" dir="ltr">Top {cfg?.topN ?? 12}</span></h3>
               <div className="flex items-center gap-1.5 rounded-lg bg-surface-200/60 px-2 py-1">
                 <Search size={13} className="opacity-50" />
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('res.searchApps')} className="bg-transparent outline-none text-xs w-36" />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('res.searchApps')} title={t('res.topNNote')} className="bg-transparent outline-none text-xs w-36" />
               </div>
               <Toggle on={hideSys} onChange={setHideSys} label={t('res.hideSystem')} />
               <button className="btn-ghost !py-1 !px-2 text-xs" onClick={() => setCompact((c) => !c)}>{compact ? t('res.comfortable') : t('res.compact')}</button>
             </div>
+            <p className="text-[11px] opacity-50 mb-3">{t('res.topNNote')}</p>
             {topProc && (
               <div className="rounded-xl bg-accent/10 border border-accent/20 px-3 py-2 mb-3 text-xs flex items-center gap-2 flex-wrap">
                 <span className="opacity-60">{t('res.topProcess')}:</span>

@@ -26,6 +26,34 @@ let cache: VaultItem[] | null = null
 let lockTimer: NodeJS.Timeout | null = null
 let onLockCb: (() => void) | null = null
 
+/** In-memory brute-force backoff per action: exponential 1s,2s,4s,8s capped
+ *  at 10s. Survives only for the process lifetime (intentional). */
+const bruteForce = new Map<string, { fails: number; lockUntil: number }>()
+function bruteForceGate(action: string) {
+  const rec = bruteForce.get(action)
+  if (rec && Date.now() < rec.lockUntil) {
+    throw new Error('Too many attempts, try again shortly')
+  }
+}
+function bruteForceFail(action: string): number {
+  const rec = bruteForce.get(action) ?? { fails: 0, lockUntil: 0 }
+  rec.fails += 1
+  const delay = Math.min(10_000, 1000 * 2 ** Math.min(rec.fails - 1, 3))
+  rec.lockUntil = Date.now() + delay
+  bruteForce.set(action, rec)
+  return delay
+}
+function bruteForceReset(action: string) {
+  bruteForce.delete(action)
+}
+
+/** Unpredictable tmp sibling (pid + random hex) for atomic tmp+rename writes. */
+function tmpPath(target: string): string {
+  return `${target}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`
+}
+
+const MAX_VAULT_BYTES = 64 * 1024 * 1024
+
 function deriveKey(password: string, salt: Buffer): Buffer {
   return crypto.pbkdf2Sync(password.normalize('NFKC'), salt, ITERATIONS, 32, 'sha512')
 }
@@ -67,7 +95,15 @@ function scheduleAutoLock(minutes: number) {
 
 export async function getMeta(): Promise<VaultMeta | null> {
   try {
-    return JSON.parse(await fsp.readFile(metaPath(), 'utf8'))
+    const raw = await fsp.readFile(metaPath(), 'utf8')
+    if (!raw || !raw.trim()) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    const meta = parsed as Partial<VaultMeta>
+    if (meta.initialized !== true || typeof meta.kdf !== 'string' || typeof meta.saltB64 !== 'string' || typeof meta.verifierB64 !== 'string') {
+      return null
+    }
+    return meta as VaultMeta
   } catch {
     return null
   }
@@ -82,26 +118,41 @@ function assertPassword(pw: unknown, min = 8) {
   }
 }
 
-export async function init(password: string): Promise<VaultMeta> {
-  if (await getMeta()) throw new Error('Vault already initialized')
+export async function init(password: string, autoLockMin = 0): Promise<VaultMeta> {
+  const existingMeta = await getMeta()
+  if (existingMeta || fs.existsSync(dataPath())) throw new Error('Vault already initialized')
   assertPassword(password)
   await fsp.mkdir(vaultDir(), { recursive: true })
   const salt = crypto.randomBytes(32)
   const k = deriveKey(password, salt)
   const verifier = encrypt(k, Buffer.from(VERIFIER_PLAINTEXT))
-  const meta: VaultMeta = {
-    initialized: true, kdf: 'pbkdf2', iterations: ITERATIONS,
-    saltB64: salt.toString('base64'), verifierB64: verifier.toString('base64'), ivB64: '', updatedAt: Date.now(),
+  const dataBlob = encrypt(k, Buffer.from(JSON.stringify([]), 'utf8'))
+  const tmpData = tmpPath(dataPath())
+  const tmpMeta = tmpPath(metaPath())
+  try {
+    await fsp.writeFile(tmpData, dataBlob)
+    await fsp.rename(tmpData, dataPath())
+    const meta: VaultMeta = {
+      initialized: true, kdf: 'pbkdf2', iterations: ITERATIONS,
+      saltB64: salt.toString('base64'), verifierB64: verifier.toString('base64'), ivB64: '', updatedAt: Date.now(),
+    }
+    await fsp.writeFile(tmpMeta, JSON.stringify(meta), 'utf8')
+    await fsp.rename(tmpMeta, metaPath())
+    key = k
+    cache = []
+    scheduleAutoLock(autoLockMin)
+    return meta
+  } catch (e) {
+    wipe()
+    try { if (fs.existsSync(tmpData)) await fsp.unlink(tmpData) } catch {}
+    try { if (fs.existsSync(tmpMeta)) await fsp.unlink(tmpMeta) } catch {}
+    throw e
   }
-  await fsp.writeFile(metaPath(), JSON.stringify(meta), 'utf8')
-  key = k
-  cache = []
-  await saveData()
-  return meta
 }
 
 export async function unlock(password: string, autoLockMin: number): Promise<VaultItem[]> {
   assertPassword(password, 1)
+  bruteForceGate('unlock')
   const meta = await getMeta()
   if (!meta) throw new Error('Vault not initialized')
   const k = deriveKey(password, Buffer.from(meta.saltB64, 'base64'))
@@ -109,13 +160,26 @@ export async function unlock(password: string, autoLockMin: number): Promise<Vau
     const v = decrypt(k, Buffer.from(meta.verifierB64, 'base64')).toString()
     if (v !== VERIFIER_PLAINTEXT) throw new Error()
   } catch {
+    const delay = bruteForceFail('unlock')
+    await new Promise((r) => setTimeout(r, delay))
     k.fill(0)
-    // constant-ish delay to slow brute force
-    await new Promise((r) => setTimeout(r, 400 + Math.random() * 300))
     throw new Error('Incorrect master password')
   }
+  // Race-safe commit: decrypt + load with the LOCAL key first; only publish
+  // the global key after loadData succeeds. A corrupt vault therefore never
+  // leaves a half-unlocked state behind.
+  let data: VaultItem[]
+  try {
+    data = await loadDataAs(k)
+  } catch (e) {
+    const delay = bruteForceFail('unlock')
+    await new Promise((r) => setTimeout(r, delay))
+    k.fill(0)
+    throw e
+  }
+  bruteForceReset('unlock')
   key = k
-  cache = await loadData()
+  cache = data
   scheduleAutoLock(autoLockMin)
   return cache
 }
@@ -124,22 +188,35 @@ export function lock() { wipe() }
 
 export function touch(autoLockMin: number) { if (key) scheduleAutoLock(autoLockMin) }
 
+async function loadDataAs(k: Buffer): Promise<VaultItem[]> {
+  const st = await fsp.stat(dataPath()).catch(() => null)
+  if (!st) return []
+  if (st.size > MAX_VAULT_BYTES) throw new Error('Vault file too large (max 64MB)')
+  const blob = await fsp.readFile(dataPath())
+  if (blob.length > MAX_VAULT_BYTES) throw new Error('Vault file too large (max 64MB)')
+  if (blob.length === 0) return []
+  return JSON.parse(decrypt(k, blob).toString('utf8'))
+}
+
 async function loadData(): Promise<VaultItem[]> {
   if (!key) throw new Error('Vault locked')
-  if (!fs.existsSync(dataPath())) return []
-  const blob = await fsp.readFile(dataPath())
-  if (blob.length === 0) return []
-  return JSON.parse(decrypt(key, blob).toString('utf8'))
+  return loadDataAs(key)
 }
 
 async function saveData() {
   if (!key || !cache) throw new Error('Vault locked')
   const blob = encrypt(key, Buffer.from(JSON.stringify(cache), 'utf8'))
-  const tmp = dataPath() + '.tmp'
+  // Atomic data + meta writes via unpredictable tmp + rename.
+  const tmp = tmpPath(dataPath())
   await fsp.writeFile(tmp, blob)
   await fsp.rename(tmp, dataPath())
   const meta = await getMeta()
-  if (meta) { meta.updatedAt = Date.now(); await fsp.writeFile(metaPath(), JSON.stringify(meta)) }
+  if (meta) {
+    meta.updatedAt = Date.now()
+    const tmpM = tmpPath(metaPath())
+    await fsp.writeFile(tmpM, JSON.stringify(meta), 'utf8')
+    await fsp.rename(tmpM, metaPath())
+  }
 }
 
 export function list(): VaultItem[] {
@@ -191,9 +268,10 @@ export async function remove(id: string) {
   return cache
 }
 
-export async function changePassword(oldPw: string, newPw: string) {
+export async function changePassword(oldPw: string, newPw: string, autoLockMin = 0) {
   assertPassword(oldPw, 1)
   assertPassword(newPw)
+  bruteForceGate('changePassword')
   const meta = await getMeta()
   if (!meta) throw new Error('Vault not initialized')
   const oldK = deriveKey(oldPw, Buffer.from(meta.saltB64, 'base64'))
@@ -201,13 +279,27 @@ export async function changePassword(oldPw: string, newPw: string) {
     const v = decrypt(oldK, Buffer.from(meta.verifierB64, 'base64')).toString()
     if (v !== VERIFIER_PLAINTEXT) throw new Error()
   } catch {
+    const delay = bruteForceFail('changePassword')
+    await new Promise((r) => setTimeout(r, delay))
     oldK.fill(0)
     throw new Error('Incorrect master password')
   }
   // Resolve current items (works whether locked or unlocked), then wipe the old key.
   const wasUnlocked = key !== null && cache !== null
-  const currentItems: VaultItem[] = wasUnlocked ? cache! : await (async () => { key = oldK; try { return await loadData() } finally { key = null } })()
-  oldK.fill(0)
+  let currentItems: VaultItem[]
+  if (wasUnlocked) {
+    currentItems = cache!
+    oldK.fill(0)
+  } else {
+    try {
+      currentItems = await loadDataAs(oldK)
+    } catch (e) {
+      oldK.fill(0)
+      throw e
+    }
+    oldK.fill(0)
+  }
+  bruteForceReset('changePassword')
   const salt = crypto.randomBytes(32)
   const nk = deriveKey(newPw, salt)
   try {
@@ -220,7 +312,7 @@ export async function changePassword(oldPw: string, newPw: string) {
     if (prevMeta !== null) await fsp.writeFile(metaPath() + '.bak', prevMeta).catch(() => {})
     if (prevData !== null) await fsp.writeFile(dataPath() + '.bak', prevData).catch(() => {})
     const blob = encrypt(nk, Buffer.from(JSON.stringify(currentItems), 'utf8'))
-    const tmp = dataPath() + '.tmp'
+    const tmp = tmpPath(dataPath())
     await fsp.writeFile(tmp, blob)
     await fsp.rename(tmp, dataPath())
     const next: VaultMeta = {
@@ -231,10 +323,12 @@ export async function changePassword(oldPw: string, newPw: string) {
       verifierB64: encrypt(nk, Buffer.from(VERIFIER_PLAINTEXT)).toString('base64'),
       updatedAt: Date.now(),
     }
-    await fsp.writeFile(metaPath(), JSON.stringify(next), 'utf8')
+    const tmpM = tmpPath(metaPath())
+    await fsp.writeFile(tmpM, JSON.stringify(next), 'utf8')
+    await fsp.rename(tmpM, metaPath())
     key = nk
     cache = currentItems
-    scheduleAutoLock(5)
+    scheduleAutoLock(autoLockMin)
   } catch (e) {
     nk.fill(0)
     wipe()
@@ -243,21 +337,36 @@ export async function changePassword(oldPw: string, newPw: string) {
 }
 
 export async function exportEncrypted(dest: string) {
+  if (!key || !cache) throw new Error('Vault must be unlocked to export')
+  const d = path.resolve(String(dest || ''))
+  if (!path.isAbsolute(d)) throw new Error('Export destination must be an absolute path')
+  // Never silently crush an existing backup: fail EEXIST with a clear error.
+  if (fs.existsSync(d)) {
+    const e = new Error(`Export destination already exists (EEXIST): ${d} — choose another name or remove it first`)
+    ;(e as NodeJS.ErrnoException).code = 'EEXIST'
+    throw e
+  }
   const meta = await getMeta()
   if (!meta) throw new Error('Vault not initialized')
   const data = fs.existsSync(dataPath()) ? await fsp.readFile(dataPath()) : Buffer.alloc(0)
   const bundle = { meta, data: data.toString('base64'), app: 'DragonHub', v: 1 }
-  await fsp.writeFile(dest, JSON.stringify(bundle), 'utf8')
+  await fsp.writeFile(d, JSON.stringify(bundle), 'utf8')
 }
 
 const MAX_BACKUP_BYTES = 64 * 1024 * 1024
 
 export async function importEncrypted(src: string) {
+  // Import replaces the live vault: require an unlocked state so the user
+  // proves ownership first, and NEVER touch live files before the new bundle
+  // fully validates (parse + shape + base64 decode).
+  if (!key || !cache) throw new Error('Vault must be unlocked to import')
   const st = await fsp.stat(src).catch(() => null)
-  if (!st || st.size > MAX_BACKUP_BYTES) throw new Error('Invalid vault backup file')
+  if (!st || !st.isFile() || st.size > MAX_BACKUP_BYTES) throw new Error('Invalid vault backup file')
   let bundle: any
   try {
-    bundle = JSON.parse(await fsp.readFile(src, 'utf8'))
+    const raw = await fsp.readFile(src, 'utf8')
+    if (raw.length > MAX_BACKUP_BYTES) throw new Error('too large')
+    bundle = JSON.parse(raw)
   } catch {
     throw new Error('Invalid vault backup file')
   }
@@ -267,15 +376,29 @@ export async function importEncrypted(src: string) {
   // Refuse bundles that weaken key derivation below what this app produces.
   const iters = Number(bundle.meta.iterations) || 0
   if (bundle.meta.kdf !== 'pbkdf2' || iters < ITERATIONS) throw new Error('Unsupported vault backup (weak key derivation)')
+  // Validate the data payload decodes before touching anything live.
+  let dataBuf: Buffer
+  try {
+    dataBuf = Buffer.from(String(bundle.data || ''), 'base64')
+  } catch {
+    throw new Error('Invalid vault backup file')
+  }
+  if (dataBuf.length > MAX_BACKUP_BYTES) throw new Error('Invalid vault backup file')
   // Back up the live vault before overwriting so a bad import is recoverable.
   await fsp.mkdir(vaultDir(), { recursive: true })
   const liveMeta = await fsp.readFile(metaPath(), 'utf8').catch(() => null)
   const liveHasData = fs.existsSync(dataPath())
   if (liveMeta !== null) await fsp.writeFile(metaPath() + '.pre-import.bak', liveMeta).catch(() => {})
   if (liveHasData) await fsp.copyFile(dataPath(), dataPath() + '.pre-import.bak').catch(() => {})
+  // Atomic commit of the new bundle via unpredictable tmp + rename.
+  const tmpM = tmpPath(metaPath())
+  const tmpD = tmpPath(dataPath())
+  await fsp.writeFile(tmpM, JSON.stringify(bundle.meta), 'utf8')
+  await fsp.writeFile(tmpD, dataBuf)
+  await fsp.rename(tmpM, metaPath())
+  await fsp.rename(tmpD, dataPath())
+  // New bundle belongs to a different password: drop the old key (locked).
   wipe()
-  await fsp.writeFile(metaPath(), JSON.stringify(bundle.meta))
-  await fsp.writeFile(dataPath(), Buffer.from(String(bundle.data || ''), 'base64'))
 }
 
 export function generatePassword(opts: { length: number; upper: boolean; lower: boolean; digits: boolean; symbols: boolean; excludeAmbiguous: boolean }) {

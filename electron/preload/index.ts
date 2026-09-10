@@ -4,10 +4,12 @@ type Result<T> = { ok: true; data: T } | { ok: false; error: string }
 
 // Every privileged channel the renderer may invoke. Any other string is rejected
 // here in the preload, so an XSS cannot reach channels that don't exist (or that
-// a future refactor removes from main). window:* controls use api.window below.
+// a future refactor removes from main). window:* controls use api.window below
+// (all routed through invoke() so the allowlist always applies).
 const INVOKE_ALLOW = new Set([
   'app:version', 'app:changelog', 'app:paths', 'app:system', 'app:openExternal', 'app:openTelegram',
-  'app:systemTheme', 'app:openUserData', 'app:setLoginItem', 'app:keepAwake',
+  'app:systemTheme', 'app:openUserData', 'app:setLoginItem', 'app:keepAwake', 'app:quit',
+  'window:minimize', 'window:maximize', 'window:close', 'window:fullscreen', 'window:isMaximized', 'window:show',
   'clipboard:write', 'clipboard:read',
   'settings:get', 'settings:set', 'settings:reset',
   'data:get', 'data:set', 'data:exportAll', 'data:importAll',
@@ -29,8 +31,23 @@ const INVOKE_ALLOW = new Set([
   'res:card:get', 'res:card:set', 'res:card:show', 'res:card:hide', 'res:card:toggle', 'res:card:isOpen',
 ])
 
+// Restricted card preload: the floating card (index.html?card=1) only needs
+// live resource channels + minimal window controls. Everything else is denied
+// here, so a compromised card renderer cannot reach fs/vault/net/dialog APIs
+// even though it shares the same preload bundle (same file, ?card=1 flag).
+const CARD_INVOKE_ALLOW = new Set([
+  'res:snapshot', 'res:processes', 'res:history', 'res:config:get', 'res:config:set', 'res:killProcess',
+  'res:card:get', 'res:card:set', 'res:card:show', 'res:card:hide', 'res:card:toggle', 'res:card:isOpen',
+  'window:minimize', 'window:maximize', 'window:close', 'window:show',
+])
+
+const isCard = (() => {
+  try { return typeof location !== 'undefined' && location.search.includes('card=1') } catch { return false }
+})()
+
 async function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise<T> {
-  if (!INVOKE_ALLOW.has(channel)) throw new Error('Channel not allowed: ' + channel)
+  const allow = isCard ? CARD_INVOKE_ALLOW : INVOKE_ALLOW
+  if (!allow.has(channel)) throw new Error('Channel not allowed: ' + channel)
   const r = (await ipcRenderer.invoke(channel, ...args)) as Result<T> | T
   if (r && typeof r === 'object' && 'ok' in (r as object)) {
     const rr = r as Result<T>
@@ -42,26 +59,38 @@ async function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise
 
 // Whitelisted event channels renderer may subscribe to
 const EVENTS = new Set(['downloads:update', 'downloads:ytdlp-status', 'job:progress', 'vault:locked', 'theme:system', 'window:state', 'net:update', 'res:update'])
+// Card renderer only needs live resource updates.
+const CARD_EVENTS = new Set(['res:update'])
 
 function on(channel: string, cb: (payload: unknown) => void): () => void {
-  if (!EVENTS.has(channel)) throw new Error('Channel not allowed: ' + channel)
+  if (!(isCard ? CARD_EVENTS : EVENTS).has(channel)) throw new Error('Channel not allowed: ' + channel)
   const listener = (_: unknown, payload: unknown) => cb(payload)
   ipcRenderer.on(channel, listener)
   return () => ipcRenderer.removeListener(channel, listener)
 }
 
+const mainWindowApi = {
+  minimize: () => invoke('window:minimize'),
+  maximize: () => invoke('window:maximize'),
+  close: () => invoke('window:close'),
+  fullscreen: () => invoke('window:fullscreen'),
+  isMaximized: () => invoke<boolean>('window:isMaximized'),
+  show: () => invoke('window:show'),
+  quit: () => invoke('app:quit'),
+}
+
+// Card exposes only minimize/maximize/close/show (all via validated invoke()).
+const cardWindowApi = {
+  minimize: () => invoke('window:minimize'),
+  maximize: () => invoke('window:maximize'),
+  close: () => invoke('window:close'),
+  show: () => invoke('window:show'),
+}
+
 const api = {
   invoke,
   on,
-  window: {
-    minimize: () => ipcRenderer.invoke('window:minimize'),
-    maximize: () => ipcRenderer.invoke('window:maximize'),
-    close: () => ipcRenderer.invoke('window:close'),
-    fullscreen: () => ipcRenderer.invoke('window:fullscreen'),
-    isMaximized: () => ipcRenderer.invoke('window:isMaximized') as Promise<boolean>,
-    show: () => ipcRenderer.invoke('window:show'),
-    quit: () => ipcRenderer.invoke('app:quit'),
-  },
+  window: (isCard ? cardWindowApi : mainWindowApi) as typeof mainWindowApi,
   platform: process.platform,
   toFileUrl: (p: string) => 'dh-file://local/' + encodeURI(p.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F'),
 }

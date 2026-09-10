@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Wifi, ArrowDown, ArrowUp, Download, Upload, ShieldAlert, AlertTriangle, Radar, Ban, Gauge, FileDown, Signal } from 'lucide-react'
 import { useApp } from '@/store'
@@ -54,6 +54,21 @@ function Bars({ rows }: { rows: NetDay[] }) {
 }
 
 const trimNum = (n: number): string => String(Math.round(n * 100) / 100)
+
+const QUOTA_MAX_GB = 10000
+const CYCLE_MAX_DAYS = 366
+
+function isValidExePath(p: string): boolean {
+  const s = (p || '').trim()
+  if (!s) return false
+  // Reject wildcards outright (no * ? allowed anywhere).
+  if (/[*?]/.test(s)) return false
+  // Drive-letter absolute: C:\...\.exe (also C:/...)
+  if (/^[A-Za-z]:[\\/](?:[^\\/:*?"<>|\r\n]+[\\/])*[^\\/:*?"<>|\r\n]+\.exe$/i.test(s)) return true
+  // UNC: \\server\share\...\*.exe
+  if (/^\\\\[^\\/:*?"<>|\r\n]+\\[^\\/:*?"<>|\r\n]+(?:\\[^\\/:*?"<>|\r\n]+)*\.exe$/i.test(s)) return true
+  return false
+}
 
 export default function Network() {
   const { t, i18n } = useTranslation()
@@ -163,27 +178,72 @@ export default function Network() {
     }
   }
 
+  // Debounced slider -> net:setLimits (400ms): optimistic UI now, IPC after drag settles.
+  const capDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (capDebounce.current) clearTimeout(capDebounce.current) }, [])
+  const patchCapSliderDebounced = (vGB: number) => {
+    if (!limits) return
+    const next = vGB <= 0 ? null : Math.round(Math.min(vGB, QUOTA_MAX_GB) * 1024)
+    const snapshot = limits
+    setLimits({ ...limits, dailyCapMB: next })
+    if (capDebounce.current) clearTimeout(capDebounce.current)
+    capDebounce.current = setTimeout(async () => {
+      try {
+        const cfg = await invoke<NetConfig>('net:setLimits', { ...snapshot, dailyCapMB: next })
+        setLimits(cfg.limits)
+      } catch (e: unknown) {
+        setLimits(snapshot)
+        toast(e instanceof Error ? e.message : t('toast.error'), 'error')
+      }
+    }, 400)
+  }
+
   const capSliderGB = limits?.dailyCapMB == null ? 0 : limits.dailyCapMB / 1024
   const capInput = capGB ?? (limits?.dailyCapMB == null ? '' : trimNum(limits.dailyCapMB / 1024))
   const commitCap = () => {
     if (capGB == null || !limits) return
-    const n = parseFloat(capGB)
-    const next = !isFinite(n) || n <= 0 ? null : Math.round(n * 1024)
+    const raw = capGB.trim()
+    // Empty = clear cap (allowed). Invalid numbers must error, not silently clear.
+    if (raw === '') {
+      setCapGB(null)
+      if (limits.dailyCapMB !== null) void patchLimits({ dailyCapMB: null })
+      return
+    }
+    const n = parseFloat(raw)
+    if (!isFinite(n) || n <= 0) {
+      setCapGB(null)
+      toast(t('net.invalidCap'), 'error')
+      return
+    }
+    if (n > QUOTA_MAX_GB) {
+      setCapGB(null)
+      toast(t('net.quotaMax', { max: QUOTA_MAX_GB }), 'error')
+      return
+    }
+    const next = Math.round(n * 1024)
     setCapGB(null)
     if (next !== limits.dailyCapMB) void patchLimits({ dailyCapMB: next })
   }
 
   const quotaNum = parseFloat(pQuotaGB)
-  const canSave = pName.trim().length > 0 && isFinite(quotaNum) && quotaNum > 0
+  const quotaValid = isFinite(quotaNum) && quotaNum > 0 && quotaNum <= QUOTA_MAX_GB
+  const cycleDaysValid = pCycle !== 'custom' || (Number.isFinite(pCycleDays) && pCycleDays >= 1 && pCycleDays <= CYCLE_MAX_DAYS)
+  const canSave = pName.trim().length > 0 && quotaValid && cycleDaysValid
 
   const savePlan = async () => {
-    if (!canSave) return
+    if (!canSave) {
+      if (!quotaValid) toast(t('net.quotaMax', { max: QUOTA_MAX_GB }), 'error')
+      else if (!cycleDaysValid) toast(t('net.cycleMax', { max: CYCLE_MAX_DAYS }), 'error')
+      return
+    }
+    const safeQuotaMB = Math.min(Math.round(quotaNum * 1024), QUOTA_MAX_GB * 1024)
+    const safeCycleDays = pCycle === 'daily' ? 1 : pCycle === 'weekly' ? 7 : pCycle === 'monthly' ? 30 : Math.min(CYCLE_MAX_DAYS, Math.max(1, Math.floor(pCycleDays) || 1))
     const next: NetPlan = {
       id: plan?.id ?? uid(),
       name: pName.trim(),
-      quotaMB: Math.round(quotaNum * 1024),
+      quotaMB: safeQuotaMB,
       cycle: pCycle,
-      cycleDays: pCycle === 'daily' ? 1 : pCycle === 'weekly' ? 7 : pCycle === 'monthly' ? 30 : Math.max(1, Math.floor(pCycleDays) || 1),
+      cycleDays: safeCycleDays,
       startDate: pStart || isoDay(new Date()),
       active: true,
     }
@@ -243,7 +303,7 @@ export default function Network() {
   }
 
   const toggleAppBlock = async () => {
-    if (!/^[A-Za-z]:[\\/].*\.exe$/i.test(exePath.trim())) { toast(t('net.invalidExe'), 'error'); return }
+    if (!isValidExePath(exePath)) { toast(t('net.invalidExe'), 'error'); return }
     const to = !appBlocked
     try {
       if (to && !(await invoke<boolean>('dialog:confirm', t('net.confirmBlock')))) return
@@ -397,14 +457,14 @@ export default function Network() {
                   )}
                   <div className="grid sm:grid-cols-2 gap-3">
                     <Field label={t('net.planName')}><input className="input" value={pName} onChange={(e) => setPName(e.target.value)} /></Field>
-                    <Field label={t('net.quotaGB')}><input type="number" min={0} step={0.5} dir="ltr" className="input font-mono" value={pQuotaGB} onChange={(e) => setPQuotaGB(e.target.value)} /></Field>
+                    <Field label={t('net.quotaGB')}><input type="number" min={0} max={QUOTA_MAX_GB} step={0.5} dir="ltr" className="input font-mono" value={pQuotaGB} onChange={(e) => setPQuotaGB(e.target.value)} /></Field>
                     <Field label={t('net.cycle')}>
                       <select className="select" value={pCycle} onChange={(e) => setPCycle(e.target.value as PlanCycle)}>
                         {CYCLES.map((c) => <option key={c} value={c}>{t(`net.${c}`)}</option>)}
                       </select>
                     </Field>
                     {pCycle === 'custom'
-                      ? <Field label={t('net.cycleDays')}><input type="number" min={1} step={1} dir="ltr" className="input font-mono" value={pCycleDays} onChange={(e) => setPCycleDays(Math.max(1, Math.floor(Number(e.target.value) || 1)))} /></Field>
+                      ? <Field label={t('net.cycleDays')}><input type="number" min={1} max={CYCLE_MAX_DAYS} step={1} dir="ltr" className="input font-mono" value={pCycleDays} onChange={(e) => setPCycleDays(Math.min(CYCLE_MAX_DAYS, Math.max(1, Math.floor(Number(e.target.value) || 1))))} /></Field>
                       : <Field label={t('net.startDate')}><input type="date" dir="ltr" className="input font-mono" value={pStart} onChange={(e) => setPStart(e.target.value)} /></Field>}
                   </div>
                   {pCycle === 'custom' && (
@@ -437,7 +497,7 @@ export default function Network() {
                       <Field label={t('net.dailyCap')}>
                         <div className="flex items-center gap-3">
                           <div className="flex-1">
-                            <Slider value={capSliderGB} min={0} max={100} step={1} suffix=" GB" onChange={(v) => void patchLimits({ dailyCapMB: v <= 0 ? null : Math.round(v * 1024) })} />
+                            <Slider value={capSliderGB} min={0} max={100} step={1} suffix=" GB" onChange={(v) => patchCapSliderDebounced(v)} />
                           </div>
                           <input
                             type="number" min={0} step={0.5} dir="ltr" className="input w-28 font-mono"

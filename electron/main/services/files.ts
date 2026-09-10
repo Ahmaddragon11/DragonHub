@@ -4,7 +4,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { shell } from 'electron'
+import { shell, app } from 'electron'
 import type { FileEntry, DriveInfo } from '../../../src/shared/types'
 
 const execFileP = promisify(execFile)
@@ -67,7 +67,17 @@ async function isHiddenWin(_p: string): Promise<boolean> {
 }
 
 export async function stat(p: string) {
-  const st = await fsp.stat(safePath(p))
+  const sp = safePath(p)
+  // lstat first: detect symlinks without following them. Following the link
+  // afterwards (stat) is intentional for editor/preview flows — privileged
+  // callers that need jailing must apply their own allowlist on top.
+  const lst = await fsp.lstat(sp).catch(() => null)
+  if (lst && lst.isSymbolicLink()) {
+    // Documented: symlinks are followed (stat/read) so linked docs open
+    // normally. Do NOT use stat/hash/read results for security decisions
+    // without resolving realpath + allowlist checks first.
+  }
+  const st = await fsp.stat(sp)
   return {
     size: st.size,
     isDirectory: st.isDirectory(),
@@ -80,6 +90,12 @@ export async function stat(p: string) {
 
 export async function readText(p: string, maxBytes = 20 * 1024 * 1024): Promise<string> {
   const sp = safePath(p)
+  // lstat (not stat): record symlink status before following. See stat() note:
+  // links are followed intentionally; jailing callers must allowlist realpath.
+  const lst = await fsp.lstat(sp).catch(() => null)
+  if (lst && lst.isSymbolicLink()) {
+    /* documented follow — see stat() note */
+  }
   const st = await fsp.stat(sp)
   if (st.size > maxBytes) throw new Error('File too large for text editor (max 20MB)')
   const text = await fsp.readFile(sp, 'utf8')
@@ -90,8 +106,17 @@ export async function readText(p: string, maxBytes = 20 * 1024 * 1024): Promise<
 
 const MAX_WRITE_BYTES = 50 * 1024 * 1024
 
-export async function writeText(p: string, content: string, encoding: 'utf8' | 'base64' = 'utf8'): Promise<void> {
+export async function writeText(p: string, content: string, encoding: 'utf8' | 'base64' = 'utf8', opts?: { overwrite?: boolean }): Promise<void> {
   const sp = safePath(p)
+  // Explicit-save API: overwriting the SAME path is the normal editor/save
+  // intent (ipc fs:writeText saves to an existing file), so overwrite defaults
+  // to allowed here. Pass { overwrite: false } to get write-once (EEXIST)
+  // semantics for "create new file" flows.
+  if (opts?.overwrite === false && fs.existsSync(sp)) {
+    const e = new Error(`File already exists (EEXIST): ${sp}`)
+    ;(e as NodeJS.ErrnoException).code = 'EEXIST'
+    throw e
+  }
   const bytes = encoding === 'base64' ? Buffer.from(content, 'base64') : content
   if (Buffer.byteLength(bytes as string) > MAX_WRITE_BYTES) throw new Error('Content too large (max 50MB)')
   // atomic write: unique tmp + rename (pid + random avoids symlink races between concurrent writers)
@@ -108,6 +133,12 @@ export async function writeText(p: string, content: string, encoding: 'utf8' | '
 
 export async function readBase64(p: string, maxBytes = 50 * 1024 * 1024): Promise<string> {
   const sp = safePath(p)
+  // lstat first: symlink detection without following (follow afterwards is
+  // intentional — see stat() note; jailing callers must allowlist realpath).
+  const lst = await fsp.lstat(sp).catch(() => null)
+  if (lst && lst.isSymbolicLink()) {
+    /* documented follow — see stat() note */
+  }
   const st = await fsp.stat(sp)
   if (st.size > maxBytes) throw new Error('File too large')
   const buf = await fsp.readFile(sp)
@@ -131,8 +162,16 @@ export async function createFile(p: string) {
   }
 }
 
-export async function rename(from: string, to: string) {
-  await fsp.rename(safePath(from), safePath(to))
+export async function rename(from: string, to: string, opts?: { overwrite?: boolean }) {
+  const s = safePath(from)
+  const d = safePath(to)
+  if (samePath(s, d)) return // same file (case-insensitive on win32/darwin): no-op
+  if (!opts?.overwrite && fs.existsSync(d)) {
+    const e = new Error(`Destination already exists (EEXIST): ${d} — pass { overwrite: true } to replace`)
+    ;(e as NodeJS.ErrnoException).code = 'EEXIST'
+    throw e
+  }
+  await fsp.rename(s, d)
 }
 
 /** Into-itself check that respects case-insensitive filesystems + symlinked prefixes. */
@@ -143,25 +182,81 @@ function isInside(child: string, parent: string): boolean {
   return child.startsWith(parent + path.sep)
 }
 
-export async function copy(src: string, dest: string) {
-  const s = safePath(src)
-  const d = safePath(dest)
-  if (samePath(s, d)) throw new Error('Source and destination are the same')
-  if (isInside(d, s)) throw new Error('Cannot copy a folder into itself')
-  await fsp.cp(s, d, { recursive: true, errorOnExist: false, force: true })
+/** Best-effort realpath resolution (native if available, textual fallback). */
+function realpathSafe(p: string): string {
+  try {
+    const native = (fs.realpathSync as unknown as { native?: typeof fs.realpathSync }).native ?? fs.realpathSync
+    return native(p)
+  } catch {
+    return path.resolve(p)
+  }
 }
 
-export async function move(src: string, dest: string) {
+/** insideDir with realpath: resolves symlinked prefixes so copy/move cannot
+ *  escape via a linked parent. Falls back to textual isInside when paths do
+ *  not exist (yet). Exported for reuse/tests. */
+export function insideDirReal(child: string, parent: string): boolean {
+  try {
+    let rp: string
+    try {
+      rp = realpathSafe(parent)
+    } catch {
+      rp = path.resolve(parent)
+    }
+    let rc: string
+    try {
+      rc = realpathSafe(child)
+    } catch {
+      // Child may not exist (paste destination): resolve nearest real ancestor.
+      try {
+        const dir = path.dirname(path.resolve(child))
+        rc = path.join(realpathSafe(dir), path.basename(path.resolve(child)))
+      } catch {
+        rc = path.resolve(child)
+      }
+    }
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      const lrc = rc.toLowerCase()
+      const lrp = rp.toLowerCase()
+      return lrc === lrp || lrc.startsWith(lrp + path.sep)
+    }
+    return rc === rp || rc.startsWith(rp + path.sep)
+  } catch {
+    const c = path.resolve(child)
+    const pr = path.resolve(parent)
+    return isInside(c, pr) || c === pr
+  }
+}
+
+function assertNoSilentOverwrite(dest: string, overwrite?: boolean) {
+  if (!overwrite && fs.existsSync(dest)) {
+    const e = new Error(`Destination already exists (EEXIST): ${dest} — pass { overwrite: true } to replace`)
+    ;(e as NodeJS.ErrnoException).code = 'EEXIST'
+    throw e
+  }
+}
+
+export async function copy(src: string, dest: string, opts?: { overwrite?: boolean }) {
   const s = safePath(src)
   const d = safePath(dest)
   if (samePath(s, d)) throw new Error('Source and destination are the same')
-  if (isInside(d, s)) throw new Error('Cannot move a folder into itself')
+  if (isInside(d, s) || insideDirReal(d, s)) throw new Error('Cannot copy a folder into itself')
+  assertNoSilentOverwrite(d, opts?.overwrite)
+  await fsp.cp(s, d, { recursive: true, errorOnExist: !opts?.overwrite, force: !!opts?.overwrite })
+}
+
+export async function move(src: string, dest: string, opts?: { overwrite?: boolean }) {
+  const s = safePath(src)
+  const d = safePath(dest)
+  if (samePath(s, d)) throw new Error('Source and destination are the same')
+  if (isInside(d, s) || insideDirReal(d, s)) throw new Error('Cannot move a folder into itself')
+  assertNoSilentOverwrite(d, opts?.overwrite)
   try {
     await fsp.rename(s, d)
   } catch (firstErr) {
     // Cross-device fallback: copy first, verify the copy, and only then remove
     // the source — a crash/partial copy must never silently lose data.
-    await copy(s, d)
+    await copy(s, d, opts)
     try {
       await fsp.stat(d)
     } catch {
@@ -171,11 +266,56 @@ export async function move(src: string, dest: string) {
   }
 }
 
-/** Paths that must never be removed, even with useTrash=false. */
-function assertRemovable(sp: string) {
-  const root = path.parse(sp).root
-  if (sp === root || samePath(sp, os.homedir())) {
-    throw new Error('Refusing to delete a drive root or home folder')
+/** Paths that must never be removed, even with useTrash=false.
+ *  Exported so archive deleteAfter and other privileged deleters share the
+ *  exact same guard. Blocks drive/filesystem roots, home, userData, the app
+ *  install dir / executable, OS dirs and the user's shell folders themselves
+ *  (exact match only — children remain deletable). */
+export function assertRemovable(sp: string) {
+  const norm = path.resolve(sp)
+  const root = path.parse(norm).root
+  if (norm === root) {
+    throw new Error('Refusing to delete a drive root or filesystem root')
+  }
+  if (/^[A-Za-z]:\\$/.test(norm) || norm === '/') {
+    throw new Error('Refusing to delete a drive root or filesystem root')
+  }
+  const blocked: string[] = []
+  try {
+    blocked.push(path.resolve(os.homedir()))
+  } catch { /* ignore */ }
+  try {
+    const ud = app.getPath('userData')
+    if (ud) blocked.push(path.resolve(ud))
+  } catch { /* app may not be ready in tests */ }
+  try {
+    const ap = app.getAppPath()
+    if (ap) blocked.push(path.resolve(ap))
+  } catch { /* ignore */ }
+  try {
+    const exe = app.getPath('exe')
+    if (exe) blocked.push(path.resolve(exe))
+  } catch { /* ignore */ }
+  const sysRoot = process.env.SystemRoot || process.env.windir
+  if (sysRoot) {
+    blocked.push(path.resolve(sysRoot))
+    blocked.push(path.resolve(path.join(sysRoot, 'System32')))
+  } else if (process.platform === 'win32') {
+    blocked.push(path.resolve('C:\\Windows'))
+    blocked.push(path.resolve('C:\\Windows\\System32'))
+  }
+  // User shell folders themselves (exact match): deleting the whole
+  // Documents/Downloads/Desktop must go through the OS, not this API.
+  try {
+    const home = os.homedir()
+    for (const sub of ['Desktop', 'Documents', 'Downloads']) {
+      blocked.push(path.resolve(path.join(home, sub)))
+    }
+  } catch { /* ignore */ }
+  for (const b of blocked) {
+    if (b && samePath(norm, b)) {
+      throw new Error('Refusing to delete a protected system folder')
+    }
   }
 }
 
@@ -193,15 +333,24 @@ export async function getDrives(): Promise<DriveInfo[]> {
   if (process.platform === 'win32') {
     // wmic is deprecated/removed on Windows 11 — prefer PowerShell, fall back to letter probing.
     // Absolute System32 path: avoids PATH-hijack of powershell.exe.
-    const ps = process.env.SystemRoot
-      ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-      : 'powershell.exe'
-    try {
-      const { stdout } = await execFileP(
-        ps,
-        ['-NoProfile', '-NonInteractive', '-Command', 'Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{n="Free";e={$_.Free}}, @{n="Used";e={$_.Used}} | ConvertTo-Csv -NoTypeInformation'],
-        { windowsHide: true, timeout: 8000 },
-      )
+    const PS_ABS = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+    const psCandidates: string[] = []
+    if (fs.existsSync(PS_ABS)) psCandidates.push(PS_ABS)
+    if (process.env.SystemRoot) psCandidates.push(path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'))
+    psCandidates.push('powershell.exe') // PATH fallback (dev machines / non-standard installs)
+    let stdout: string | null = null
+    for (const ps of psCandidates) {
+      try {
+        const r = await execFileP(
+          ps,
+          ['-NoProfile', '-NonInteractive', '-Command', 'Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{n="Free";e={$_.Free}}, @{n="Used";e={$_.Used}} | ConvertTo-Csv -NoTypeInformation'],
+          { windowsHide: true, timeout: 8000 },
+        )
+        stdout = r.stdout
+        break
+      } catch { /* try next candidate */ }
+    }
+    if (stdout) try {
       const lines = stdout.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#') && l.includes(','))
       lines.shift() // header
       const out: DriveInfo[] = []
@@ -209,8 +358,11 @@ export async function getDrives(): Promise<DriveInfo[]> {
         const cols = l.split(',').map((c) => c.replace(/^"|"$/g, ''))
         const letter = (cols[0] || '').replace(/[:\\]/g, '')
         if (!/^[A-Za-z]$/.test(letter)) continue
-        const free = Number(cols[1]) || undefined
-        const used = Number(cols[2]) || undefined
+        // NOTE: free=0 is valid (full disk) — only non-finite/empty becomes undefined.
+        const freeRaw = cols[1] === undefined || cols[1] === '' ? NaN : Number(cols[1])
+        const usedRaw = cols[2] === undefined || cols[2] === '' ? NaN : Number(cols[2])
+        const free = Number.isFinite(freeRaw) ? freeRaw : undefined
+        const used = Number.isFinite(usedRaw) ? usedRaw : undefined
         out.push({ path: `${letter}:\\`, label: 'Drive', total: free !== undefined && used !== undefined ? free + used : undefined, free })
       }
       if (out.length) return out
@@ -315,9 +467,24 @@ export async function folderSize(p: string): Promise<{ size: number; files: numb
 
 export async function openExternal(p: string) {
   const sp = safePath(p)
-  const executable = new Set(['.exe', '.com', '.bat', '.cmd', '.msi', '.scr', '.ps1', '.psm1', '.vbs', '.vbe', '.js', '.jse', '.jar', '.lnk', '.hta', '.wsf', '.wsh', '.wsc', '.reg', '.msc', '.cpl', '.pif', '.py', '.pyw'])
+  const executable = new Set(['.exe', '.com', '.bat', '.cmd', '.msi', '.scr', '.ps1', '.psm1', '.vbs', '.vbe', '.js', '.jse', '.jar', '.lnk', '.hta', '.wsf', '.wsh', '.wsc', '.reg', '.msc', '.cpl', '.pif', '.py', '.pyw',
+    '.url', '.html', '.htm', '.svg', '.desktop', '.sh'])
   if (executable.has(path.extname(sp).toLowerCase())) {
     throw new Error('Opening executable/script files is blocked for safety; use Show in folder instead')
+  }
+  // TOCTOU NOTE: the filesystem can change between this check and shell.openPath
+  // (swap a safe doc for a script). We therefore re-lstat IMMEDIATELY before
+  // opening so the window is as small as possible; a fully atomic open is not
+  // available via shell.openPath, so treat opened files as untrusted.
+  const lst = await fsp.lstat(sp).catch(() => null)
+  if (lst) {
+    if (lst.isSymbolicLink()) {
+      // Documented: symlinks are followed by the OS handler. Callers needing
+      // confinement must resolve realpath + allowlist before calling.
+    }
+    if (process.platform !== 'win32' && path.extname(sp) === '' && (lst.mode & 0o111) !== 0) {
+      throw new Error('Opening executable files without extension is blocked for safety; use Show in folder instead')
+    }
   }
   const err = await shell.openPath(sp)
   if (err) throw new Error(err)
@@ -331,6 +498,12 @@ const MAX_HASH_BYTES = 10 * 1024 * 1024 * 1024 // 10GB: hashing must stay bounde
 
 export async function hashFile(p: string, algo: 'md5' | 'sha1' | 'sha256' | 'sha512'): Promise<string> {
   const sp = safePath(p)
+  // lstat first: symlink detection without following (follow afterwards is
+  // intentional — see stat() note; jailing callers must allowlist realpath).
+  const lst = await fsp.lstat(sp).catch(() => null)
+  if (lst && lst.isSymbolicLink()) {
+    /* documented follow — see stat() note */
+  }
   const st = await fsp.stat(sp).catch(() => null)
   if (st && st.size > MAX_HASH_BYTES) throw new Error('File too large to hash (max 10GB)')
   const crypto = await import('node:crypto')

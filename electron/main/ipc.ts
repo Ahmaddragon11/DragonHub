@@ -25,8 +25,10 @@ let senderCardWin: GetWin | null = null
 function isAllowedSender(e: Electron.IpcMainInvokeEvent): boolean {
   const w = senderWin?.()
   const c = senderCardWin?.()
-  if (!w && !c) return true
+  // Default-deny before windows exist (fail-closed): no sender is trusted yet.
+  if (!w && !c) return false
   try {
+    if (e.senderFrame !== e.sender.mainFrame) return false
     if (w && !w.isDestroyed() && e.sender === w.webContents) return true
     if (c && !c.isDestroyed() && e.sender === c.webContents) return true
   } catch { /* destroyed windows — deny */ }
@@ -42,6 +44,19 @@ const RATE_LIMITS: Record<string, { n: number; ms: number }> = {
   'res:killProcess': { n: 10, ms: 60000 },
   'net:appBlocked': { n: 20, ms: 60000 },
   'net:speedTest': { n: 5, ms: 60000 },
+  'app:openExternal': { n: 30, ms: 60000 },
+  'app:openTelegram': { n: 30, ms: 60000 },
+  'app:openUserData': { n: 20, ms: 60000 },
+  'app:setLoginItem': { n: 20, ms: 60000 },
+  'app:keepAwake': { n: 20, ms: 60000 },
+  'app:version': { n: 120, ms: 10000 },
+  'window:minimize': { n: 120, ms: 10000 },
+  'window:maximize': { n: 120, ms: 10000 },
+  'window:close': { n: 120, ms: 10000 },
+  'window:show': { n: 120, ms: 10000 },
+  'window:fullscreen': { n: 120, ms: 10000 },
+  'window:isMaximized': { n: 120, ms: 10000 },
+  'app:quit': { n: 20, ms: 60000 },
 }
 const DEFAULT_RATE = { n: 120, ms: 10000 }
 function checkRate(channel: string) {
@@ -99,12 +114,40 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   h('app:openExternal', (url: string) => {
     if (typeof url !== 'string' || url.length > 2048) throw new Error('Blocked URL')
     if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) throw new Error('Blocked URL scheme')
+    // Block localhost / loopback / link-local / cloud-metadata targets (SSRF /
+    // DNS-rebinding): at minimum http://localhost and http://127.*.
+    if (/^https?:\/\//i.test(url)) {
+      let host = ''
+      try {
+        host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '')
+      } catch {
+        throw new Error('Blocked URL')
+      }
+      const blocked =
+        host === 'localhost' ||
+        host === '::1' ||
+        host === '0.0.0.0' ||
+        /^127\./.test(host) ||
+        /^169\.254\./.test(host) ||
+        host === 'metadata.google.internal' ||
+        host === 'metadata.google' ||
+        host.endsWith('.metadata.google.internal') ||
+        host === 'instance-data' ||
+        host === '169.254.169.254'
+      if (blocked) {
+        try { console.warn('[security] blocked openExternal to local/metadata host:', host) } catch { /* ignore */ }
+        throw new Error('Blocked URL host')
+      }
+    }
     return shell.openExternal(url)
   })
   h('app:openTelegram', () => shell.openExternal(TELEGRAM_URL))
   h('app:systemTheme', () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'))
   h('app:openUserData', () => shell.openPath(app.getPath('userData')))
-  h('app:setLoginItem', (enabled: boolean) => app.setLoginItemSettings({ openAtLogin: enabled }))
+  h('app:setLoginItem', (enabled: boolean) => {
+    if (typeof enabled !== 'boolean') throw new Error('Invalid argument: enabled must be boolean')
+    return app.setLoginItemSettings({ openAtLogin: Boolean(!!enabled) })
+  })
   let psb: number | null = null
   h('app:keepAwake', (on: boolean) => {
     if (on && psb === null) psb = powerSaveBlocker.start('prevent-app-suspension')
@@ -114,6 +157,8 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
 
   // ---------- Clipboard (with auto-clear for secrets) ----------
   h('clipboard:write', (text: string, clearAfterSec?: number) => {
+    if (typeof text !== 'string') throw new Error('Invalid clipboard text')
+    if (text.length > 1024 * 1024) throw new Error('Clipboard text too large (max 1MB)')
     clipboard.writeText(text)
     if (clearAfterSec && clearAfterSec > 0) {
       setTimeout(() => { if (clipboard.readText() === text) clipboard.clear() }, clearAfterSec * 1000)
@@ -152,8 +197,11 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
     dialog.showOpenDialog(getWin()!, { title: opts?.title, properties: ['openDirectory', 'createDirectory'] }).then((r) => (r.canceled ? null : r.filePaths[0])))
   h('dialog:save', (opts?: { defaultPath?: string; filters?: { name: string; extensions: string[] }[]; title?: string }) =>
     dialog.showSaveDialog(getWin()!, { title: opts?.title, defaultPath: opts?.defaultPath, filters: opts?.filters }).then((r) => (r.canceled ? null : r.filePath)))
-  h('dialog:confirm', (msg: string, detail?: string) =>
-    dialog.showMessageBox(getWin()!, { type: 'question', buttons: ['OK', 'Cancel'], defaultId: 1, cancelId: 1, message: msg, detail }).then((r) => r.response === 0))
+  h('dialog:confirm', (msg: string, detail?: string) => {
+    if (typeof msg !== 'string' || msg.length > 500) throw new Error('Invalid confirm message (max 500 chars)')
+    if (detail !== undefined && (typeof detail !== 'string' || detail.length > 500)) throw new Error('Invalid confirm detail (max 500 chars)')
+    return dialog.showMessageBox(getWin()!, { type: 'question', buttons: ['OK', 'Cancel'], defaultId: 1, cancelId: 1, message: msg, detail }).then((r) => r.response === 0)
+  })
 
   // ---------- Files ----------
   h('fs:list', (dir: string, showHidden: boolean) => files.listDir(dir, showHidden))
@@ -199,14 +247,20 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   vault.setOnLock(() => getWin()?.webContents.send('vault:locked'))
   h('vault:meta', () => vault.getMeta())
   h('vault:isUnlocked', () => vault.isUnlocked())
-  h('vault:init', (pw: string) => vault.init(pw))
-  h('vault:unlock', (pw: string) => vault.unlock(pw, settingsStore.get().vaultAutoLockMin))
+  h('vault:init', (pw: string) => {
+    if (typeof pw !== 'string' || pw.length < 1 || pw.length > 256) throw new Error('Invalid password length (1..256)')
+    return vault.init(pw, settingsStore.get().vaultAutoLockMin)
+  })
+  h('vault:unlock', (pw: string) => {
+    if (typeof pw !== 'string' || pw.length < 1 || pw.length > 256) throw new Error('Invalid password length (1..256)')
+    return vault.unlock(pw, settingsStore.get().vaultAutoLockMin)
+  })
   h('vault:lock', () => vault.lock())
   h('vault:touch', () => vault.touch(settingsStore.get().vaultAutoLockMin))
   h('vault:list', () => vault.list())
   h('vault:upsert', (item: VaultItem) => vault.upsert(item))
   h('vault:remove', (id: string) => vault.remove(id))
-  h('vault:changePassword', (a: string, b: string) => vault.changePassword(a, b))
+  h('vault:changePassword', (a: string, b: string) => vault.changePassword(a, b, settingsStore.get().vaultAutoLockMin))
   h('vault:generate', (opts: Parameters<typeof vault.generatePassword>[0]) => vault.generatePassword(opts))
   h('vault:strength', (pw: string) => vault.strength(pw))
   h('vault:export', async () => {
@@ -334,7 +388,10 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   h('res:history', () => resmon.getResHistory())
   h('res:config:get', () => resmon.getResConfig())
   h('res:config:set', (patch: Partial<ResConfig>) => resmon.setResConfig(patch ?? {}))
-  h('res:killProcess', (pid: number) => resmon.killProcess(pid))
+  h('res:killProcess', (pid: number) => {
+    if (!Number.isInteger(pid) || (pid as number) <= 0) throw new Error('Invalid pid')
+    return resmon.killProcess(pid)
+  })
   h('res:card:get', () => resmon.getResCardConfig())
   h('res:card:set', (patch: Partial<ResCardConfig>) => resmon.setResCardConfig(patch ?? {}))
   h('res:card:show', () => { cardCtl.show(); return cardCtl.isOpen() })

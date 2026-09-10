@@ -10,11 +10,20 @@ import type { DownloadItem } from '@shared/types'
 const STATUS_C: Record<string, string> = { queued: 'text-surface-500', downloading: 'text-accent', paused: 'text-amber-500', completed: 'text-emerald-500', error: 'text-rose-500', cancelled: 'text-surface-500' }
 const isActive = (d: DownloadItem) => ['downloading', 'queued', 'paused'].includes(d.status)
 
+function safeThumb(src: unknown): string | null {
+  if (typeof src !== 'string') return null
+  const s = src.trim()
+  if (/^https:\/\//i.test(s)) return s
+  if (/^data:image\/(png|jpeg|gif|webp);base64,/i.test(s)) return s
+  return null
+}
+
 const DownloadRow = React.memo(function DownloadRow({ d, onAct, onRemove }: {
   d: DownloadItem; onAct: (ch: string, ...a: unknown[]) => void; onRemove: (id: string, deleteFile: boolean) => void
 }) {
   const { t } = useTranslation()
-  const pct = d.kind === 'media' ? d.received : d.size ? (d.received / d.size) * 100 : 0
+  const hasTotal = Number.isFinite(d.size) && d.size > 0
+  const pct = hasTotal ? Math.min(100, Math.max(0, (d.received / d.size) * 100)) : 0
   return (
     <div className="card p-4">
       <div className="flex items-center gap-3">
@@ -22,7 +31,7 @@ const DownloadRow = React.memo(function DownloadRow({ d, onAct, onRemove }: {
         <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate" title={d.savePath}>{d.filename || d.url}</p><p className="text-[11px] text-surface-500 truncate" dir="ltr">{d.url}</p></div>
         <div className="text-end text-xs shrink-0">
           <p className={cn('font-semibold', STATUS_C[d.status])}>{t(`downloads.status.${d.status}`)}{d.status === 'downloading' && d.kind === 'direct' && d.supportsRange && d.segments > 1 && <span className="text-surface-500 font-normal"> ×{d.segments}</span>}</p>
-          <p className="text-surface-500 font-mono">{d.status === 'downloading' ? `${formatBytes(d.speed)}/s • ${formatDuration(d.eta)}` : d.kind === 'media' ? '' : `${formatBytes(d.received)}${d.size ? ` / ${formatBytes(d.size)}` : ''}`}</p>
+          <p className="text-surface-500 font-mono">{d.status === 'downloading' ? `${formatBytes(d.speed)}/s • ${formatDuration(d.eta)}` : hasTotal ? `${formatBytes(d.received)} / ${formatBytes(d.size)}` : d.received > 0 ? formatBytes(d.received) : ''}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {d.status === 'downloading' && d.kind === 'direct' && <button className="btn-icon" title={t('common.pause')} aria-label={t('common.pause')} onClick={() => onAct('dl:pause', d.id)}><Pause size={15} /></button>}
@@ -33,7 +42,18 @@ const DownloadRow = React.memo(function DownloadRow({ d, onAct, onRemove }: {
           <button className="btn-icon hover:text-rose-500" title={`${t('common.delete')} — Shift: ${t('downloads.removeWithFile')}`} onClick={(e) => onRemove(d.id, e.shiftKey)}><Trash2 size={15} /></button>
         </div>
       </div>
-      {isActive(d) && <div className="mt-3 flex items-center gap-3"><Progress value={pct} /><span className="text-xs font-mono w-12 text-end">{pct.toFixed(0)}%</span></div>}
+      {isActive(d) && (
+        <div className="mt-3 flex items-center gap-3">
+          {hasTotal ? (
+            <>
+              <Progress value={pct} />
+              <span className="text-xs font-mono w-12 text-end">{pct.toFixed(0)}%</span>
+            </>
+          ) : (
+            <span className="text-xs font-mono text-surface-500">{d.received > 0 ? formatBytes(d.received) : ''}</span>
+          )}
+        </div>
+      )}
       {d.error && <p className="text-xs text-rose-500 mt-2">{d.error}</p>}
     </div>
   )
@@ -118,7 +138,7 @@ export default function Downloads() {
         </div>
         {info && (
           <div className="mt-3 flex gap-3 rounded-xl bg-surface-200/60 p-3 animate-slide-up">
-            {info.thumbnail && <img src={info.thumbnail} className="h-20 w-36 object-cover rounded-lg" />}
+            {safeThumb(info.thumbnail) && <img src={safeThumb(info.thumbnail) as string} className="h-20 w-36 object-cover rounded-lg" referrerPolicy="no-referrer" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} alt="" />}
             <div className="flex-1 min-w-0"><p className="font-medium text-sm truncate">{info.title}</p><p className="text-xs text-surface-500">{info.uploader} • {formatDuration(info.duration)}</p>
               {!audioOnly && <select className="select mt-2 text-xs py-1" value={fmt} onChange={(e) => setFmt(e.target.value)}><option value="">{t('downloads.bestQuality')}</option>{[...info.formats].reverse().filter((f: any) => f.vcodec !== 'none').map((f: any) => <option key={f.id} value={f.acodec === 'none' ? `${f.id}+ba` : f.id}>{f.res} {f.note || ''} .{f.ext} {f.filesize ? formatBytes(f.filesize) : ''}</option>)}</select>}
             </div>

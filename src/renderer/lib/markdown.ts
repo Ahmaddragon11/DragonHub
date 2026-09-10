@@ -9,8 +9,8 @@ function inline(s: string): string {
   out = out.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
   out = out.replace(/~~(.+?)~~/g, '<del>$1</del>')
   out = out.replace(/==(.+?)==/g, '<mark>$1</mark>')
-  out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" data-ext>$1</a>')
-  out = out.replace(/(^|\s)(https?:\/\/[^\s<]+)/g, '$1<a href="$2" data-ext>$2</a>')
+  out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" data-ext target="_blank" rel="noopener noreferrer">$1</a>')
+  out = out.replace(/(^|\s)(https?:\/\/[^\s<]+)/g, '$1<a href="$2" data-ext target="_blank" rel="noopener noreferrer">$2</a>')
   return out
 }
 export function renderMarkdown(md: string): string {

@@ -90,18 +90,18 @@ export default function ResCard() {
           <Ring value={snap?.cpuPercent ?? 0} size={small ? 64 : 76} stroke={8}>
             <span className="text-sm font-bold font-mono" dir="ltr">{snap ? `${snap.cpuPercent.toFixed(0)}%` : '—'}</span>
           </Ring>
-          <span className="text-[10px] opacity-60">CPU</span>
+          <span className="text-[10px] opacity-60">{t('res.cpu')}</span>
         </div>
         <div className="flex flex-col items-center">
           <Ring value={snap?.memoryPercent ?? 0} size={small ? 64 : 76} stroke={8}>
             <span className="text-sm font-bold font-mono" dir="ltr">{snap ? `${snap.memoryPercent.toFixed(0)}%` : '—'}</span>
           </Ring>
-          <span className="text-[10px] opacity-60">RAM</span>
+          <span className="text-[10px] opacity-60">{t('res.ram')}</span>
         </div>
         <div className="flex flex-col gap-1 text-[11px] font-mono min-w-[92px]" dir="ltr">
-          <span title="download">↓ {formatSpeed(snap?.netDownSpeedBps ?? 0)}</span>
-          <span title="upload">↑ {formatSpeed(snap?.netUpSpeedBps ?? 0)}</span>
-          {!small && <span title="disk">⛁ {disk ? `${disk.letter} ${diskPct.toFixed(0)}%` : '—'}</span>}
+          <span title={t('net.down')}>↓ {formatSpeed(snap?.netDownSpeedBps ?? 0)}</span>
+          <span title={t('net.up')}>↑ {formatSpeed(snap?.netUpSpeedBps ?? 0)}</span>
+          {!small && <span title={t('res.disk')}>⛁ {disk ? `${disk.letter} ${diskPct.toFixed(0)}%` : '—'}</span>}
         </div>
       </div>
 
@@ -114,13 +114,13 @@ export default function ResCard() {
       {menu && (
         <div data-menu className="fixed z-50 card p-1.5 min-w-[190px] text-xs" style={{ left: Math.min(menu.x, window.innerWidth - 200), top: Math.min(menu.y, window.innerHeight - 240) }}>
           <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200" onClick={() => { void patch({ locked: !cfg.locked }); setMenu(null) }}>
-            {cfg.locked ? '🔓 Unlock position' : '🔒 Lock position'}
+            {cfg.locked ? `🔓 ${t('resCard.unlock')}` : `🔒 ${t('resCard.lock')}`}
           </button>
           <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200" onClick={() => { void patch({ size: small ? 'medium' : 'small' }); setMenu(null) }}>
-            {small ? '⤢ Medium size' : '⤡ Small size'}
+            {small ? `⤢ ${t('resCard.toMedium')}` : `⤡ ${t('resCard.toSmall')}`}
           </button>
           <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200" onClick={() => { void patch({ showTopProcess: !cfg.showTopProcess }); setMenu(null) }}>
-            {cfg.showTopProcess ? '☰ Hide top app' : '☰ Show top app'}
+            {cfg.showTopProcess ? `☰ ${t('resCard.hideTop')}` : `☰ ${t('resCard.showTop')}`}
           </button>
           {[0.6, 0.8, 0.95, 1].map((o) => (
             <button key={o} className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200 font-mono" onClick={() => { void patch({ opacity: o }); setMenu(null) }}>
@@ -132,10 +132,10 @@ export default function ResCard() {
             ⬢ {t('nav.dashboard')}
           </button>
           <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200" onClick={() => { setMenu(null); void invoke('res:card:hide').catch(() => window.close()) }}>
-            ✕ Hide card
+            {`✕ ${t('resCard.hideCard')}`}
           </button>
           <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500" onClick={() => { setMenu(null); window.dh.window.quit() }}>
-            ⏻ Quit
+            {`⏻ ${t('resCard.quit')}`}
           </button>
         </div>
       )}

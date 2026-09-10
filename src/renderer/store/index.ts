@@ -30,6 +30,7 @@ interface AppState {
   saveNotes: (n: Note[]) => void
   saveProjects: (p: Project[]) => void
   saveTasks: (t: Task[]) => void
+  reloadCollections: () => Promise<void>
   setDownloads: (d: DownloadItem[]) => void
   updateDownload: (d: DownloadItem) => void
   consumeParams: () => Record<string, unknown>
@@ -154,6 +155,15 @@ export const useApp = create<AppState>((set, get) => ({
   saveNotes: (notes) => { if (!get().ready) return; set({ notes }); persist('notes', notes) },
   saveProjects: (projects) => { if (!get().ready) return; set({ projects }); persist('projects', projects) },
   saveTasks: (tasks) => { if (!get().ready) return; set({ tasks }); persist('tasks', tasks) },
+  reloadCollections: async () => {
+    const [notes, projects, tasks, downloads] = await Promise.all([
+      invoke<Note[]>('data:get', 'notes', []),
+      invoke<Project[]>('data:get', 'projects', []),
+      invoke<Task[]>('data:get', 'tasks', []),
+      invoke<DownloadItem[]>('dl:list'),
+    ])
+    set({ notes, projects, tasks, downloads })
+  },
   setDownloads: (downloads) => set({ downloads }),
   updateDownload: (d) => set((s) => {
     const i = s.downloads.findIndex((x) => x.id === d.id)

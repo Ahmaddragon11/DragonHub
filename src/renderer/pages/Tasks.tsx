@@ -163,9 +163,9 @@ export default function Tasks() {
         <label className="flex items-center gap-1.5 text-xs text-surface-600 cursor-pointer"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} className="accent-[rgb(var(--accent))]" />{t('tasks.showCompleted')}</label>
       </div>
       {tasks.length === 0 ? <Empty icon={<CheckSquare size={40} />} text={t('common.empty')} action={<button className="btn-primary" onClick={() => setEdit(blank())}><Plus size={16} />{t('tasks.newTask')}</button>} /> : view === 'kanban' ? (
-        <div className="flex-1 min-h-0 grid grid-cols-4 max-lg:grid-cols-2 max-sm:grid-cols-1 gap-3 overflow-auto pb-1">
+        <div className="flex-1 min-h-0 grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-3 overflow-auto pb-1">
           {STATUSES.map((s) => (
-            <div key={s} className="flex flex-col rounded-2xl bg-surface-100/50 border border-surface-300/40 min-h-0 min-w-[220px]" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) move(id, s) }}>
+            <div key={s} className="flex flex-col rounded-2xl bg-surface-100/50 border border-surface-300/40 min-h-0 min-w-0" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) move(id, s) }}>
               <div className="flex items-center gap-2 p-3 text-sm font-semibold">{t(`tasks.status.${s}`)}<span className="ms-auto badge bg-surface-200 text-surface-700">{grouped[s].length}</span></div>
               <div className="flex-1 overflow-auto p-2 space-y-2">{grouped[s].map((k) => <TaskCard key={k.id} k={k} projectName={projectNameOf(k.projectId)} lang={settings.language} onOpen={openCard} onToggle={toggle} />)}</div>
             </div>

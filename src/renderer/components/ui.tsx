@@ -156,16 +156,17 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
   useEffect(() => {
     const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose() }
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    const s = () => onClose()
+    // Don't close when scrolling INSIDE the menu itself (it has overflow-y-auto).
+    const s = (e: Event) => { if (ref.current?.contains(e.target as Node)) return; onClose() }
     window.addEventListener('mousedown', h); window.addEventListener('keydown', k); window.addEventListener('resize', s); window.addEventListener('scroll', s, true)
     // Focus first item for keyboard users.
     ref.current?.querySelector<HTMLButtonElement>('button')?.focus()
     return () => { window.removeEventListener('mousedown', h); window.removeEventListener('keydown', k); window.removeEventListener('resize', s); window.removeEventListener('scroll', s, true) }
   }, [onClose])
-  const menuH = items.reduce((a, it) => a + (it.sep ? 9 : 34), 16)
-  const left = Math.max(8, Math.min(x, window.innerWidth - 226)), top = Math.max(8, Math.min(y, window.innerHeight - menuH - 8))
+  const menuH = Math.min(window.innerHeight - 16, items.reduce((a, it) => a + (it.sep ? 9 : 38), 16))
+  const left = Math.max(8, Math.min(x, window.innerWidth - 250)), top = Math.max(8, Math.min(y, window.innerHeight - menuH - 8))
   return (
-    <div ref={ref} role="menu" className="fixed z-[95] card p-1.5 min-w-[210px] animate-fade-in" style={{ left, top }}>
+    <div ref={ref} role="menu" className="fixed z-[95] card p-1.5 min-w-[210px] max-w-[min(320px,calc(100vw-16px))] max-h-[calc(100vh-16px)] overflow-y-auto animate-fade-in" style={{ left, top }}>
       {items.map((it, i) => it.sep ? <div key={i} className="divider my-1" /> : (
         <button key={i} role="menuitem" className={cn('w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-start transition-colors hover:bg-surface-200', it.danger && 'text-rose-500 hover:bg-rose-500/10')} onClick={() => { it.onClick?.(); onClose() }}>
           {it.icon && <span className="text-surface-600">{it.icon}</span>}{it.label}

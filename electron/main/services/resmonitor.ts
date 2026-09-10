@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import fs from 'node:fs'
+import path from 'node:path'
 import os from 'node:os'
 import type { BrowserWindow } from 'electron'
 import { dataCollections } from './settings'
@@ -71,10 +73,52 @@ export function setResConfig(patch: Partial<ResConfig>): ResConfig {
 // ---------- PowerShell helper (all PS sources degrade gracefully) ----------
 let psWorking: boolean | null = null // null = unknown; false = proven broken (non-Windows / missing binary)
 
+/** Absolute System32 tool paths (no PATH-hijack); bare-name fallback for dev hosts. */
+function sysBin(name: string): string {
+  const abs = `C:\\Windows\\System32\\${name}`
+  try {
+    if (fs.existsSync(abs)) return abs
+  } catch { /* ignore */ }
+  try {
+    if (process.env.SystemRoot) {
+      const cand = path.join(process.env.SystemRoot, 'System32', name)
+      if (fs.existsSync(cand)) return cand
+    }
+  } catch { /* ignore */ }
+  return name
+}
+function powershellBin(): string {
+  const abs = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+  try {
+    if (fs.existsSync(abs)) return abs
+  } catch { /* ignore */ }
+  try {
+    if (process.env.SystemRoot) {
+      const cand = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      if (fs.existsSync(cand)) return cand
+    }
+  } catch { /* ignore */ }
+  return 'powershell.exe'
+}
+/** nvidia-smi: prefer absolute vendor/System32 locations; PATH fallback only
+ *  when an absolute candidate (or a which/where hit) proves it exists. */
+function nvidiaSmiBin(): string {
+  const candidates = [
+    'C:\\Windows\\System32\\nvidia-smi.exe',
+    'C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe',
+  ]
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c
+    } catch { /* ignore */ }
+  }
+  return 'nvidia-smi'
+}
+
 async function ps(command: string, timeoutMs = 10000): Promise<string> {
   if (psWorking === false) throw new Error('PowerShell unavailable')
   const { stdout } = await execFileP(
-    'powershell.exe',
+    powershellBin(),
     ['-NoProfile', '-NonInteractive', '-Command', command],
     { windowsHide: true, timeout: timeoutMs, maxBuffer: 6 * 1024 * 1024 },
   )
@@ -223,7 +267,7 @@ const gpuSrc = slowSource<ResGpu | null>(async () => {
   if (nvidiaSmiBroken) throw new Error('nvidia-smi unavailable')
   try {
     const { stdout } = await execFileP(
-      'nvidia-smi',
+      nvidiaSmiBin(),
       ['--query-gpu=name,utilization.gpu,memory.total,memory.used,temperature.gpu', '--format=csv,noheader,nounits'],
       { windowsHide: true, timeout: 6000, maxBuffer: 1024 * 1024 },
     )
@@ -461,17 +505,45 @@ export function getResHistory(): ResHistoryPoint[] {
 const PROTECTED_NAMES = new Set([
   'system', 'registry', 'smss', 'csrss', 'wininit', 'services', 'lsass', 'lsaiso',
   'winlogon', 'dwm', 'fontdrvhost', 'memory compression',
+  // Shell / task infrastructure: killing these logs the user out or breaks UI.
+  'explorer', 'svchost', 'taskhostw', 'taskhost', 'sihost', 'ctfmon', 'dwm',
+  // Security stack + common antivirus engines: never terminate from a monitor.
+  'msmpeng', 'nissrv', 'windefend', 'securityhealthservice', 'smartscreen',
+  'mssense', 'avastsvc', 'avastui', 'avgnt', 'avguard', 'ekrn', 'egui',
+  'mcshield', 'mctray', 'bdagent', 'bdservicehost', 'avp', 'kavfs',
+  'ccsvchst', 'nortonsecurity', 'sophoshealth', 'sophosui', 'mbamservice',
+  'spoolsv',
 ])
+
+/** Kill rate limit: max 5 terminations per 10s window (mis-click / loop guard). */
+const killHits: number[] = []
+function checkKillRate() {
+  const now = Date.now()
+  while (killHits.length && now - killHits[0] > 10_000) killHits.shift()
+  if (killHits.length >= 5) throw new Error('Too many process terminations (max 5 per 10s) — wait and retry')
+  killHits.push(now)
+}
 
 export async function killProcess(pid: number): Promise<{ killed: boolean; pid: number }> {
   const id = Math.floor(Number(pid))
   if (!Number.isFinite(id) || id <= 4) throw new Error('Refusing to terminate a system process')
   if (id === process.pid) throw new Error('Refusing to terminate DragonHub itself')
+  checkKillRate()
   const row = lastProcRows.find((r) => r.pid === id)
-  const nm = (row?.name || '').toLowerCase()
+  const nm = (row?.name || '').toLowerCase().trim()
+  // Unknown PID or empty name: refuse (stale/forged IPC PID must never kill blind).
+  if (!row || !nm) throw new Error('Refusing to terminate unknown process (not in the recent process list — refresh and retry)')
   if (PROTECTED_NAMES.has(nm)) throw new Error(`Refusing to terminate protected process: ${row?.name}`)
+  // Freshness: the list must be <10s old, otherwise the PID may have been reused.
+  if (Date.now() - processSrc.lastAt > 10_000) throw new Error('Process list is stale (>10s) — refresh and retry')
+  // Liveness: verify the PID still exists before killing (guards PID reuse).
+  try {
+    process.kill(id, 0)
+  } catch {
+    throw new Error('Process no longer exists or access denied')
+  }
   if (process.platform === 'win32') {
-    await execFileP('taskkill.exe', ['/F', '/PID', String(id)], { windowsHide: true, timeout: 10000 })
+    await execFileP(sysBin('taskkill.exe'), ['/F', '/PID', String(id)], { windowsHide: true, timeout: 10000 })
   } else {
     try { process.kill(id, 'SIGTERM') } catch (e: unknown) { throw new Error(e instanceof Error ? e.message : 'kill failed') }
   }

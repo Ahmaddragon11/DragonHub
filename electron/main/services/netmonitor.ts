@@ -1,9 +1,42 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import fs from 'node:fs'
+import path from 'node:path'
 import type { BrowserWindow } from 'electron'
 import { dataCollections } from './settings'
 
 const execFileP = promisify(execFile)
+
+/** Absolute System32 tool paths (no PATH-hijack); bare-name fallback only for
+ *  non-Windows dev machines where System32 does not exist. */
+function sysBin(name: string): string {
+  const abs = `C:\\Windows\\System32\\${name}`
+  try {
+    if (fs.existsSync(abs)) return abs
+  } catch { /* ignore */ }
+  try {
+    if (process.env.SystemRoot) {
+      const cand = path.join(process.env.SystemRoot, 'System32', name)
+      if (fs.existsSync(cand)) return cand
+    }
+  } catch { /* ignore */ }
+  return name
+}
+function powershellBin(): string {
+  const abs = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+  try {
+    if (fs.existsSync(abs)) return abs
+  } catch { /* ignore */ }
+  try {
+    if (process.env.SystemRoot) {
+      const cand = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      if (fs.existsSync(cand)) return cand
+    }
+  } catch { /* ignore */ }
+  return 'powershell.exe'
+}
+const NETSTAT_BIN = () => sysBin('netstat.exe')
+const NETSH_BIN = () => sysBin('netsh.exe')
 
 export type NetLive = {
   downSpeedBps: number
@@ -121,7 +154,7 @@ type Counters = { down: bigint; up: bigint }
  *  The `Bytes` label is locale-dependent, so lines without any letters are
  *  also accepted positionally (two trailing numbers). */
 async function readNetstat(): Promise<Counters> {
-  const { stdout } = await execFileP('netstat', ['-e'], { windowsHide: true, timeout: 5000 })
+  const { stdout } = await execFileP(NETSTAT_BIN(), ['-e'], { windowsHide: true, timeout: 5000 })
   let down = 0n
   let up = 0n
   let hits = 0
@@ -140,7 +173,7 @@ async function readNetstat(): Promise<Counters> {
 /** Fallback source: per-adapter statistics summed across all adapters. */
 async function readNetAdapterStats(): Promise<Counters> {
   const { stdout } = await execFileP(
-    'powershell.exe',
+    powershellBin(),
     ['-NoProfile', '-NonInteractive', '-Command', 'Get-NetAdapterStatistics | ForEach-Object { "$($_.ReceivedBytes) $($_.SentBytes)" }'],
     { windowsHide: true, timeout: 8000 },
   )
@@ -451,7 +484,7 @@ export async function getConnectionInfo(): Promise<NetConnectionInfo> {
   const empty: NetConnectionInfo = { ssid: null, signalPct: null, radioType: null, adapter: null, state: null }
   if (process.platform !== 'win32') { connInfoCache = { at: Date.now(), value: empty }; return empty }
   try {
-    const { stdout } = await execFileP('netsh', ['wlan', 'show', 'interfaces'], { windowsHide: true, timeout: 8000 })
+    const { stdout } = await execFileP(NETSH_BIN(), ['wlan', 'show', 'interfaces'], { windowsHide: true, timeout: 8000 })
     const ssid = pickLine(stdout, /^\s*SSID\s*:\s*(.+?)\s*$/)
     const sigRaw = pickLine(stdout, /^\s*Signal\s*:\s*(\d+)\s*%/)
     const radio = pickLine(stdout, /^\s*Radio type\s*:\s*(.+?)\s*$/)
@@ -478,8 +511,18 @@ export async function getConnectionInfo(): Promise<NetConnectionInfo> {
  * file and measures throughput. NEVER runs implicitly: the renderer calls it
  * only after an explicit user confirmation + data-usage warning, because it
  * genuinely consumes ~10MB of the user's quota.
+ *
+ * WARNING: the OS interface counters used by sample() cannot distinguish test
+ * traffic from real traffic. The payload bytes are therefore SUBTRACTED from
+ * todayDownMB right after the test (next tick re-adds them via the counter
+ * delta, netting to ~zero) so quota/cap accounting stays honest. Rate-limited
+ * to once per minute regardless of the IPC limiter.
  */
+let lastSpeedTestAt = 0
 export async function speedTest(bytes = 10_000_000): Promise<{ mbps: number; bytes: number; ms: number }> {
+  const now = Date.now()
+  if (now - lastSpeedTestAt < 60_000) throw new Error('Speed test is rate-limited (once per minute) — test traffic is excluded from quota accounting')
+  lastSpeedTestAt = now
   const want = Math.min(Math.max(Math.floor(Number(bytes) || 10_000_000), 1_000_000), 50_000_000)
   const targets = [
     `https://speed.cloudflare.com/__down?bytes=${want}`,
@@ -512,6 +555,13 @@ export async function speedTest(bytes = 10_000_000): Promise<{ mbps: number; byt
       const ms = Math.max(1, Date.now() - started)
       const mbps = (received * 8) / (ms / 1000) / 1_000_000
       if (!Number.isFinite(mbps) || mbps <= 0) throw new Error('Speed test produced no data')
+      // Isolate from quota: pre-subtract the payload so the next counter
+      // sample (which WILL include these bytes) nets back to ~zero instead of
+      // polluting todayDownMB / cap enforcement.
+      try {
+        state.todayDownMB = Math.max(0, state.todayDownMB - received / BYTES_PER_MB)
+        persist()
+      } catch { /* accounting only */ }
       return { mbps: Math.round(mbps * 100) / 100, bytes: received, ms }
     } catch (e) { lastErr = e }
   }
@@ -524,14 +574,14 @@ export async function getActiveConnections(): Promise<NetConnection[]> {
   const done = (v: NetConnection[]): NetConnection[] => { connsCache = { at: Date.now(), value: v }; return v }
   try {
     const [{ stdout }, pidNames] = await Promise.all([
-      execFileP('netstat', ['-ano', '-p', 'TCP'], { windowsHide: true, timeout: 8000 }).catch(() =>
-        execFileP('netstat', ['-ano'], { windowsHide: true, timeout: 8000 }),
+      execFileP(NETSTAT_BIN(), ['-ano', '-p', 'TCP'], { windowsHide: true, timeout: 8000 }).catch(() =>
+        execFileP(NETSTAT_BIN(), ['-ano'], { windowsHide: true, timeout: 8000 }),
       ),
       (async (): Promise<Map<number, string>> => {
         const map = new Map<number, string>()
         try {
           const { stdout: ps } = await execFileP(
-            'powershell.exe',
+            powershellBin(),
             ['-NoProfile', '-NonInteractive', '-Command', 'Get-Process | ForEach-Object { "$($_.Id)|$($_.ProcessName)" }'],
             { windowsHide: true, timeout: 8000, maxBuffer: 4 * 1024 * 1024 },
           )
