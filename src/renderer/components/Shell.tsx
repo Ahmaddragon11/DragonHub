@@ -236,13 +236,13 @@ export function CommandPalette() {
   useEffect(() => { if (!paletteOpen) setQ('') }, [paletteOpen])
   if (!paletteOpen) return null
   return (
-    <div className="fixed inset-0 z-[120] bg-black/40 backdrop-blur-sm flex items-start justify-center pt-[15vh]" onMouseDown={(e) => e.target === e.currentTarget && setPalette(false)}>
-      <motion.div initial={{ opacity: 0, y: -20, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="card w-full max-w-xl overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-300/60"><Command size={18} className="text-accent" />
+    <div className="fixed inset-0 z-[120] bg-black/40 backdrop-blur-sm flex items-start justify-center px-4 pb-4 pt-[10vh] sm:pt-[15vh] overflow-y-auto" onMouseDown={(e) => e.target === e.currentTarget && setPalette(false)}>
+      <motion.div initial={{ opacity: 0, y: -20, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="card w-full max-w-xl overflow-hidden flex flex-col max-h-[calc(100vh-8rem)]">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-300/60 shrink-0"><Command size={18} className="text-accent" />
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('palette.placeholder')} className="flex-1 bg-transparent outline-none text-sm"
             onKeyDown={(e) => { if (e.key === 'ArrowDown') setIdx((i) => Math.min(filtered.length - 1, i + 1)); if (e.key === 'ArrowUp') setIdx((i) => Math.max(0, i - 1)); if (e.key === 'Enter' && filtered[idx]) { filtered[idx].run(); setPalette(false) } if (e.key === 'Escape') setPalette(false) }} />
         </div>
-        <div className="max-h-80 overflow-auto p-2">
+        <div className="overflow-y-auto min-h-0 p-2 max-h-[50vh] sm:max-h-80">
           {filtered.length === 0 && <p className="text-sm text-surface-500 p-4 text-center">{t('palette.noMatch')}</p>}
           {filtered.map((c, i) => (
             <button key={c.id} onMouseEnter={() => setIdx(i)} onClick={() => { c.run(); setPalette(false) }} className={cn('w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-start transition-colors', i === idx ? 'bg-accent text-accent-fg' : 'hover:bg-surface-200')}>

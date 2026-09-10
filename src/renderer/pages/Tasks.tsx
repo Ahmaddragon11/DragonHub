@@ -25,7 +25,7 @@ const TaskCard = React.memo(function TaskCard({ k, projectName, lang, onOpen, on
   const subDone = k.subtasks.filter((s) => s.done).length
   const { t } = useTranslation()
   return (
-    <div draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', k.id)} onClick={() => onOpen(k)} title={t('tasks.dragHint')} className={cn('card p-3 cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-glow transition-all duration-400', k.status === 'done' && 'opacity-60')}>
+    <div draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', k.id)} onClick={() => onOpen(k)} onKeyDown={(e) => { if ((e.target as HTMLElement).closest?.('button, input, select, textarea, a')) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(k) } }} role="button" tabIndex={0} aria-label={k.title} title={t('tasks.dragHint')} className={cn('card p-3 cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-glow transition-all duration-400', k.status === 'done' && 'opacity-60')}>
       <div className="flex items-start gap-2">
         <button onClick={(e) => { e.stopPropagation(); onToggle(k.id) }} className="mt-0.5 shrink-0" aria-label={t('common.done')}>{k.status === 'done' ? <CheckCircle2 size={17} className="text-emerald-500" /> : <Circle size={17} className="text-surface-500 hover:text-accent" />}</button>
         <div className="flex-1 min-w-0"><p className={cn('text-sm font-medium', k.status === 'done' && 'line-through')}>{k.title}</p>
@@ -152,7 +152,7 @@ export default function Tasks() {
         <button className="btn-primary" onClick={() => setEdit(blank())}><Plus size={16} />{t('tasks.newTask')}</button>
       </PageHeader>
       <form className="flex gap-2 mb-3" onSubmit={(e) => { e.preventDefault(); if (quick.trim()) { saveTasks([...tasks, blank(quick.trim())]); setQuick(''); toast(t('toast.created')) } }}>
-        <input className="input" placeholder={`${t('tasks.newTask')}… (Enter)`} value={quick} onChange={(e) => setQuick(e.target.value)} /><button className="btn-soft shrink-0" type="submit" aria-label={t('common.add')}><Plus size={16} /></button>
+        <input className="input flex-1 min-w-0" placeholder={`${t('tasks.newTask')}… (Enter)`} value={quick} onChange={(e) => setQuick(e.target.value)} /><button className="btn-soft shrink-0" type="submit" aria-label={t('common.add')}><Plus size={16} /></button>
       </form>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-[180px]"><Search size={14} className="absolute start-3 top-2.5 text-surface-500" /><input className="input ps-9 py-1.5 text-xs" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -173,7 +173,12 @@ export default function Tasks() {
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-auto space-y-2">
-          {listSorted.length === 0 && <p className="text-xs text-surface-500 text-center p-6">{t('common.noResults')}</p>}
+          {listSorted.length === 0 && (
+            <div className="text-center p-6">
+              <p className="text-xs text-surface-500">{t('common.noResults')}</p>
+              <button className="btn-soft mt-2 text-xs" onClick={() => { setQ(''); setPrio('all'); setOverdueOnly(false); setShowDone(true) }}>{t('common.clear')}</button>
+            </div>
+          )}
           {listSorted.map((k) => <TaskCard key={k.id} k={k} projectName={projectNameOf(k.projectId)} lang={settings.language} onOpen={openCard} onToggle={toggle} />)}
         </div>
       )}
@@ -189,7 +194,7 @@ export default function Tasks() {
                 <Field label={t('common.priority')}>
                   <div className="flex items-center gap-2">
                     <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', PRIO_DOT[edit.priority])} />
-                    <select className="select" value={edit.priority} onChange={(e) => setEdit({ ...edit, priority: e.target.value as TaskPriority })}>{PRIOS.map((p) => <option key={p} value={p}>{t(`tasks.priority.${p}`)}</option>)}</select>
+                    <select className="select flex-1 min-w-0" value={edit.priority} onChange={(e) => setEdit({ ...edit, priority: e.target.value as TaskPriority })}>{PRIOS.map((p) => <option key={p} value={p}>{t(`tasks.priority.${p}`)}</option>)}</select>
                   </div>
                 </Field>
                 <Field label={t('common.dueDate')}><input type="datetime-local" className="input" value={edit.dueDate ? toLocalInput(edit.dueDate) : ''} onChange={(e) => setEdit({ ...edit, dueDate: e.target.value ? new Date(e.target.value).getTime() : undefined })} /></Field>
@@ -200,16 +205,16 @@ export default function Tasks() {
               <Field label={t('common.tags')}><TagInput tags={edit.tags} onChange={(tags) => setEdit({ ...edit, tags })} /></Field>
             </div>
             <div><span className="label">{t('tasks.subtasks')}</span>
-              <div className="space-y-1 mt-1.5">{edit.subtasks.map((s) => (
+              <div className="space-y-1 mt-1.5 max-h-44 overflow-y-auto">{edit.subtasks.map((s) => (
                 <div key={s.id} className="flex items-center gap-2 rounded-lg bg-surface-200/60 px-2 py-1.5 text-sm">
-                  <button onClick={() => setEdit({ ...edit, subtasks: edit.subtasks.map((x) => (x.id === s.id ? { ...x, done: !x.done } : x)) })}>{s.done ? <CheckCircle2 size={16} className="text-emerald-500" /> : <Circle size={16} className="text-surface-500" />}</button>
-                  <span className={cn('flex-1', s.done && 'line-through text-surface-500')}>{s.title}</span><button onClick={() => setEdit({ ...edit, subtasks: edit.subtasks.filter((x) => x.id !== s.id) })}><X size={13} /></button>
+                  <button className="shrink-0" title={t('common.done')} aria-label={t('common.done')} onClick={() => setEdit({ ...edit, subtasks: edit.subtasks.map((x) => (x.id === s.id ? { ...x, done: !x.done } : x)) })}>{s.done ? <CheckCircle2 size={16} className="text-emerald-500" /> : <Circle size={16} className="text-surface-500" />}</button>
+                  <span className={cn('flex-1 min-w-0 break-words', s.done && 'line-through text-surface-500')}>{s.title}</span><button className="shrink-0" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => setEdit({ ...edit, subtasks: edit.subtasks.filter((x) => x.id !== s.id) })}><X size={13} /></button>
                 </div>))}
                 <input className="input" placeholder={t('tasks.addSubtask')} value={sub} onChange={(e) => setSub(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && sub.trim()) { e.preventDefault(); setEdit({ ...edit, subtasks: [...edit.subtasks, { id: uid(), title: sub.trim(), done: false }] }); setSub('') } }} />
               </div>
               {edit.dueDate && edit.dueDate < Date.now() && edit.status !== 'done' && <p className="flex items-center gap-1 text-xs text-rose-500 mt-3"><AlertCircle size={13} />{t('tasks.overdue')}</p>}
             </div>
-            <div className="md:col-span-2 flex justify-between pt-2">
+            <div className="md:col-span-2 flex justify-between gap-2 flex-wrap pt-2">
               {tasks.some((x) => x.id === edit.id) ? <button className="btn-danger" onClick={() => remove(edit.id)}><Trash2 size={15} />{t('common.delete')}</button> : <span />}
               <div className="flex gap-2"><button className="btn-ghost" onClick={() => setEdit(null)}>{t('common.cancel')}</button><button className="btn-primary" onClick={save} disabled={!edit.title.trim()}>{t('common.save')}</button></div>
             </div>

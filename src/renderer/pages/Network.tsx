@@ -387,25 +387,25 @@ export default function Network() {
             <>
               {tab === 'overview' && (
                 <>
-                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                    <div className="card p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                    <div className="card p-4 min-w-0">
                       <div className="flex items-center gap-2 text-xs opacity-60 mb-1"><ArrowDown size={14} />{t('net.down')}</div>
-                      <div className="text-2xl font-bold font-mono tabular-nums" dir="ltr">{formatSpeed(live?.downSpeedBps ?? 0)}</div>
+                      <div className="text-2xl font-bold font-mono tabular-nums break-words" dir="ltr">{formatSpeed(live?.downSpeedBps ?? 0)}</div>
                       <div className="text-[11px] opacity-50 mt-1">{t('net.live')}</div>
                     </div>
-                    <div className="card p-4">
+                    <div className="card p-4 min-w-0">
                       <div className="flex items-center gap-2 text-xs opacity-60 mb-1"><ArrowUp size={14} />{t('net.up')}</div>
-                      <div className="text-2xl font-bold font-mono tabular-nums" dir="ltr">{formatSpeed(live?.upSpeedBps ?? 0)}</div>
+                      <div className="text-2xl font-bold font-mono tabular-nums break-words" dir="ltr">{formatSpeed(live?.upSpeedBps ?? 0)}</div>
                       <div className="text-[11px] opacity-50 mt-1">{t('net.live')}</div>
                     </div>
-                    <div className="card p-4">
+                    <div className="card p-4 min-w-0">
                       <div className="flex items-center gap-2 text-xs opacity-60 mb-1"><Download size={14} />{t('net.today')} • {t('net.down')}</div>
-                      <div className="text-2xl font-bold font-mono tabular-nums" dir="ltr">{formatMB(live?.todayDownMB ?? 0)}</div>
+                      <div className="text-2xl font-bold font-mono tabular-nums break-words" dir="ltr">{formatMB(live?.todayDownMB ?? 0)}</div>
                       <div className="text-[11px] opacity-50 mt-1">{t('net.today')}</div>
                     </div>
-                    <div className="card p-4">
+                    <div className="card p-4 min-w-0">
                       <div className="flex items-center gap-2 text-xs opacity-60 mb-1"><Upload size={14} />{t('net.today')} • {t('net.up')}</div>
-                      <div className="text-2xl font-bold font-mono tabular-nums" dir="ltr">{formatMB(live?.todayUpMB ?? 0)}</div>
+                      <div className="text-2xl font-bold font-mono tabular-nums break-words" dir="ltr">{formatMB(live?.todayUpMB ?? 0)}</div>
                       <div className="text-[11px] opacity-50 mt-1">{t('net.today')}</div>
                     </div>
                   </div>
@@ -414,11 +414,11 @@ export default function Network() {
                     <section className="card p-5">
                       <h3 className="font-semibold mb-3 flex items-center gap-2 text-accent text-sm"><Signal size={15} />{t('net.connInfo')}</h3>
                       {connInfo && (connInfo.ssid || connInfo.adapter || connInfo.state) ? (
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div><div className="text-[11px] opacity-60">{t('net.ssid')}</div><div className="font-semibold" dir="ltr">{connInfo.ssid ?? '—'}</div></div>
-                          <div><div className="text-[11px] opacity-60">{t('net.signal')}</div><div className="font-mono" dir="ltr">{connInfo.signalPct !== null ? `${connInfo.signalPct}%` : '—'}</div></div>
-                          <div><div className="text-[11px] opacity-60">{t('net.radio')}</div><div dir="ltr">{connInfo.radioType ?? '—'}</div></div>
-                          <div><div className="text-[11px] opacity-60">{t('net.connState')}</div><div>{connInfo.state ?? '—'}</div></div>
+                        <div className="grid grid-cols-2 gap-2 text-sm min-w-0">
+                          <div className="min-w-0"><div className="text-[11px] opacity-60">{t('net.ssid')}</div><div className="font-semibold break-words min-w-0" dir="ltr">{connInfo.ssid ?? '—'}</div></div>
+                          <div className="min-w-0"><div className="text-[11px] opacity-60">{t('net.signal')}</div><div className="font-mono" dir="ltr">{connInfo.signalPct !== null ? `${connInfo.signalPct}%` : '—'}</div></div>
+                          <div className="min-w-0"><div className="text-[11px] opacity-60">{t('net.radio')}</div><div className="break-words min-w-0" dir="ltr">{connInfo.radioType ?? '—'}</div></div>
+                          <div className="min-w-0"><div className="text-[11px] opacity-60">{t('net.connState')}</div><div className="break-words min-w-0">{connInfo.state ?? '—'}</div></div>
                         </div>
                       ) : <div className="text-xs opacity-50">{t('net.unavailable')}</div>}
                     </section>
@@ -431,7 +431,7 @@ export default function Network() {
                             ? <p className="text-sm">{t('net.depletionEta', { h: depletion.etaHours.toFixed(1) })}</p>
                             : <p className="text-sm opacity-70">{t('net.depletionOk')}</p>
                       ) : <p className="text-sm opacity-50">{t('net.noData')}</p>}
-                      <div className="flex items-center gap-3 mt-3"><Progress value={pct} /><span className="text-xs font-mono w-12 text-end" dir="ltr">{pct.toFixed(0)}%</span></div>
+                      <div className="flex items-center gap-3 mt-3 min-w-0"><Progress value={pct} /><span className="text-xs font-mono w-12 shrink-0 text-end" dir="ltr">{pct.toFixed(0)}%</span></div>
                       <div className="text-xs opacity-60 mt-2">{t('net.used')}: <span className="font-mono" dir="ltr">{formatMB(todayTotal)}</span> / {target !== null ? formatMB(target) : '—'}</div>
                     </section>
                   </div>
@@ -443,11 +443,11 @@ export default function Network() {
                   <h3 className="font-semibold mb-4 flex items-center gap-2 text-accent">{t('net.plan')}</h3>
                   {plan && (
                     <div className="rounded-xl bg-surface-200/60 p-4 mb-4 space-y-3">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="font-semibold">{plan.name}</div>
-                        <span className="badge bg-accent/15 text-accent">{t(`net.${plan.cycle}`)}</span>
+                      <div className="flex items-center justify-between gap-2 flex-wrap min-w-0">
+                        <div className="font-semibold truncate min-w-0 flex-1">{plan.name}</div>
+                        <span className="badge bg-accent/15 text-accent shrink-0">{t(`net.${plan.cycle}`)}</span>
                       </div>
-                      <div className="flex items-center gap-3"><Progress value={quotaPct} /><span className="text-xs font-mono w-12 text-end" dir="ltr">{quotaPct.toFixed(0)}%</span></div>
+                      <div className="flex items-center gap-3 min-w-0"><Progress value={quotaPct} /><span className="text-xs font-mono w-12 shrink-0 text-end" dir="ltr">{quotaPct.toFixed(0)}%</span></div>
                       <div className="flex gap-x-6 gap-y-1 text-xs flex-wrap">
                         <span>{t('net.used')}: <span className="font-mono" dir="ltr">{formatMB(usedMB)} / {formatMB(plan.quotaMB)}</span></span>
                         <span>{t('net.allowance')}: <span className="font-mono" dir="ltr">{formatMB(allowanceNum ?? 0)}</span> {t('net.perDay')}</span>
@@ -485,22 +485,22 @@ export default function Network() {
                       <div className="flex items-end justify-between gap-3 flex-wrap">
                         <div>
                           <div className="text-[11px] opacity-60">{t('net.dailyCap')}</div>
-                          <div className="text-2xl font-bold font-mono tabular-nums" dir="ltr">{target != null ? formatMB(target) : '—'}</div>
+                          <div className="text-2xl font-bold font-mono tabular-nums break-words" dir="ltr">{target != null ? formatMB(target) : '—'}</div>
                         </div>
                         <div className="text-end text-xs space-y-1">
                           <div>{t('net.used')}: <span className="font-mono" dir="ltr">{formatMB(todayTotal)}</span></div>
                           <div>{t('net.remaining')}: <span className="font-mono" dir="ltr">{remaining != null ? formatMB(remaining) : '—'}</span></div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3"><Progress value={pct} /><span className="text-xs font-mono w-12 text-end" dir="ltr">{pct.toFixed(0)}%</span></div>
+                      <div className="flex items-center gap-3 min-w-0"><Progress value={pct} /><span className="text-xs font-mono w-12 shrink-0 text-end" dir="ltr">{pct.toFixed(0)}%</span></div>
                       <Toggle on={limits.blockOnCap} onChange={(v) => void patchLimits({ blockOnCap: v })} label={t('net.blockOnCap')} />
                       <Field label={t('net.dailyCap')}>
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex-1 min-w-[180px]">
                             <Slider value={capSliderGB} min={0} max={100} step={1} suffix=" GB" onChange={(v) => patchCapSliderDebounced(v)} />
                           </div>
                           <input
-                            type="number" min={0} step={0.5} dir="ltr" className="input w-28 font-mono"
+                            type="number" min={0} step={0.5} dir="ltr" className="input w-28 shrink-0 font-mono"
                             value={capInput} onChange={(e) => setCapGB(e.target.value)} onBlur={commitCap}
                             onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                           />
@@ -533,8 +533,8 @@ export default function Network() {
                         <span>{t('net.bestDay')}: <span className="font-mono" dir="ltr">{formatMB(best)}</span></span>
                         <span>{t('net.worstDay')}: <span className="font-mono" dir="ltr">{formatMB(worst === Infinity ? 0 : worst)}</span></span>
                       </div>
-                      <div className="overflow-x-auto mt-4">
-                        <table className="w-full text-sm">
+                      <div className="overflow-x-auto max-w-full mt-4">
+                        <table className="w-full min-w-[560px] text-sm">
                           <thead>
                             <tr className="text-xs opacity-60">
                               <th className="text-start font-medium py-2 pe-3">{t('net.date')}</th>
@@ -577,9 +577,9 @@ export default function Network() {
                     {conns.length === 0 ? (
                       <div className="text-xs opacity-50">{t('net.noConns')}</div>
                     ) : (
-                      <div className="overflow-x-auto max-h-72 overflow-y-auto">
-                        <table className="w-full text-xs">
-                          <thead className="sticky top-0 bg-surface-100">
+                      <div className="overflow-x-auto max-w-full max-h-72 overflow-y-auto">
+                        <table className="w-full min-w-[560px] text-xs">
+                          <thead className="sticky top-0 z-10 bg-surface-100">
                             <tr className="opacity-60">
                               <th className="text-start font-medium py-1.5 pe-3">{t('net.process')}</th>
                               <th className="text-start font-medium py-1.5 pe-3">{t('net.remote')}</th>

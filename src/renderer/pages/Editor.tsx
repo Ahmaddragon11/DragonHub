@@ -283,7 +283,7 @@ export default function Editor() {
         <button className="btn-primary" onClick={() => save()} disabled={!tab}><Save size={15} />{t('editor.save')}</button>
       </PageHeader>
       <div className="card flex-1 min-h-0 flex flex-col overflow-hidden">
-        <div className="flex items-center border-b border-surface-300/60 overflow-x-auto shrink-0">
+        <div className="flex items-center border-b border-surface-300/60 overflow-x-auto overflow-y-hidden shrink-0">
           {tabs.map((x) => (
             <div key={x.id} onClick={() => setCur(x.id)} onAuxClick={(e) => e.button === 1 && close(x.id)} className={cn('group flex items-center gap-2 px-3 py-2 text-xs border-e border-surface-300/40 cursor-pointer shrink-0 transition-colors', cur === x.id ? 'bg-surface-200 text-surface-900 border-b-2 border-b-accent' : 'text-surface-600 hover:bg-surface-200/50')}>
               <span className={cn(x.content !== x.saved && 'italic')}>{x.name}</span>{x.content !== x.saved && <span className="h-2 w-2 rounded-full bg-accent" />}{x.conflict && <span className="text-[10px] text-amber-500">⚠</span>}
@@ -291,7 +291,7 @@ export default function Editor() {
             </div>
           ))}
         </div>
-        {!tab ? <Empty icon={<Code2 size={40} />} text={t('editor.noFile')} action={<div className="flex gap-2"><button className="btn-primary" onClick={newTab}><Plus size={15} />{t('editor.newFile')}</button><button className="btn-soft" onClick={openDialog}><FolderOpen size={15} />{t('editor.openFile')}</button></div>} /> : (
+        {!tab ? <Empty icon={<Code2 size={40} />} text={t('editor.noFile')} action={<div className="flex gap-2 flex-wrap justify-center"><button className="btn-primary" onClick={newTab}><Plus size={15} />{t('editor.newFile')}</button><button className="btn-soft" onClick={openDialog}><FolderOpen size={15} />{t('editor.openFile')}</button></div>} /> : (
           <>
             <div className="flex-1 min-h-0" dir="ltr">
               <MonacoEditor key={tab.id} height="100%" language={tab.language} value={tab.content} theme={isDark ? 'vs-dark' : 'light'}
@@ -299,9 +299,9 @@ export default function Editor() {
                 onMount={(ed) => { edRef.current = ed; ed.onDidChangeCursorPosition((e) => setPos({ l: e.position.lineNumber, c: e.position.column })) }}
                 options={{ fontSize: settings.editorFontSize, wordWrap: settings.editorWordWrap ? 'on' : 'off', minimap: { enabled: settings.editorMinimap }, tabSize: settings.editorTabSize, fontFamily: 'JetBrains Mono, Cascadia Code, Consolas, monospace', fontLigatures: false, smoothScrolling: false, cursorBlinking: 'blink', cursorSmoothCaretAnimation: 'off', renderWhitespace: 'selection', bracketPairColorization: { enabled: true }, automaticLayout: true, padding: { top: 12 }, scrollBeyondLastLine: false, formatOnPaste: true }} />
             </div>
-            <footer className="flex items-center gap-3 px-3 py-1 border-t border-surface-300/60 text-[11px] text-surface-600 shrink-0">
-              <span>{t('editor.line')} {pos.l}, {t('editor.col')} {pos.c}</span><span>{t('notes.chars', { count: tab.content.length })}</span>
-              <span className="ms-auto flex items-center gap-2">
+            <footer className="flex items-center gap-3 px-3 py-1 border-t border-surface-300/60 text-[11px] text-surface-600 shrink-0 overflow-x-auto whitespace-nowrap">
+              <span className="shrink-0">{t('editor.line')} {pos.l}, {t('editor.col')} {pos.c}</span><span className="shrink-0">{t('notes.chars', { count: tab.content.length })}</span>
+              <span className="ms-auto flex items-center gap-2 shrink-0">
                 <button className="btn-icon p-1" title={t('editor.find')} onClick={() => edRef.current?.getAction('actions.find')?.run()}><Search size={13} /></button>
                 <button className={cn('btn-icon p-1', settings.editorWordWrap && 'text-accent')} title={t('editor.wordWrap')} onClick={() => setSettings({ editorWordWrap: !settings.editorWordWrap })}><WrapText size={13} /></button>
                 <button className={cn('btn-icon p-1', settings.editorMinimap && 'text-accent')} title={t('editor.minimap')} onClick={() => setSettings({ editorMinimap: !settings.editorMinimap })}><MapIcon size={13} /></button>

@@ -73,10 +73,10 @@ export default function Compress() {
       <PageHeader icon={<Archive size={22} />} title={t('compress.title')} subtitle="7-Zip engine • ZIP / 7z / TAR / GZIP / BZIP2 / XZ • AES-256">
         <div className="flex rounded-lg bg-surface-200 p-0.5">{(['compress', 'extract', 'browse'] as const).map((k) => <button key={k} onClick={() => setTab(k)} className={cn('px-3 py-1.5 rounded-md text-xs transition-colors', tab === k && 'bg-accent text-accent-fg')}>{t(`compress.${k}Tab`)}</button>)}</div>
       </PageHeader>
-      {job && !job.done && <div className="card p-4 mb-4 animate-slide-up"><div className="flex items-center gap-3 mb-2 text-sm"><Loader2 size={16} className="animate-spin text-accent" /><span className="flex-1 truncate">{job.message || t('common.processing')}</span><span className="font-mono text-xs">{Math.round(job.percent)}%</span></div><Progress value={job.percent} /></div>}
+      {job && !job.done && <div className="card p-4 mb-4 shrink-0 animate-slide-up"><div className="flex items-center gap-3 mb-2 text-sm"><Loader2 size={16} className="animate-spin text-accent" /><span className="flex-1 truncate">{job.message || t('common.processing')}</span><span className="font-mono text-xs">{Math.round(job.percent)}%</span></div><Progress value={job.percent} /></div>}
 
       {tab === 'compress' && (
-        <div className="grid lg:grid-cols-[1fr_360px] gap-4 flex-1 min-h-0">
+          <div className="grid lg:grid-cols-[1fr_360px] gap-4 flex-1 min-h-0 overflow-y-auto lg:overflow-visible">
           <section className="card flex flex-col min-h-0 overflow-hidden">
             <div className="flex items-center gap-2 p-3 border-b border-surface-300/60"><button className="btn-soft" onClick={addFiles}><FilePlus size={15} />{t('compress.addFiles')}</button><button className="btn-soft" onClick={addFolder}><FolderPlus size={15} />{t('compress.addFolder')}</button><span className="ms-auto text-xs text-surface-500">{t('common.items', { count: inputs.length })}</span><button className="btn-ghost text-xs" onClick={() => setInputs([])} disabled={!inputs.length}>{t('compress.clear')}</button></div>
             <div className="flex-1 overflow-auto p-2 space-y-1 stagger" onDragOver={(e) => e.preventDefault()}>
@@ -84,7 +84,7 @@ export default function Compress() {
               {inputs.map((p) => <div key={p} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-surface-200/50 text-sm"><Package size={15} className="text-accent shrink-0" /><span className="flex-1 truncate font-mono text-xs" dir="ltr">{p}</span><button onClick={() => setInputs((s) => s.filter((x) => x !== p))} className="hover:text-rose-500"><X size={14} /></button></div>)}
             </div>
           </section>
-          <aside className="card p-4 space-y-4 overflow-auto">
+          <aside className="card p-4 space-y-4 overflow-auto min-h-0">
             <Field label={t('compress.format')}><div className="grid grid-cols-3 gap-1.5">{FORMATS.map((f) => <button key={f.f} onClick={() => setFormat(f.f)} className={cn('rounded-lg py-2 text-xs font-mono transition-all', format === f.f ? 'bg-accent text-accent-fg shadow-glow' : 'bg-surface-200 hover:bg-surface-300')}>.{f.ext}</button>)}</div></Field>
             <Field label={`${t('compress.level')}: ${t(`compress.levels.${level}`)}`}><input type="range" min={0} max={5} value={[0, 1, 3, 5, 7, 9].indexOf(level)} onChange={(e) => setLevel([0, 1, 3, 5, 7, 9][Number(e.target.value)] as any)} className="w-full accent-[rgb(var(--accent))]" /></Field>
             {fmtInfo.enc && <Field label={t('compress.password')}><div className="relative"><Lock size={14} className="absolute start-3 top-3 text-surface-500" /><input type="password" className="input ps-9" value={pw} onChange={(e) => setPw(e.target.value)} /></div></Field>}
@@ -92,17 +92,17 @@ export default function Compress() {
             <Field label={t('compress.split')}><input type="number" min={0} className="input" value={split || ''} placeholder="0" onChange={(e) => setSplit(Number(e.target.value))} /></Field>
             <Toggle on={delAfter} onChange={setDelAfter} label={t('compress.deleteAfter')} />
             <div className="divider" />
-            <Field label={t('compress.outputName')}><div className="flex items-center gap-1"><input className="input" value={outName} onChange={(e) => setOutName(e.target.value)} /><span className="text-xs font-mono text-surface-500 shrink-0">.{fmtInfo.ext}</span></div></Field>
-            <Field label={t('compress.destination')}><div className="flex gap-1"><input className="input font-mono text-xs" dir="ltr" value={outDir} onChange={(e) => setOutDir(e.target.value)} /><button className="btn-soft shrink-0" onClick={async () => { const d = await invoke<string | null>('dialog:openFolder'); if (d) setOutDir(d) }}><FolderOpen size={15} /></button></div></Field>
+            <Field label={t('compress.outputName')}><div className="flex items-center gap-1"><input className="input flex-1 min-w-0" value={outName} onChange={(e) => setOutName(e.target.value)} /><span className="text-xs font-mono text-surface-500 shrink-0">.{fmtInfo.ext}</span></div></Field>
+            <Field label={t('compress.destination')}><div className="flex gap-1"><input className="input flex-1 min-w-0 font-mono text-xs" dir="ltr" value={outDir} onChange={(e) => setOutDir(e.target.value)} /><button className="btn-soft shrink-0" onClick={async () => { const d = await invoke<string | null>('dialog:openFolder'); if (d) setOutDir(d) }}><FolderOpen size={15} /></button></div></Field>
             <button className="btn-primary w-full py-3" onClick={doCompress} disabled={busy || !inputs.length || !outDir || !outName}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}{t('compress.compressBtn')}</button>
           </aside>
         </div>
       )}
 
       {tab === 'extract' && (
-        <div className="card p-6 max-w-2xl mx-auto w-full space-y-4">
-          <Field label={t('compress.archiveFile')}><div className="flex gap-2"><input className="input font-mono text-xs" dir="ltr" value={archive} onChange={(e) => setArchive(e.target.value)} /><button className="btn-soft shrink-0" onClick={pickArchive}><FileArchive size={15} />{t('common.browse')}</button></div></Field>
-          <Field label={t('compress.destination')}><div className="flex gap-2"><input className="input font-mono text-xs" dir="ltr" value={dest} onChange={(e) => setDest(e.target.value)} /><button className="btn-soft shrink-0" onClick={async () => { const d = await invoke<string | null>('dialog:openFolder'); if (d) setDest(d) }}><FolderOpen size={15} /></button></div></Field>
+        <div className="card p-6 max-w-2xl mx-auto w-full space-y-4 flex-1 min-h-0 overflow-y-auto">
+          <Field label={t('compress.archiveFile')}><div className="flex gap-2"><input className="input flex-1 min-w-0 font-mono text-xs" dir="ltr" value={archive} onChange={(e) => setArchive(e.target.value)} /><button className="btn-soft shrink-0" onClick={pickArchive}><FileArchive size={15} />{t('common.browse')}</button></div></Field>
+          <Field label={t('compress.destination')}><div className="flex gap-2"><input className="input flex-1 min-w-0 font-mono text-xs" dir="ltr" value={dest} onChange={(e) => setDest(e.target.value)} /><button className="btn-soft shrink-0" onClick={async () => { const d = await invoke<string | null>('dialog:openFolder'); if (d) setDest(d) }}><FolderOpen size={15} /></button></div></Field>
           <Field label={`${t('compress.password')} (${t('common.optional')})`}><input type="password" className="input" value={xpw} onChange={(e) => setXpw(e.target.value)} /></Field>
           <div className="flex gap-2 flex-wrap">
             <button className="btn-primary flex-1 py-3" onClick={doExtract} disabled={busy || !archive || !dest}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}{t('compress.extractBtn')}</button>
@@ -114,10 +114,10 @@ export default function Compress() {
 
       {tab === 'browse' && (
         <div className="card flex-1 min-h-0 flex flex-col overflow-hidden">
-          <div className="flex items-center gap-3 p-3 border-b border-surface-300/60 text-xs"><button className="btn-soft" onClick={pickArchive}><FileArchive size={15} />{t('common.open')}</button><span className="font-mono truncate flex-1" dir="ltr">{archive}</span>{entries && <span className="text-surface-500">{t('compress.entries', { count: entries.length })} • {formatBytes(totalSize)} → {formatBytes(totalPacked)} ({t('compress.ratio')} {totalSize ? Math.round((totalPacked / totalSize) * 100) : 0}%)</span>}{archive && !entries && <button className="btn-primary" onClick={doList} disabled={busy}>{t('compress.browseTab')}</button>}</div>
+          <div className="flex items-center gap-3 p-3 border-b border-surface-300/60 text-xs flex-wrap"><button className="btn-soft shrink-0" onClick={pickArchive}><FileArchive size={15} />{t('common.open')}</button><span className="font-mono truncate flex-1 min-w-0" dir="ltr">{archive}</span>{entries && <span className="text-surface-500">{t('compress.entries', { count: entries.length })} • {formatBytes(totalSize)} → {formatBytes(totalPacked)} ({t('compress.ratio')} {totalSize ? Math.round((totalPacked / totalSize) * 100) : 0}%)</span>}{archive && !entries && <button className="btn-primary shrink-0" onClick={doList} disabled={busy}>{t('compress.browseTab')}</button>}</div>
           <div className="flex-1 overflow-auto">
             {entries ? <table className="w-full text-sm"><thead className="sticky top-0 bg-surface-100/95 text-[11px] uppercase text-surface-600"><tr><th className="text-start px-3 py-2">{t('common.name')}</th><th className="text-end px-3 py-2 w-28">{t('common.size')}</th><th className="text-end px-3 py-2 w-28">Packed</th><th className="text-start px-3 py-2 w-44">{t('common.modified')}</th></tr></thead>
-              <tbody>{entries.map((e, i) => <tr key={i} className="hover:bg-surface-200/60"><td className="px-3 py-1.5 flex items-center gap-2 font-mono text-xs" dir="ltr">{e.isDirectory ? <Folder size={14} className="text-amber-400" /> : <File size={14} className="text-surface-500" />}{e.name}</td><td className="px-3 py-1.5 text-end text-xs font-mono">{e.isDirectory ? '—' : formatBytes(e.size)}</td><td className="px-3 py-1.5 text-end text-xs font-mono">{e.isDirectory ? '—' : formatBytes(e.packed)}</td><td className="px-3 py-1.5 text-xs text-surface-500">{e.modified?.slice(0, 19).replace('T', ' ')}</td></tr>)}</tbody></table>
+              <tbody>{entries.map((e, i) => <tr key={i} className="hover:bg-surface-200/60"><td className="px-3 py-1.5 font-mono text-xs" dir="ltr"><span className="flex items-center gap-2">{e.isDirectory ? <Folder size={14} className="text-amber-400 shrink-0" /> : <File size={14} className="text-surface-500 shrink-0" />}<span className="min-w-0 break-all">{e.name}</span></span></td><td className="px-3 py-1.5 text-end text-xs font-mono whitespace-nowrap">{e.isDirectory ? '—' : formatBytes(e.size)}</td><td className="px-3 py-1.5 text-end text-xs font-mono whitespace-nowrap">{e.isDirectory ? '—' : formatBytes(e.packed)}</td><td className="px-3 py-1.5 text-xs text-surface-500 whitespace-nowrap">{e.modified?.slice(0, 19).replace('T', ' ')}</td></tr>)}</tbody></table>
               : <p className="text-center text-sm text-surface-500 p-10">{t('compress.archiveFile')}</p>}
           </div>
         </div>

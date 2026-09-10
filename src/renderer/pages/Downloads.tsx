@@ -26,7 +26,7 @@ const DownloadRow = React.memo(function DownloadRow({ d, onAct, onRemove }: {
   const pct = hasTotal ? Math.min(100, Math.max(0, (d.received / d.size) * 100)) : 0
   return (
     <div className="card p-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <span className="p-2 rounded-xl bg-surface-200 text-accent">{d.kind === 'media' ? <Youtube size={18} /> : <Download size={18} />}</span>
         <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate" title={d.savePath}>{d.filename || d.url}</p><p className="text-[11px] text-surface-500 truncate" dir="ltr">{d.url}</p></div>
         <div className="text-end text-xs shrink-0">
@@ -54,7 +54,7 @@ const DownloadRow = React.memo(function DownloadRow({ d, onAct, onRemove }: {
           )}
         </div>
       )}
-      {d.error && <p className="text-xs text-rose-500 mt-2">{d.error}</p>}
+      {d.error && <p className="text-xs text-rose-500 mt-2 break-words">{d.error}</p>}
     </div>
   )
 })
@@ -124,10 +124,10 @@ export default function Downloads() {
         <button className="btn-ghost" onClick={() => act('dl:clearFinished')}><Eraser size={15} />{t('downloads.clearFinished')}</button>
       </PageHeader>
       <section className="card p-4 mb-4">
-        <div className="flex gap-2">
-          <div className="relative flex-1"><Link size={15} className="absolute start-3 top-3 text-surface-500" /><input ref={urlRef} dir="ltr" className="input ps-9 py-2.5" placeholder={t('downloads.addUrl')} value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
-          {kind === 'media' && <button className="btn-soft" onClick={fetchInfo} disabled={!valid || busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Youtube size={15} />}{t('downloads.fetchInfo')}</button>}
-          <button className="btn-primary px-6" onClick={add} disabled={!valid || busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}{t('downloads.add')}</button>
+        <div className="flex gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-0"><Link size={15} className="absolute start-3 top-3 text-surface-500" /><input ref={urlRef} dir="ltr" className="input ps-9 py-2.5" placeholder={t('downloads.addUrl')} value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
+          {kind === 'media' && <button className="btn-soft shrink-0" onClick={fetchInfo} disabled={!valid || busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Youtube size={15} />}{t('downloads.fetchInfo')}</button>}
+          <button className="btn-primary px-6 shrink-0" onClick={add} disabled={!valid || busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}{t('downloads.add')}</button>
         </div>
         <div className="flex items-center gap-4 mt-3 flex-wrap text-sm">
           <div className="flex rounded-lg bg-surface-200 p-0.5"><button onClick={() => setKind('direct')} className={cn('px-3 py-1 rounded-md text-xs transition-colors', kind === 'direct' && 'bg-accent text-accent-fg')}>{t('downloads.direct')}</button><button onClick={() => setKind('media')} className={cn('px-3 py-1 rounded-md text-xs transition-colors', kind === 'media' && 'bg-accent text-accent-fg')}>{t('downloads.media')}</button></div>
@@ -138,14 +138,14 @@ export default function Downloads() {
         </div>
         {info && (
           <div className="mt-3 flex gap-3 rounded-xl bg-surface-200/60 p-3 animate-slide-up">
-            {safeThumb(info.thumbnail) && <img src={safeThumb(info.thumbnail) as string} className="h-20 w-36 object-cover rounded-lg" referrerPolicy="no-referrer" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} alt="" />}
+            {safeThumb(info.thumbnail) && <img src={safeThumb(info.thumbnail) as string} className="h-20 w-36 object-cover rounded-lg shrink-0" referrerPolicy="no-referrer" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} alt="" />}
             <div className="flex-1 min-w-0"><p className="font-medium text-sm truncate">{info.title}</p><p className="text-xs text-surface-500">{info.uploader} • {formatDuration(info.duration)}</p>
-              {!audioOnly && <select className="select mt-2 text-xs py-1" value={fmt} onChange={(e) => setFmt(e.target.value)}><option value="">{t('downloads.bestQuality')}</option>{[...info.formats].reverse().filter((f: any) => f.vcodec !== 'none').map((f: any) => <option key={f.id} value={f.acodec === 'none' ? `${f.id}+ba` : f.id}>{f.res} {f.note || ''} .{f.ext} {f.filesize ? formatBytes(f.filesize) : ''}</option>)}</select>}
+              {!audioOnly && <select className="select mt-2 text-xs py-1 max-w-full" value={fmt} onChange={(e) => setFmt(e.target.value)}><option value="">{t('downloads.bestQuality')}</option>{[...info.formats].reverse().filter((f: any) => f.vcodec !== 'none').map((f: any) => <option key={f.id} value={f.acodec === 'none' ? `${f.id}+ba` : f.id}>{f.res} {f.note || ''} .{f.ext} {f.filesize ? formatBytes(f.filesize) : ''}</option>)}</select>}
             </div>
           </div>
         )}
       </section>
-      <div className="flex gap-1 mb-3 text-xs">{(['all', 'active', 'completed', 'failed'] as const).map((f) => <button key={f} onClick={() => setFilter(f)} className={cn('px-3 py-1.5 rounded-lg transition-colors', filter === f ? 'bg-accent text-accent-fg' : 'bg-surface-200 hover:bg-surface-300')}>{t(f === 'all' ? 'common.all' : `downloads.${f}`)} ({counts[f]})</button>)}</div>
+      <div className="flex gap-1 mb-3 text-xs flex-wrap">{(['all', 'active', 'completed', 'failed'] as const).map((f) => <button key={f} onClick={() => setFilter(f)} className={cn('px-3 py-1.5 rounded-lg transition-colors', filter === f ? 'bg-accent text-accent-fg' : 'bg-surface-200 hover:bg-surface-300')}>{t(f === 'all' ? 'common.all' : `downloads.${f}`)} ({counts[f]})</button>)}</div>
       <div className="flex-1 min-h-0 overflow-auto space-y-2">
         {list.length === 0 && <Empty icon={<Download size={40} />} text={t('downloads.noDownloads')} action={<button className="btn-primary" onClick={() => urlRef.current?.focus()}><Download size={16} />{t('downloads.add')}</button>} />}
         {list.map((d) => <DownloadRow key={d.id} d={d} onAct={act} onRemove={removeItem} />)}

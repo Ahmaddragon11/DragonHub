@@ -226,15 +226,15 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
 
   return (
     <div tabIndex={0} onKeyDown={onKey} onMouseDown={onActivate} className={cn('card flex flex-col min-h-0 overflow-hidden outline-none transition-shadow duration-300', active && 'ring-1 ring-accent/50')}>
-      <div className="flex items-center gap-1 p-2 border-b border-surface-300/60">
+      <div className="flex items-center gap-1 p-2 border-b border-surface-300/60 flex-wrap">
         <button className="btn-icon" title={t('common.back')} aria-label={t('common.back')} onClick={back} disabled={hi === 0}><ArrowLeft size={16} className="rtl:rotate-180" /></button>
         <button className="btn-icon" title={t('common.forward')} aria-label={t('common.forward')} onClick={fwd} disabled={hi >= hist.length - 1}><ArrowRight size={16} className="rtl:rotate-180" /></button>
         <button className="btn-icon" title={t('common.up')} aria-label={t('common.up')} onClick={up}><ArrowUp size={16} /></button>
         <button className="btn-icon" title={t('common.refresh')} aria-label={t('common.refresh')} onClick={() => load()}><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /></button>
         {pathEdit !== null ? (
-          <input ref={pathInput} autoFocus className="input flex-1 py-1 font-mono text-xs" dir="ltr" value={pathEdit} onChange={(e) => setPathEdit(e.target.value)} onBlur={() => setPathEdit(null)} onKeyDown={(e) => { if (e.key === 'Enter') { go(pathEdit); setPathEdit(null) } if (e.key === 'Escape') setPathEdit(null) }} />
+          <input ref={pathInput} autoFocus className="input flex-1 min-w-0 py-1 font-mono text-xs" dir="ltr" value={pathEdit} onChange={(e) => setPathEdit(e.target.value)} onBlur={() => setPathEdit(null)} onKeyDown={(e) => { if (e.key === 'Enter') { go(pathEdit); setPathEdit(null) } if (e.key === 'Escape') setPathEdit(null) }} />
         ) : (
-          <div className="flex-1 flex items-center gap-0.5 overflow-hidden rounded-lg bg-surface-200/60 px-2 py-1 text-xs cursor-text" dir="ltr" onClick={() => setPathEdit(path)}>
+          <div className="flex-1 min-w-0 flex items-center gap-0.5 overflow-hidden rounded-lg bg-surface-200/60 px-2 py-1 text-xs cursor-text" dir="ltr" onClick={() => setPathEdit(path)}>
             {crumbs.map((c, i) => <React.Fragment key={i}><button className="hover:text-accent px-1 rounded truncate max-w-[140px]" onClick={(e) => { e.stopPropagation(); crumbGo(i) }}>{c}</button>{i < crumbs.length - 1 && <span className="text-surface-500">›</span>}</React.Fragment>)}
           </div>
         )}
@@ -252,7 +252,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
               {list.map((e) => (
                 <tr key={e.path} onClick={(ev) => { const n = new Set(ev.ctrlKey ? sel : []); n.has(e.path) ? n.delete(e.path) : n.add(e.path); setSel(n) }} onDoubleClick={() => openEntry(e)} onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); if (!sel.has(e.path)) setSel(new Set([e.path])); setCtx({ x: ev.clientX, y: ev.clientY, e }) }}
                   className={cn('cursor-default transition-colors', sel.has(e.path) ? 'bg-accent/20' : 'hover:bg-surface-200/60', e.isHidden && 'opacity-50')}>
-                  <td className="px-3 py-1.5 flex items-center gap-2 truncate">{iconFor(e)}<span className="truncate">{e.name}</span></td>
+                  <td className="px-3 py-1.5 flex items-center gap-2 truncate">{iconFor(e)}<span className="truncate min-w-0">{e.name}</span></td>
                   <td className="px-3 py-1.5 text-xs text-surface-500 uppercase">{e.isDirectory ? '' : e.ext}</td>
                   <td className="px-3 py-1.5 text-xs text-surface-600 text-end font-mono">{e.isDirectory ? '—' : formatBytes(e.size)}</td>
                   <td className="px-3 py-1.5 text-xs text-surface-600">{formatDate(e.modified, settings.language)}</td>
@@ -271,7 +271,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
             ))}
           </div>
         )}
-        {list.length === 0 && !loading && <Empty icon={<FolderOpen size={40} />} text={t('common.empty')} action={<div className="flex gap-2"><button className="btn-soft" onClick={() => { setCreating('folder'); setNewName('') }}><Plus size={15} />{t('files.newFolder')}</button><button className="btn-soft" onClick={() => { setCreating('file'); setNewName('') }}><Plus size={15} />{t('files.newFile')}</button></div>} />}
+        {list.length === 0 && !loading && <Empty icon={<FolderOpen size={40} />} text={t('common.empty')} action={<div className="flex gap-2 flex-wrap justify-center"><button className="btn-soft" onClick={() => { setCreating('folder'); setNewName('') }}><Plus size={15} />{t('files.newFolder')}</button><button className="btn-soft" onClick={() => { setCreating('file'); setNewName('') }}><Plus size={15} />{t('files.newFile')}</button></div>} />}
       </div>
       <footer className="flex items-center gap-3 px-3 py-1.5 border-t border-surface-300/60 text-[11px] text-surface-500">
         <span>{t('common.items', { count: entries.length })}</span>{sel.size > 0 && <span>• {t('common.selected', { count: sel.size })} ({formatBytes(selected.reduce((a, e) => a + e.size, 0))})</span>}
@@ -291,7 +291,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
         </div>}
       </Modal>
       <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.e.name} wide>
-        {preview && (IMAGE_EXT.has(preview.e.ext) ? <img src={toFileUrl(preview.e.path)} className="max-h-[70vh] mx-auto rounded-xl" decoding="async" alt="" /> : VIDEO_EXT.has(preview.e.ext) ? <video src={toFileUrl(preview.e.path)} controls preload="metadata" className="max-h-[70vh] w-full rounded-xl" /> : AUDIO_EXT.has(preview.e.ext) ? <audio src={toFileUrl(preview.e.path)} controls preload="metadata" className="w-full" /> : preview.text !== undefined ? <pre className="text-xs font-mono max-h-[70vh] overflow-auto selectable whitespace-pre-wrap" dir="ltr">{preview.text.slice(0, 20000)}{preview.text.length > 20000 ? '\n… (truncated)' : ''}</pre> : <p className="text-center text-surface-500 p-10">{t('files.noPreview')}</p>)}
+        {preview && (IMAGE_EXT.has(preview.e.ext) ? <img src={toFileUrl(preview.e.path)} className="max-h-[70vh] max-w-full object-contain mx-auto rounded-xl" decoding="async" alt="" /> : VIDEO_EXT.has(preview.e.ext) ? <video src={toFileUrl(preview.e.path)} controls preload="metadata" className="max-h-[70vh] w-full max-w-full rounded-xl" /> : AUDIO_EXT.has(preview.e.ext) ? <audio src={toFileUrl(preview.e.path)} controls preload="metadata" className="w-full" /> : preview.text !== undefined ? <pre className="text-xs font-mono max-h-[70vh] max-w-full overflow-auto selectable whitespace-pre-wrap break-all" dir="ltr">{preview.text.slice(0, 20000)}{preview.text.length > 20000 ? '\n… (truncated)' : ''}</pre> : <p className="text-center text-surface-500 p-10">{t('files.noPreview')}</p>)}
       </Modal>
     </div>
   )
@@ -336,7 +336,7 @@ export default function Files() {
         <button className={cn('btn-soft', dual && 'bg-accent text-accent-fg')} onClick={() => setDual(!dual)}><Columns size={15} />{t('files.dualPane')}</button>
       </PageHeader>
       <div className="flex-1 min-h-0 grid grid-cols-[minmax(150px,200px)_minmax(0,1fr)] gap-3">
-        <aside className="card p-2 overflow-auto space-y-3 min-w-0">
+        <aside className="card p-2 overflow-auto space-y-3 min-w-0 min-h-0">
           <div><p className="label px-2 mb-1">{t('files.quickAccess')}</p>{qa.map(([k, p, ic]) => <button key={k} onClick={() => goTo(p)} className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm hover:bg-surface-200 transition-colors"><span className="text-accent">{ic}</span>{t(`files.${k}`)}</button>)}</div>
           {favs.length > 0 && <div><p className="label px-2 mb-1">{t('common.favorites')}</p>{favs.map((f) => <button key={f} onClick={() => goTo(f)} onContextMenu={(e) => { e.preventDefault(); const n = favs.filter((x) => x !== f); setFavs(n); invoke('data:set', 'fileFavorites', n) }} className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm hover:bg-surface-200 truncate"><Star size={14} className="text-amber-500 shrink-0" /><span className="truncate">{f.split(/[\\/]/).filter(Boolean).pop()}</span></button>)}</div>}
           <div><p className="label px-2 mb-1">{t('files.drives')}</p>{drives.map((d) => <button key={d.path} onClick={() => goTo(d.path)} className="w-full rounded-lg px-2.5 py-1.5 text-sm hover:bg-surface-200 transition-colors text-start">
@@ -345,7 +345,7 @@ export default function Files() {
           </button>)}</div>
           <button className="btn-soft w-full text-xs" onClick={() => { const p = liveRef.current[active] || roots[active]; if (!favs.includes(p)) { const n = [...favs, p]; setFavs(n); invoke('data:set', 'fileFavorites', n) } }}><Star size={13} />{t('common.add')} {t('common.favorites')}</button>
         </aside>
-        <div className={cn('grid gap-3 min-h-0 min-w-0', dual ? 'grid-cols-1 2xl:grid-cols-2' : 'grid-cols-1')}>
+        <div className={cn('grid gap-3 min-h-0 min-w-0 overflow-y-auto', dual ? 'grid-cols-1 2xl:grid-cols-2' : 'grid-cols-1')}>
           <Pane key={`a${key}${roots[0]}`} initial={roots[0]} active={!dual || active === 0} onActivate={() => setActive(0)} onOpenIn={onOpenIn} onPathChange={(p) => { liveRef.current[0] = p }} />
           {dual && <Pane key={`b${key}${roots[1]}`} initial={roots[1]} active={active === 1} onActivate={() => setActive(1)} onOpenIn={onOpenIn} onPathChange={(p) => { liveRef.current[1] = p }} />}
         </div>

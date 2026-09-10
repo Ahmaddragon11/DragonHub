@@ -112,7 +112,7 @@ export default function ResCard() {
       )}
 
       {menu && (
-        <div data-menu className="fixed z-50 card p-1.5 min-w-[190px] text-xs" style={{ left: Math.min(menu.x, window.innerWidth - 200), top: Math.min(menu.y, window.innerHeight - 240) }}>
+        <div data-menu className="fixed z-50 card p-1.5 min-w-[190px] max-w-[min(232px,calc(100vw-16px))] max-h-[calc(100vh-16px)] overflow-y-auto text-xs" style={{ left: Math.max(8, Math.min(menu.x, window.innerWidth - Math.min(232, window.innerWidth - 16) - 8)), top: Math.max(8, Math.min(menu.y, window.innerHeight - Math.min(340, window.innerHeight - 16) - 8)) }}>
           <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200" onClick={() => { void patch({ locked: !cfg.locked }); setMenu(null) }}>
             {cfg.locked ? `🔓 ${t('resCard.unlock')}` : `🔒 ${t('resCard.lock')}`}
           </button>

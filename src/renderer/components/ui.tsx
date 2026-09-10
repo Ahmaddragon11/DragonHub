@@ -163,13 +163,22 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
     ref.current?.querySelector<HTMLButtonElement>('button')?.focus()
     return () => { window.removeEventListener('mousedown', h); window.removeEventListener('keydown', k); window.removeEventListener('resize', s); window.removeEventListener('scroll', s, true) }
   }, [onClose])
-  const menuH = Math.min(window.innerHeight - 16, items.reduce((a, it) => a + (it.sep ? 9 : 38), 16))
-  const left = Math.max(8, Math.min(x, window.innerWidth - 250)), top = Math.max(8, Math.min(y, window.innerHeight - menuH - 8))
+  const menuH = Math.min(Math.max(window.innerHeight - 16, 32), items.reduce((a, it) => a + (it.sep ? 9 : 38), 16))
+  const menuW = Math.min(320, Math.max(window.innerWidth - 16, 100))
+  const left = Math.max(8, Math.min(x, window.innerWidth - menuW - 8)), top = Math.max(8, Math.min(y, window.innerHeight - menuH - 8))
+  // Re-clamp after mount: wrapped labels can make the real height larger than the estimate.
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    if (r.right > window.innerWidth - 8) el.style.left = `${Math.max(8, window.innerWidth - r.width - 8)}px`
+    if (r.bottom > window.innerHeight - 8) el.style.top = `${Math.max(8, window.innerHeight - r.height - 8)}px`
+  }, [])
   return (
     <div ref={ref} role="menu" className="fixed z-[95] card p-1.5 min-w-[210px] max-w-[min(320px,calc(100vw-16px))] max-h-[calc(100vh-16px)] overflow-y-auto animate-fade-in" style={{ left, top }}>
       {items.map((it, i) => it.sep ? <div key={i} className="divider my-1" /> : (
-        <button key={i} role="menuitem" className={cn('w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-start transition-colors hover:bg-surface-200', it.danger && 'text-rose-500 hover:bg-rose-500/10')} onClick={() => { it.onClick?.(); onClose() }}>
-          {it.icon && <span className="text-surface-600">{it.icon}</span>}{it.label}
+        <button key={i} role="menuitem" className={cn('w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm text-start transition-colors hover:bg-surface-200 min-w-0', it.danger && 'text-rose-500 hover:bg-rose-500/10')} onClick={() => { it.onClick?.(); onClose() }}>
+          {it.icon && <span className="text-surface-600 shrink-0">{it.icon}</span>}<span className="min-w-0 flex-1 break-words">{it.label}</span>
         </button>
       ))}
     </div>

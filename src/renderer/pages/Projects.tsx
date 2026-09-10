@@ -104,7 +104,12 @@ export default function Projects() {
       </PageHeader>
       <div className="relative mb-4 max-w-md"><Search size={14} className="absolute start-3 top-2.5 text-surface-500" /><input className="input ps-9 py-1.5 text-xs" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {projects.length === 0 ? <Empty icon={<Lightbulb size={40} />} text={t('projects.noProjects')} action={<button className="btn-primary" onClick={() => setEdit(blank())}><Plus size={16} />{t('projects.newProject')}</button>} /> :
-        filteredProjects.length === 0 ? <p className="text-xs text-surface-500 text-center p-6">{t('common.noResults')}</p> :
+        filteredProjects.length === 0 ? (
+          <div className="text-center p-6">
+            <p className="text-xs text-surface-500">{t('common.noResults')}</p>
+            <button className="btn-soft mt-2 text-xs" onClick={() => setQ('')}>{t('common.clear')}</button>
+          </div>
+        ) :
         view === 'board' ? (
           <div className="flex-1 min-h-0 overflow-x-auto"><div className="flex gap-3 h-full min-w-max">
             {STATUSES.map((s) => (
@@ -116,11 +121,16 @@ export default function Projects() {
           </div></div>
         ) : (
           <div className="card overflow-auto">
-            {listSorted.length === 0 && <p className="text-xs text-surface-500 text-center p-6">{t('common.noResults')}</p>}
+            {listSorted.length === 0 && (
+              <div className="text-center p-6">
+                <p className="text-xs text-surface-500">{t('common.noResults')}</p>
+                <button className="btn-soft mt-2 text-xs" onClick={() => setQ('')}>{t('common.clear')}</button>
+              </div>
+            )}
             {listSorted.map((p) => (
               <button key={p.id} onClick={() => setEdit(p)} className="w-full flex items-center gap-4 px-4 py-3 border-b border-surface-300/40 hover:bg-surface-200/60 text-start">
-                <span className="h-3 w-3 rounded-full shrink-0" style={{ background: p.color }} /><span className="flex-1 font-medium text-sm truncate">{p.name}</span>
-                <span className={cn('badge text-white', STATUS_COLOR[p.status])}>{t(`projects.status.${p.status}`)}</span><div className="w-32"><Progress value={p.progress} /></div><span className="text-xs text-surface-500 w-24 text-end">{relTime(p.updatedAt, settings.language)}</span>
+                <span className="h-3 w-3 rounded-full shrink-0" style={{ background: p.color }} /><span className="flex-1 min-w-0 font-medium text-sm truncate">{p.name}</span>
+                <span className={cn('badge text-white shrink-0', STATUS_COLOR[p.status])}>{t(`projects.status.${p.status}`)}</span><div className="w-32 shrink-0"><Progress value={p.progress} /></div><span className="text-xs text-surface-500 w-24 shrink-0 text-end">{relTime(p.updatedAt, settings.language)}</span>
               </button>
             ))}
           </div>
@@ -143,25 +153,25 @@ export default function Projects() {
             </div>
             <div className="space-y-4">
               <div><span className="label">{t('projects.milestones')}</span>
-                <div className="space-y-1 mt-1.5">{edit.milestones.map((m) => (
+                <div className="space-y-1 mt-1.5 max-h-44 overflow-y-auto">{edit.milestones.map((m) => (
                   <div key={m.id} className="flex items-center gap-2 rounded-lg bg-surface-200/60 px-2 py-1.5 text-sm">
-                    <button onClick={() => setEdit({ ...edit, milestones: edit.milestones.map((x) => (x.id === m.id ? { ...x, done: !x.done } : x)) })}>{m.done ? <CheckCircle2 size={16} className="text-emerald-500" /> : <Circle size={16} className="text-surface-500" />}</button>
-                    <span className={cn('flex-1', m.done && 'line-through text-surface-500')}>{m.title}</span><button onClick={() => setEdit({ ...edit, milestones: edit.milestones.filter((x) => x.id !== m.id) })}><X size={13} /></button>
+                    <button title={t('common.done')} aria-label={t('common.done')} onClick={() => setEdit({ ...edit, milestones: edit.milestones.map((x) => (x.id === m.id ? { ...x, done: !x.done } : x)) })}>{m.done ? <CheckCircle2 size={16} className="text-emerald-500" /> : <Circle size={16} className="text-surface-500" />}</button>
+                    <span className={cn('flex-1 min-w-0 break-words', m.done && 'line-through text-surface-500')}>{m.title}</span><button title={t('common.delete')} aria-label={t('common.delete')} onClick={() => setEdit({ ...edit, milestones: edit.milestones.filter((x) => x.id !== m.id) })}><X size={13} /></button>
                   </div>))}
                   <div className="flex gap-2"><input className="input" placeholder={t('projects.addMilestone')} value={ms} onChange={(e) => setMs(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && ms.trim()) { setEdit({ ...edit, milestones: [...edit.milestones, { id: uid(), title: ms.trim(), done: false }] }); setMs('') } }} /></div>
                 </div>
               </div>
               <div><span className="label">{t('projects.links')}</span>
-                <div className="space-y-1 mt-1.5">{edit.links.map((l, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-lg bg-surface-200/60 px-2 py-1.5 text-sm"><Link2 size={14} className="text-accent" /><span className="flex-1 truncate">{l.label}</span>
-                    <button className="btn-icon p-1" onClick={() => invoke('app:openExternal', l.url)}><ExternalLink size={13} /></button><button onClick={() => setEdit({ ...edit, links: edit.links.filter((_, j) => j !== i) })}><X size={13} /></button></div>))}
-                  <div className="flex gap-2"><input className="input" placeholder={t('common.name')} value={linkL} onChange={(e) => setLinkL(e.target.value)} /><input className="input" placeholder="https://" value={linkU} onChange={(e) => setLinkU(e.target.value)} />
+                <div className="space-y-1 mt-1.5 max-h-44 overflow-y-auto">{edit.links.map((l, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg bg-surface-200/60 px-2 py-1.5 text-sm"><Link2 size={14} className="text-accent shrink-0" /><span className="flex-1 min-w-0 truncate">{l.label}</span>
+                    <button className="btn-icon p-1 shrink-0" title={t('common.open')} aria-label={t('common.open')} onClick={() => invoke('app:openExternal', l.url)}><ExternalLink size={13} /></button><button className="shrink-0" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => setEdit({ ...edit, links: edit.links.filter((_, j) => j !== i) })}><X size={13} /></button></div>))}
+                  <div className="flex gap-2 flex-wrap"><input className="input flex-1 min-w-[120px]" placeholder={t('common.name')} value={linkL} onChange={(e) => setLinkL(e.target.value)} /><input className="input flex-1 min-w-[120px]" placeholder="https://" value={linkU} onChange={(e) => setLinkU(e.target.value)} />
                     <button className="btn-soft shrink-0" onClick={() => { if (/^https?:\/\//.test(linkU)) { setEdit({ ...edit, links: [...edit.links, { label: linkL || linkU, url: linkU }] }); setLinkL(''); setLinkU('') } }}><Plus size={14} /></button></div>
                 </div>
               </div>
               <Field label={t('projects.notes')}><textarea className="input min-h-[100px] font-mono text-xs" value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>
             </div>
-            <div className="md:col-span-2 flex justify-between pt-2">
+            <div className="md:col-span-2 flex justify-between gap-2 flex-wrap pt-2">
               {projects.some((x) => x.id === edit.id) ? <button className="btn-danger" onClick={() => remove(edit.id)}><Trash2 size={15} />{t('common.delete')}</button> : <span />}
               <div className="flex gap-2"><button className="btn-ghost" onClick={() => setEdit(null)}>{t('common.cancel')}</button><button className="btn-primary" onClick={save} disabled={!edit.name.trim()}>{t('common.save')}</button></div>
             </div>

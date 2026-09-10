@@ -197,6 +197,14 @@ export default function Resources() {
     else { setSortKey(k); setSortDir(k === 'name' ? 1 : -1) }
   }
 
+  const retryInitial = () => {
+    setLoading(true)
+    Promise.all([invoke<ResLive>('res:snapshot'), invoke<ResConfig>('res:config:get'), invoke<ResProcess[]>('res:processes', 12)])
+      .then(([s, c, p]) => { setSnap(s); setCfg(c); setProcs(Array.isArray(p) ? p : []) })
+      .catch((e: unknown) => { toast(e instanceof Error ? e.message : t('toast.error'), 'error') })
+      .finally(() => { setLoading(false) })
+  }
+
   if (loading && !snap) {
     return (
       <div className="page-enter h-full flex flex-col">
@@ -209,7 +217,7 @@ export default function Resources() {
     return (
       <div className="page-enter h-full flex flex-col">
         <PageHeader icon={<Gauge size={22} />} title={t('res.title')} />
-        <Empty icon={<Gauge size={40} />} text={t('res.noData')} />
+        <Empty icon={<Gauge size={40} />} text={t('res.noData')} action={<button className="btn-ghost text-xs" onClick={retryInitial}>{t('common.retry')}</button>} />
       </div>
     )
   }
@@ -229,26 +237,26 @@ export default function Resources() {
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-4 pb-4">
           {/* 4 main rings + health */}
-          <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
-            <div className={`card ${pad} flex flex-col items-center gap-1`}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+            <div className={`card ${pad} flex flex-col items-center gap-1 min-w-0`}>
               <div className="flex items-center gap-1.5 text-xs opacity-60"><Cpu size={14} />{t('res.cpu')}</div>
               <Ring value={snap.cpuPercent} size={92} stroke={10}><span className="text-lg font-bold font-mono" dir="ltr">{snap.cpuPercent.toFixed(0)}%</span></Ring>
               {snap.temperatureC !== null && <span className="badge bg-rose-500/15 text-rose-500" dir="ltr">{snap.temperatureC.toFixed(0)}°C</span>}
-              <div className="w-full mt-1"><Spark data={cpuHist} /></div>
+              <div className="w-full mt-1 min-w-0"><Spark data={cpuHist} /></div>
             </div>
-            <div className={`card ${pad} flex flex-col items-center gap-1`}>
+            <div className={`card ${pad} flex flex-col items-center gap-1 min-w-0`}>
               <div className="flex items-center gap-1.5 text-xs opacity-60"><MemoryStick size={14} />{t('res.ram')}</div>
               <Ring value={snap.memoryPercent} size={92} stroke={10}><span className="text-lg font-bold font-mono" dir="ltr">{snap.memoryPercent.toFixed(0)}%</span></Ring>
-              <span className="text-[11px] font-mono opacity-70" dir="ltr">{formatBytes(snap.memoryUsedMB * 1024 * 1024)} / {formatBytes(snap.memoryTotalMB * 1024 * 1024)}</span>
-              <div className="w-full mt-1"><Spark data={memHist} stroke="#10b981" /></div>
+              <span className="text-[11px] font-mono opacity-70 break-words text-center" dir="ltr">{formatBytes(snap.memoryUsedMB * 1024 * 1024)} / {formatBytes(snap.memoryTotalMB * 1024 * 1024)}</span>
+              <div className="w-full mt-1 min-w-0"><Spark data={memHist} stroke="#10b981" /></div>
             </div>
-            <div className={`card ${pad} flex flex-col items-center gap-1`}>
+            <div className={`card ${pad} flex flex-col items-center gap-1 min-w-0`}>
               <div className="flex items-center gap-1.5 text-xs opacity-60"><HardDrive size={14} />{t('res.disk')}</div>
               <Ring value={maxDiskBusy} size={92} stroke={10}><span className="text-lg font-bold font-mono" dir="ltr">{maxDiskBusy.toFixed(0)}%</span></Ring>
               <span className="text-[11px] opacity-70">{t('res.activity')}</span>
-              <div className="w-full mt-1"><Spark data={netHist} stroke="#06b6d4" /></div>
+              <div className="w-full mt-1 min-w-0"><Spark data={netHist} stroke="#06b6d4" /></div>
             </div>
-            <div className={`card ${pad} flex flex-col items-center gap-1`}>
+            <div className={`card ${pad} flex flex-col items-center gap-1 min-w-0`}>
               <div className="flex items-center gap-1.5 text-xs opacity-60"><MonitorCog size={14} />{t('res.gpu')}</div>
               {snap.gpu ? (
                 <>
@@ -258,22 +266,22 @@ export default function Resources() {
                 </>
               ) : <span className="text-xs opacity-50 py-8">{t('res.unavailable')}</span>}
             </div>
-            <div className={`card ${pad} flex flex-col items-center gap-1 col-span-2 xl:col-span-1`}>
+            <div className={`card ${pad} flex flex-col items-center gap-1 min-w-0 sm:col-span-2 xl:col-span-1`}>
               <div className="flex items-center gap-1.5 text-xs opacity-60"><Bell size={14} />{t('res.health')}</div>
               <Ring value={health} size={92} stroke={10}><span className="text-xl font-black font-mono" dir="ltr">{health}</span></Ring>
-              <span className="text-[11px] opacity-70 font-mono" dir="ltr">↑{formatSpeed(snap.netUpSpeedBps)} ↓{formatSpeed(snap.netDownSpeedBps)}</span>
-              <span className="text-[11px] opacity-50">{t('res.uptime')}: {fmtUptime(snap.osUptimeSec)} • {snap.processesCount}</span>
+              <span className="text-[11px] opacity-70 font-mono break-words text-center" dir="ltr">↑{formatSpeed(snap.netUpSpeedBps)} ↓{formatSpeed(snap.netDownSpeedBps)}</span>
+              <span className="text-[11px] opacity-50 text-center break-words">{t('res.uptime')}: {fmtUptime(snap.osUptimeSec)} • {snap.processesCount}</span>
             </div>
           </div>
 
           {/* per-core heat grid */}
           <section className={`card ${pad}`}>
             <h3 className="font-semibold mb-3 text-sm opacity-80">{t('res.perCore')} ({snap.cores.length} {t('res.cores')})</h3>
-            <div className="grid grid-cols-4 sm:grid-cols-6 xl:grid-cols-8 gap-2">
+            <div className="grid grid-cols-2 min-[480px]:grid-cols-4 sm:grid-cols-6 xl:grid-cols-8 gap-2">
               {snap.cores.map((c) => (
-                <div key={c.index} className="rounded-lg bg-surface-200/60 px-2 py-1.5" title={`Core ${c.index} • ${c.speedMHz}MHz`}>
+                <div key={c.index} className="rounded-lg bg-surface-200/60 px-2 py-1.5 min-w-0" title={`Core ${c.index} • ${c.speedMHz}MHz`}>
                   <div className="text-[10px] opacity-60 font-mono" dir="ltr">C{c.index}</div>
-                  <div className="flex items-center gap-2"><Progress value={c.percent} /><span className="text-[10px] font-mono w-9 text-end" dir="ltr">{c.percent.toFixed(0)}%</span></div>
+                  <div className="flex items-center gap-2 min-w-0"><Progress value={c.percent} /><span className="text-[10px] font-mono w-9 shrink-0 text-end" dir="ltr">{c.percent.toFixed(0)}%</span></div>
                 </div>
               ))}
             </div>
@@ -286,13 +294,13 @@ export default function Resources() {
               {snap.disks.map((d) => {
                 const usedPct = d.totalGB > 0 ? ((d.totalGB - d.freeGB) / d.totalGB) * 100 : 0
                 return (
-                  <div key={d.letter} className="rounded-xl bg-surface-200/60 p-3 space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-bold font-mono" dir="ltr">{d.letter}</span>
-                      <span className="text-xs opacity-60 truncate">{d.label}</span>
+                  <div key={d.letter} className="rounded-xl bg-surface-200/60 p-3 space-y-2 min-w-0">
+                    <div className="flex items-center justify-between gap-2 text-sm min-w-0">
+                      <span className="font-bold font-mono shrink-0" dir="ltr">{d.letter}</span>
+                      <span className="text-xs opacity-60 truncate min-w-0">{d.label}</span>
                     </div>
-                    <div className="flex items-center gap-2"><Progress value={usedPct} /><span className="text-[11px] font-mono w-24 text-end" dir="ltr">{d.freeGB.toFixed(0)} / {d.totalGB.toFixed(0)} GB</span></div>
-                    <div className="text-[11px] opacity-60 font-mono" dir="ltr">
+                    <div className="flex items-center gap-2 min-w-0"><Progress value={usedPct} /><span className="text-[11px] font-mono w-24 shrink-0 text-end" dir="ltr">{d.freeGB.toFixed(0)} / {d.totalGB.toFixed(0)} GB</span></div>
+                    <div className="text-[11px] opacity-60 font-mono break-words" dir="ltr">
                       {t('res.activity')}: {d.percentBusy !== null ? `${d.percentBusy.toFixed(0)}%` : '—'}
                       {d.readMBs !== null && ` • R ${d.readMBs.toFixed(1)} MB/s`}
                       {d.writeMBs !== null && ` • W ${d.writeMBs.toFixed(1)} MB/s`}
@@ -308,24 +316,24 @@ export default function Resources() {
           <section className={`card ${pad}`}>
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <h3 className="font-semibold text-sm opacity-80 flex-1">{t('res.topApps')} <span className="badge bg-surface-200 text-surface-700 font-mono" dir="ltr">Top {cfg?.topN ?? 12}</span></h3>
-              <div className="flex items-center gap-1.5 rounded-lg bg-surface-200/60 px-2 py-1">
-                <Search size={13} className="opacity-50" />
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('res.searchApps')} title={t('res.topNNote')} className="bg-transparent outline-none text-xs w-36" />
+              <div className="flex items-center gap-1.5 rounded-lg bg-surface-200/60 px-2 py-1 min-w-0">
+                <Search size={13} className="opacity-50 shrink-0" />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('res.searchApps')} title={t('res.topNNote')} className="bg-transparent outline-none text-xs w-36 max-w-full min-w-0" />
               </div>
               <Toggle on={hideSys} onChange={setHideSys} label={t('res.hideSystem')} />
               <button className="btn-ghost !py-1 !px-2 text-xs" onClick={() => setCompact((c) => !c)}>{compact ? t('res.comfortable') : t('res.compact')}</button>
             </div>
             <p className="text-[11px] opacity-50 mb-3">{t('res.topNNote')}</p>
             {topProc && (
-              <div className="rounded-xl bg-accent/10 border border-accent/20 px-3 py-2 mb-3 text-xs flex items-center gap-2 flex-wrap">
-                <span className="opacity-60">{t('res.topProcess')}:</span>
-                <span className="font-bold">{topProc.displayName}</span>
-                <span className="font-mono opacity-70" dir="ltr">CPU {topProc.cpuPercent.toFixed(1)}% • {topProc.memoryMB.toFixed(0)} MB</span>
+              <div className="rounded-xl bg-accent/10 border border-accent/20 px-3 py-2 mb-3 text-xs flex items-center gap-2 flex-wrap min-w-0">
+                <span className="opacity-60 shrink-0">{t('res.topProcess')}:</span>
+                <span className="font-bold truncate min-w-0">{topProc.displayName}</span>
+                <span className="font-mono opacity-70 break-words" dir="ltr">CPU {topProc.cpuPercent.toFixed(1)}% • {topProc.memoryMB.toFixed(0)} MB</span>
               </div>
             )}
-            {filtered.length === 0 ? <Empty icon={<Skull size={36} />} text={t('res.noData')} /> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+            {filtered.length === 0 ? <Empty icon={<Skull size={36} />} text={t('res.noData')} action={query ? <button className="btn-ghost text-xs" onClick={() => setQuery('')}>{t('common.clear')}</button> : undefined} /> : (
+              <div className="overflow-x-auto max-w-full">
+                <table className="w-full min-w-[560px] text-sm">
                   <thead>
                     <tr className="text-xs opacity-60">
                       <th className="text-start font-medium py-1.5 pe-3"><button onClick={() => toggleSort('name')}>{t('res.name')} {sortKey === 'name' ? (sortDir === 1 ? '▲' : '▼') : ''}</button></th>

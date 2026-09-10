@@ -72,23 +72,23 @@ export default function Shortcuts() {
   return (
     <div className="flex flex-col h-full page-enter">
       <PageHeader title={t('shortcuts.title')} icon={<Keyboard />}>
-        <div className="relative"><Search size={14} className="absolute start-3 top-3 opacity-50" /><input className="input ps-9 w-64" placeholder={t('shortcuts.searchShortcuts')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <div className="flex gap-1 p-1 rounded-xl bg-surface-200">
+        <div className="relative max-w-full"><Search size={14} className="absolute start-3 top-3 opacity-50" /><input className="input ps-9 w-64 max-w-full" placeholder={t('shortcuts.searchShortcuts')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="flex gap-1 p-1 rounded-xl bg-surface-200 max-w-full flex-wrap">
           <button className={cn('btn-ghost text-sm', tab === 'app' && 'bg-surface-300')} onClick={() => setTab('app')}><AppWindow size={14} /> {t('shortcuts.app')}</button>
           <button className={cn('btn-ghost text-sm', tab === 'win' && 'bg-surface-300')} onClick={() => setTab('win')}><Monitor size={14} /> {t('shortcuts.windows')}</button>
         </div>
       </PageHeader>
-      <div className="flex-1 overflow-y-auto p-4">
-        {filtered.length === 0 ? <Empty icon={<Keyboard size={40} />} text={t('common.empty')} /> : (
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
+        {filtered.length === 0 ? <Empty icon={<Keyboard size={40} />} text={t('common.empty')} action={q ? <button className="btn-ghost text-xs" onClick={() => setQ('')}>{t('common.clear')}</button> : undefined} /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
             {filtered.map((g) => (
               <section key={g.key} className="card p-4">
                 <h3 className="font-semibold mb-3 text-accent">{t(`shortcuts.${g.key}`)}</h3>
                 <div className="space-y-1">
                   {g.items.map(([k, en, a]) => (
-                    <div key={k + en} className="flex items-center justify-between gap-3 py-1.5 border-b border-surface-300/50 last:border-0">
-                      <span className="text-sm">{ar ? a : en}</span>
-                      <span className="flex gap-1 shrink-0" dir="ltr">{k.split('+').map((p, i) => <kbd key={i} className="kbd">{p.trim()}</kbd>)}</span>
+                    <div key={k + en} className="flex items-center justify-between gap-3 py-1.5 border-b border-surface-300/50 last:border-0 min-w-0">
+                      <span className="text-sm min-w-0 flex-1 break-words">{ar ? a : en}</span>
+                      <span className="flex gap-1 shrink-0 flex-wrap justify-end" dir="ltr">{k.split('+').map((p, i) => <kbd key={i} className="kbd">{p.trim()}</kbd>)}</span>
                     </div>
                   ))}
                 </div>
