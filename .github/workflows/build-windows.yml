@@ -21,12 +21,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -46,10 +46,12 @@ jobs:
           sed -n '1,80p' release-notes.md
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: DragonHub-Windows
-          path: release/**/*.exe
+          path: |
+            release/**/DragonHub-Setup-*-win-x64.exe
+            release/**/DragonHub-Portable-*-win-x64.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -61,5 +63,7 @@ jobs:
           body_path: release-notes.md
           prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
-            release/**/*.exe
+            release/**/DragonHub-Setup-*-win-x64.exe
+            release/**/DragonHub-Portable-*-win-x64.exe
