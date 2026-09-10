@@ -13,6 +13,9 @@ export default function Notes() {
   const { notes, saveNotes, pageParams, toast, settings } = useApp()
   const [sel, setSel] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  // Perf: defer the expensive full-text filter so typing stays smooth with
+  // many/large notes; the list catches up right after.
+  const dq = React.useDeferredValue(q)
   const [filter, setFilter] = useState<'all' | 'pinned' | 'favorites' | 'archived'>('all')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [mode, setMode] = useState<'edit' | 'preview' | 'split'>('split')
@@ -44,9 +47,9 @@ export default function Notes() {
     .filter((n) => (filter === 'archived' ? n.archived : !n.archived))
     .filter((n) => (filter === 'pinned' ? n.pinned : filter === 'favorites' ? n.favorite : true))
     .filter((n) => !tagFilter || n.tags.includes(tagFilter))
-    .filter((n) => !q || (n.title + ' ' + n.content + ' ' + n.tags.join(' ')).toLowerCase().includes(q.toLowerCase()))
+    .filter((n) => !q || (n.title + ' ' + n.content + ' ' + n.tags.join(' ')).toLowerCase().includes(dq.toLowerCase()))
     .sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || (sort === 'title' ? a.title.localeCompare(b.title) : sort === 'created' ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt)),
-  [notes, filter, tagFilter, q, sort])
+  [notes, filter, tagFilter, q, dq, sort])
   const cur = notes.find((n) => n.id === sel)
   // Avoid re-rendering markdown on every unrelated keystroke/parent render.
   const mdHtml = useMemo(() => (cur ? renderMarkdown(cur.content) : ''), [cur?.id, cur?.content])

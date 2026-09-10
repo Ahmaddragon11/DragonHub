@@ -381,7 +381,8 @@ async function tick(): Promise<void> {
       } catch { /* keep last known speeds; retry next tick */ }
       enforceCap(effectiveDailyCapMB(limits, readKey<NetPlan>(PLAN_KEY)), limits?.blockOnCap === true)
     }
-    persist()
+    ticksSincePersist += 1
+    if (ticksSincePersist >= PERSIST_EVERY_TICKS) { ticksSincePersist = 0; persist() }
     emit(getWinFn(), getLiveState())
   } catch { /* the monitor must never break the main process */ }
   finally {
@@ -410,7 +411,16 @@ export function stopNetMonitor(): void {
     clearInterval(timer)
     timer = null
   }
+  // Flush latest counters so nothing is lost on quit.
+  try { persist() } catch { /* ignore */ }
 }
+
+// Perf: electron-store rewrites the whole JSON file on every set — persisting
+// every 2s tick churns HDDs constantly. Counters live in memory (quota/cap
+// logic is unaffected); flush to disk every ~10s. Rollover/cap events persist
+// immediately via their own explicit persist() calls.
+let ticksSincePersist = 0
+const PERSIST_EVERY_TICKS = 5
 
 export function getLiveState(): NetLive {
   let blocked = state.blockedByCap || manualBlocked

@@ -479,7 +479,11 @@ export function startResMonitor(
   cpuTotalPercent = 0
   const cfg = getResConfig()
   timer = setInterval(() => { void tick() }, Math.min(Math.max(cfg.intervalMs, 1000), 10000))
-  void tick()
+  // Perf: the first tick spawns PowerShell/Get-Process (heavy on HDD) — delay it
+  // a few seconds so app startup isn't competing for disk/CPU. The Resources
+  // page falls back to a local CPU sample until the first tick lands.
+  const bootTimer = timer
+  setTimeout(() => { if (timer === bootTimer && timer !== null) void tick() }, 4000)
 }
 
 export function stopResMonitor(): void {

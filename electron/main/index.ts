@@ -314,7 +314,6 @@ app.whenReady().then(() => {
     })
   } catch { /* net speeds optional for res snapshot */ }
   try { resmon.setResWindowProviders(() => win, () => cardWin) } catch { /* ignore */ }
-  netblock.cleanupStaleRules().catch(() => {})
   netmon.setBlockedFlagProvider(() => netBlocked)
   netmon.setNetHooks({
     onCapExceeded: () => {
@@ -340,10 +339,16 @@ app.whenReady().then(() => {
       try { win?.webContents.send('net:update', netmon.getLiveState()) } catch { /* ignore */ }
     },
   })
-  netmon.startNetMonitor(() => win)
-  try { resmon.startResMonitor(() => win, () => cardWin) } catch { /* resources optional */ }
   createWindow()
   createTray()
+  // Perf: monitors spawn child processes (netstat/PowerShell/netsh) and hit the
+  // disk — start them after the window is created so first paint isn't delayed,
+  // especially on HDD. Quota enforcement uses in-memory state, unaffected.
+  setImmediate(() => {
+    try { netblock.cleanupStaleRules().catch(() => {}) } catch { /* ignore */ }
+    try { netmon.startNetMonitor(() => win) } catch { /* network optional */ }
+    try { resmon.startResMonitor(() => win, () => cardWin) } catch { /* resources optional */ }
+  })
 
   nativeTheme.on('updated', () => {
     win?.webContents.send('theme:system', nativeTheme.shouldUseDarkColors ? 'dark' : 'light')

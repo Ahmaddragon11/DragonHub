@@ -291,7 +291,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
         </div>}
       </Modal>
       <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.e.name} wide>
-        {preview && (IMAGE_EXT.has(preview.e.ext) ? <img src={toFileUrl(preview.e.path)} className="max-h-[70vh] mx-auto rounded-xl" /> : VIDEO_EXT.has(preview.e.ext) ? <video src={toFileUrl(preview.e.path)} controls preload="metadata" className="max-h-[70vh] w-full rounded-xl" /> : AUDIO_EXT.has(preview.e.ext) ? <audio src={toFileUrl(preview.e.path)} controls preload="metadata" className="w-full" /> : preview.text !== undefined ? <pre className="text-xs font-mono max-h-[70vh] overflow-auto selectable whitespace-pre-wrap" dir="ltr">{preview.text.slice(0, 20000)}{preview.text.length > 20000 ? '\n… (truncated)' : ''}</pre> : <p className="text-center text-surface-500 p-10">{t('files.noPreview')}</p>)}
+        {preview && (IMAGE_EXT.has(preview.e.ext) ? <img src={toFileUrl(preview.e.path)} className="max-h-[70vh] mx-auto rounded-xl" decoding="async" alt="" /> : VIDEO_EXT.has(preview.e.ext) ? <video src={toFileUrl(preview.e.path)} controls preload="metadata" className="max-h-[70vh] w-full rounded-xl" /> : AUDIO_EXT.has(preview.e.ext) ? <audio src={toFileUrl(preview.e.path)} controls preload="metadata" className="w-full" /> : preview.text !== undefined ? <pre className="text-xs font-mono max-h-[70vh] overflow-auto selectable whitespace-pre-wrap" dir="ltr">{preview.text.slice(0, 20000)}{preview.text.length > 20000 ? '\n… (truncated)' : ''}</pre> : <p className="text-center text-surface-500 p-10">{t('files.noPreview')}</p>)}
       </Modal>
     </div>
   )

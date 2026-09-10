@@ -9,18 +9,21 @@ import Notes from '@/pages/Notes'
 import Projects from '@/pages/Projects'
 import Tasks from '@/pages/Tasks'
 import Files from '@/pages/Files'
-import Downloads from '@/pages/Downloads'
-import Compress from '@/pages/Compress'
-import Images from '@/pages/Images'
-import Video from '@/pages/Video'
-import Vault from '@/pages/Vault'
-import Network from '@/pages/Network'
-import Resources from '@/pages/Resources'
 import Shortcuts from '@/pages/Shortcuts'
 import Settings from '@/pages/Settings'
 import About from '@/pages/About'
 
+// Perf: heavy pages are code-split so the initial bundle stays small and the
+// app paints fast (less to read/parse on HDD, less startup RAM). They load on
+// first navigation behind the Suspense fallback below.
 const Editor = React.lazy(() => import('@/pages/Editor'))
+const Downloads = React.lazy(() => import('@/pages/Downloads'))
+const Compress = React.lazy(() => import('@/pages/Compress'))
+const Images = React.lazy(() => import('@/pages/Images'))
+const Video = React.lazy(() => import('@/pages/Video'))
+const Vault = React.lazy(() => import('@/pages/Vault'))
+const Network = React.lazy(() => import('@/pages/Network'))
+const Resources = React.lazy(() => import('@/pages/Resources'))
 
 const PAGES: Record<string, React.ComponentType> = { dashboard: Dashboard, notes: Notes, projects: Projects, tasks: Tasks, files: Files, editor: Editor, downloads: Downloads, compress: Compress, images: Images, video: Video, vault: Vault, network: Network, resources: Resources, shortcuts: Shortcuts, settings: Settings, about: About }
 

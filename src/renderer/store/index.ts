@@ -63,7 +63,7 @@ function persist(key: string, value: unknown) {
     const v = pending[key]
     delete pending[key]
     if (v !== undefined) invoke('data:set', key, v).catch(() => {})
-  }, 250)
+  }, 800)
 }
 /** Best-effort synchronous flush of debounced writes (page hide / app close). */
 function flushPersist() {
@@ -127,7 +127,9 @@ export const useApp = create<AppState>((set, get) => ({
     }
     const s = get().settings
     const speed = Math.min(2, Math.max(0.5, Number(s.animationSpeed) || 1))
-    await new Promise((r) => setTimeout(r, s.animations === 'off' ? 100 : Math.min(3000, 2200 / speed)))
+    // Perf: data is already loaded above — the splash is cosmetic only, so keep
+    // it short (was 2200ms) to let the app paint fast, especially on HDD.
+    await new Promise((r) => setTimeout(r, s.animations === 'off' ? 100 : Math.min(900, 700 / speed)))
     set({ ready: true })
   },
   navigate: (page, params = {}) => set({ page, pageParams: params, paletteOpen: false }),
