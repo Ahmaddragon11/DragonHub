@@ -1,6 +1,6 @@
 // Shared type contracts between main process and renderer
 
-export const APP_VERSION = '1.4.0'
+export const APP_VERSION = '1.4.5'
 export const DEVELOPER = 'AHMADDRAGON'
 export const TELEGRAM_URL = 'https://t.me/ahmaddragon'
 
@@ -294,6 +294,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.4.5',
+    date: '2026-09-10',
+    changes: [
+      { type: 'added', text: 'Faster startup: shorter splash, code-split heavy pages, monitors start after first paint' },
+      { type: 'changed', text: 'Lower RAM and disk use: deferred notes search, throttled settings/network persistence' },
+      { type: 'changed', text: 'Slightly larger app icon (trimmed padding) for a consistent desktop look' },
+      { type: 'fixed', text: 'Release workflow uploads only Setup + Portable installers (fixes duplicate-asset failure)' },
+    ],
+  },
   {
     version: '1.4.0',
     date: '2026-09-09',

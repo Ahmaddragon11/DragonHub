@@ -18,6 +18,10 @@ const OUT_ICO = path.join(root, 'build', 'icon.ico')
 
 const ICO_SIZES = [256, 128, 64, 48, 32, 16]
 const PNG_SIZE = 512
+// The source artwork has wide transparent padding (content covers only ~68% of
+// the width), which made the desktop icon look small next to other apps.
+// Trim the padding and scale the artwork to fill most of the canvas.
+const ARTWORK_FILL = 0.94
 
 function buildIco(images) {
   // images: [{ size, data: Buffer(png) }]
@@ -43,13 +47,24 @@ function buildIco(images) {
   return Buffer.concat([header, ...images.map((i) => i.data)])
 }
 
+async function fittedArtwork(boxSize) {
+  // Trim transparent padding, fit longest side to ARTWORK_FILL of the box,
+  // center on a transparent canvas (aspect preserved, nothing clipped).
+  const inner = Math.max(8, Math.round(boxSize * ARTWORK_FILL))
+  const art = await sharp(SRC).trim().resize(inner, inner, { fit: 'inside' }).png().toBuffer()
+  return sharp({ create: { width: boxSize, height: boxSize, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: art, gravity: 'center' }])
+    .png({ compressionLevel: 9 })
+    .toBuffer()
+}
+
 async function main() {
   if (!fs.existsSync(SRC)) throw new Error(`Missing source artwork: ${SRC}`)
   fs.mkdirSync(path.dirname(OUT_PNG_BUILD), { recursive: true })
   fs.mkdirSync(path.dirname(OUT_PNG_PUBLIC), { recursive: true })
 
-  // Main PNGs (square artwork -> direct resize, keep alpha).
-  const png512 = await sharp(SRC).resize(PNG_SIZE, PNG_SIZE, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer()
+  // Main PNGs (trimmed + slightly enlarged artwork, keep alpha).
+  const png512 = await fittedArtwork(PNG_SIZE)
   fs.writeFileSync(OUT_PNG_BUILD, png512)
   fs.writeFileSync(OUT_PNG_PUBLIC, png512)
   console.log(`wrote ${path.relative(root, OUT_PNG_BUILD)} (${png512.length} bytes)`)
@@ -58,7 +73,7 @@ async function main() {
   // ICO entries.
   const entries = []
   for (const s of ICO_SIZES) {
-    const data = await sharp(SRC).resize(s, s, { fit: 'cover' }).png({ compressionLevel: 9 }).toBuffer()
+    const data = await fittedArtwork(s)
     entries.push({ size: s, data })
   }
   const ico = buildIco(entries)

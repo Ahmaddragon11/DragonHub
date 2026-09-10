@@ -1,5 +1,22 @@
 # DragonHub Changelog
 
+## v1.4.5 — 2026-09-10 (startup/RAM/disk performance + icon + release fix)
+
+### Added
+- Faster startup: shorter splash delay, code-split heavy pages (Downloads,
+  Compress, Images, Video, Vault, Network, Resources load on first visit),
+  network/resource monitors start after first paint.
+
+### Changed
+- Lower RAM use: deferred notes search, async image decoding in file preview.
+- Lower disk churn: settings auto-save 250ms → 800ms, network stats flush
+  every ~10s instead of every 2s (live speeds and quota enforcement unchanged).
+- Slightly larger app icon (transparent padding trimmed, artwork fills ~94%).
+
+### Fixed
+- Release workflow uploads only the Setup + Portable installers (fixes the
+  duplicate-asset `7za.exe` failure); CI actions moved to Node 24.
+
 ## v1.4.0 — 2026-09-09 (resources monitor + floating card + network v2)
 
 ### Added

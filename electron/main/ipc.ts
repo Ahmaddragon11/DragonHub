@@ -102,8 +102,8 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   const cardCtl: CardControls = card ?? { show: () => {}, hide: () => {}, toggle: () => false, isOpen: () => false }
   // ---------- App / system ----------
   h('app:version', (): VersionInfo => ({
-    version: app.getVersion(), build: '2026.09.09', electron: process.versions.electron, chrome: process.versions.chrome,
-    node: process.versions.node, platform: process.platform, arch: process.arch, releaseDate: '2026-09-09', channel: 'stable',
+    version: app.getVersion(), build: '2026.09.10', electron: process.versions.electron, chrome: process.versions.chrome,
+    node: process.versions.node, platform: process.platform, arch: process.arch, releaseDate: '2026-09-10', channel: 'stable',
   }))
   h('app:changelog', () => CHANGELOG)
   h('app:paths', () => ({ userData: app.getPath('userData'), temp: app.getPath('temp'), logs: app.getPath('logs'), ...files.specialFolders() }))
