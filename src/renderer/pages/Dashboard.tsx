@@ -73,7 +73,12 @@ export default function Dashboard() {
         <section className="card p-5">
           <h2 className="font-semibold mb-3 flex items-center gap-2"><StickyNote size={16} className="text-accent" />{t('dashboard.recentNotes')}</h2>
           <div className="space-y-2">
-            {recentNotes.length === 0 && <p className="text-sm text-surface-500">{t('common.empty')}</p>}
+            {recentNotes.length === 0 && (
+              <div className="text-center py-2">
+                <p className="text-sm text-surface-500">{t('common.empty')}</p>
+                <button className="btn-soft mt-2 text-xs" onClick={() => navigate('notes', { create: true })}>{t('dashboard.newNote')}</button>
+              </div>
+            )}
             {recentNotes.map((n) => (
               <button key={n.id} onClick={() => navigate('notes', { open: n.id })} className="w-full text-start rounded-xl p-3 hover:bg-surface-200 transition-colors flex gap-3 items-start">
                 <span className="mt-1 h-2.5 w-2.5 rounded-full shrink-0" style={{ background: n.color }} />
@@ -85,7 +90,12 @@ export default function Dashboard() {
         <section className="card p-5">
           <h2 className="font-semibold mb-3 flex items-center gap-2"><CheckSquare size={16} className="text-accent" />{t('dashboard.upcomingTasks')}</h2>
           <div className="space-y-2">
-            {upcoming.length === 0 && <p className="text-sm text-surface-500">{t('common.empty')}</p>}
+            {upcoming.length === 0 && (
+              <div className="text-center py-2">
+                <p className="text-sm text-surface-500">{t('common.empty')}</p>
+                <button className="btn-soft mt-2 text-xs" onClick={() => navigate('tasks', { create: true })}>{t('dashboard.newTask')}</button>
+              </div>
+            )}
             {upcoming.map((x) => {
               const overdue = x.dueDate! < Date.now()
               return (
@@ -100,7 +110,12 @@ export default function Dashboard() {
         <section className="card p-5">
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Lightbulb size={16} className="text-accent" />{t('dashboard.activeProjects')}</h2>
           <div className="space-y-3">
-            {activeProjects.length === 0 && <p className="text-sm text-surface-500">{t('common.empty')}</p>}
+            {activeProjects.length === 0 && (
+              <div className="text-center py-2">
+                <p className="text-sm text-surface-500">{t('common.empty')}</p>
+                <button className="btn-soft mt-2 text-xs" onClick={() => navigate('projects', { create: true })}>{t('dashboard.newProject')}</button>
+              </div>
+            )}
             {activeProjects.map((p) => (
               <button key={p.id} onClick={() => navigate('projects', { open: p.id })} className="w-full text-start rounded-xl p-3 hover:bg-surface-200 transition-colors">
                 <div className="flex justify-between text-sm mb-1.5"><span className="font-medium truncate">{p.name}</span><span className="text-surface-500 text-xs">{p.progress}%</span></div>

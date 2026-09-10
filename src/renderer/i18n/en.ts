@@ -72,11 +72,13 @@ export default {
     title: 'Image Studio', open: 'Open image', resize: 'Resize', width: 'Width', height: 'Height', fit: 'Fit', rotate: 'Rotate', flip: 'Flip vertical', flop: 'Flip horizontal', filters: 'Filters',
     grayscale: 'Grayscale', blur: 'Blur', sharpen: 'Sharpen', brightness: 'Brightness', saturation: 'Saturation', hue: 'Hue', format: 'Output format', quality: 'Quality', watermark: 'Watermark text',
     removeMetadata: 'Strip metadata (EXIF)', exportBtn: 'Export image', info: 'Image info', dimensions: 'Dimensions', batch: 'Batch convert', addImages: 'Add images', convertAll: 'Convert all', noImage: 'Open an image to start editing',
+    fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen',
   },
   video: {
     title: 'Video & Audio Studio', open: 'Open media', trim: 'Trim', start: 'Start (s)', end: 'End (s)', resize: 'Resolution', format: 'Output format', codec: 'Video codec', audioCodec: 'Audio codec',
     crf: 'Quality (CRF, lower = better)', preset: 'Encoding speed', fps: 'Frame rate', speed: 'Playback speed', volume: 'Volume', rotate: 'Rotate', mute: 'Remove audio', extractAudio: 'Extract audio only',
     thumbnail: 'Capture frame', process: 'Process', cancel: 'Cancel', info: 'Media info', duration: 'Duration', bitrate: 'Bitrate', codecs: 'Codecs', noMedia: 'Open a video or audio file to begin',
+    fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen',
     presets: 'Quick presets', presetCompress: 'Compress (H.264)', presetHevc: 'Compress (H.265)', presetWeb: 'Web (WebM)', presetGif: 'To GIF', presetMp3: 'To MP3', presetMute: 'Mute video',
   },
   vault: {

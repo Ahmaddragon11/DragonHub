@@ -17,7 +17,8 @@
     "build:renderer": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "icons": "node scripts/generate-icons.mjs",
+    "icons": "node scripts/generate-icons.mjs && node scripts/generate-installer-art.mjs",
+    "icons:installer": "node scripts/generate-installer-art.mjs",
     "dist": "npm run build && electron-builder --win --x64",
     "dist:dir": "npm run build && electron-builder --win --x64 --dir",
     "release": "npm run dist",
@@ -122,6 +123,8 @@
       "shortcutName": "DragonHub",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp",
       "installerLanguages": [
         "en_US",
         "ar_SA"

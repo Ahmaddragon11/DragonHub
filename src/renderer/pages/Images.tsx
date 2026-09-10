@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Image as ImageIcon, FolderOpen, RotateCw, FlipVertical, FlipHorizontal, Download, Loader2, Layers, X, Info } from 'lucide-react'
+import { Image as ImageIcon, FolderOpen, RotateCw, FlipVertical, FlipHorizontal, Download, Loader2, Layers, X, Info, Maximize2 } from 'lucide-react'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle, Slider, Empty } from '@/components/ui'
 import { invoke, on, toFileUrl } from '@/lib/api'
@@ -30,6 +30,7 @@ export default function Images() {
   // batch
   const [batch, setBatch] = useState<string[]>([]); const [bFmt, setBFmt] = useState<Fmt>('webp'); const [bQ, setBQ] = useState(85); const [bW, setBW] = useState('')
   const [bDone, setBDone] = useState(0)
+  const [fullscreen, setFullscreen] = useState(false)
   const batchCancel = React.useRef(false)
 
   // Debounced live-filter preview: slider drags must not recompute GPU filters at 60Hz.
@@ -42,6 +43,12 @@ export default function Images() {
 
   useEffect(() => on<JobProgress>('job:progress', (p) => { if (p.id.startsWith('img-')) setProgress(p) }), [])
   useEffect(() => { if (pageParams?.path) load(String(pageParams.path)) }, [pageParams?.path])
+  useEffect(() => {
+    if (!fullscreen) return
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [fullscreen])
 
   const load = async (p: string) => {
     setSrc(p); setPreview(toFileUrl(p) + '?v=' + Date.now())
@@ -108,6 +115,9 @@ export default function Images() {
         <div className="flex flex-1 min-h-0 gap-4 p-4">
           <div className="flex-1 card flex items-center justify-center overflow-hidden relative bg-[radial-gradient(circle_at_center,rgba(255,255,255,.04),transparent)]">
             {src ? <img src={preview} alt="" style={filterStyle} className="max-w-full max-h-full object-contain drop-shadow-2xl" /> : <Empty icon={<ImageIcon size={48} />} text={t('images.noImage')} action={<button className="btn-primary" onClick={openFile}>{t('images.open')}</button>} />}
+            {src && (
+              <button className="btn-icon absolute top-3 end-3 glass" onClick={() => setFullscreen(true)} title={t('images.fullscreen')} aria-label={t('images.fullscreen')}><Maximize2 size={16} /></button>
+            )}
             {info && (
               <div className="absolute bottom-3 start-3 glass rounded-xl px-3 py-2 text-xs flex items-center gap-3">
                 <Info size={14} className="text-accent" /> <span>{info.width}×{info.height}</span><span className="opacity-60">{info.format?.toUpperCase()}</span><span className="opacity-60">{formatBytes(info.size || 0)}</span>
@@ -178,6 +188,12 @@ export default function Images() {
             <button className="btn-primary w-full" disabled={!batch.length || busy} onClick={convertAll}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} {t('images.convertAll')}</button>
             {busy && <button className="btn-ghost w-full" onClick={() => { batchCancel.current = true }}>{t('common.cancelAction')}</button>}
           </div>
+        </div>
+      )}
+      {fullscreen && src && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={() => setFullscreen(false)} role="dialog" aria-modal="true" aria-label={t('images.fullscreen')}>
+          <button className="btn-icon absolute top-4 end-4 bg-white/10 text-white hover:bg-white/20" onClick={() => setFullscreen(false)} title={t('images.exitFullscreen')} aria-label={t('images.exitFullscreen')} autoFocus><X size={18} /></button>
+          <img src={preview} alt="" style={filterStyle} className="max-w-full max-h-full object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
     </div>

@@ -28,14 +28,14 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
     <AnimatePresence>
       {open && (
         <motion.div className="fixed inset-0 z-[90] flex items-start sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-          <motion.div role="dialog" aria-modal="true" aria-label={title} className={cn('card w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] my-auto flex flex-col overflow-hidden', wide ? 'max-w-4xl' : 'max-w-xl')} initial={{ scale: 0.92, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.95, y: 10, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 26 }}>
+          <motion.div role="dialog" aria-modal="true" aria-label={title} className={cn('card my-auto flex flex-col overflow-hidden max-h-[90vh]', wide ? 'w-[min(96vw,1024px)] max-w-4xl' : 'w-[min(96vw,640px)] max-w-xl')} initial={{ scale: 0.92, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.95, y: 10, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 26 }}>
             {title && (
               <header className="flex items-center justify-between px-5 py-4 border-b border-surface-300/60">
                 <h3 className="font-semibold">{title}</h3>
                 <button className="btn-icon" aria-label={t('common.close')} onClick={onClose}><X size={18} /></button>
               </header>
             )}
-            <div className="p-5 overflow-auto">{children}</div>
+            <div className="p-5 max-h-[90vh] overflow-y-auto">{children}</div>
           </motion.div>
         </motion.div>
       )}

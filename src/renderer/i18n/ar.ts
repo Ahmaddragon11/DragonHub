@@ -72,11 +72,13 @@ export default {
     title: 'استوديو الصور', open: 'فتح صورة', resize: 'تغيير الحجم', width: 'العرض', height: 'الارتفاع', fit: 'الملاءمة', rotate: 'تدوير', flip: 'قلب عمودي', flop: 'قلب أفقي', filters: 'الفلاتر',
     grayscale: 'تدرج رمادي', blur: 'ضبابية', sharpen: 'زيادة الحدة', brightness: 'الإضاءة', saturation: 'التشبع', hue: 'الصبغة', format: 'صيغة الإخراج', quality: 'الجودة', watermark: 'نص العلامة المائية',
     removeMetadata: 'إزالة البيانات الوصفية (EXIF)', exportBtn: 'تصدير الصورة', info: 'معلومات الصورة', dimensions: 'الأبعاد', batch: 'تحويل جماعي', addImages: 'إضافة صور', convertAll: 'تحويل الكل', noImage: 'افتح صورة لبدء التحرير',
+    fullscreen: 'ملء الشاشة', exitFullscreen: 'خروج من ملء الشاشة',
   },
   video: {
     title: 'استوديو الفيديو والصوت', open: 'فتح وسائط', trim: 'قص', start: 'البداية (ث)', end: 'النهاية (ث)', resize: 'الدقة', format: 'صيغة الإخراج', codec: 'ترميز الفيديو', audioCodec: 'ترميز الصوت',
     crf: 'الجودة (CRF، أقل = أفضل)', preset: 'سرعة الترميز', fps: 'معدل الإطارات', speed: 'سرعة التشغيل', volume: 'الصوت', rotate: 'تدوير', mute: 'إزالة الصوت', extractAudio: 'استخراج الصوت فقط',
     thumbnail: 'التقاط إطار', process: 'معالجة', cancel: 'إلغاء', info: 'معلومات الوسائط', duration: 'المدة', bitrate: 'معدل البت', codecs: 'الترميزات', noMedia: 'افتح ملف فيديو أو صوت للبدء',
+    fullscreen: 'ملء الشاشة', exitFullscreen: 'خروج من ملء الشاشة',
     presets: 'إعدادات سريعة', presetCompress: 'ضغط (H.264)', presetHevc: 'ضغط (H.265)', presetWeb: 'ويب (WebM)', presetGif: 'إلى GIF', presetMp3: 'إلى MP3', presetMute: 'إزالة الصوت',
   },
   vault: {

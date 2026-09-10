@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, StickyNote, Lightbulb, CheckSquare, FolderOpen, Code2, Download, Archive, Image, Clapperboard, ShieldCheck,
-  Keyboard, Settings, Info, Minus, Square, X, Copy, Search, ChevronsLeft, ChevronsRight, Sun, Moon, Languages, Send, Command, Wifi, Gauge,
+  Keyboard, Settings, Info, Minus, Square, X, Copy, Search, ChevronsLeft, ChevronsRight, ChevronDown, ChevronRight, ChevronLeft, Sun, Moon, Languages, Send, Command, Wifi, Gauge,
 } from 'lucide-react'
 import { useApp, type PageId } from '@/store'
 import { cn } from '@/lib/utils'
@@ -79,6 +79,16 @@ export function Sidebar() {
   const openTasks = tasks.filter((x) => x.status !== 'done').length
   const activeDl = downloads.filter((d) => d.status === 'downloading' || d.status === 'queued').length
   const badgeOf = (id: PageId): number => (id === 'tasks' ? openTasks : id === 'downloads' ? activeDl : 0)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem('dh:sidebarGroups')
+      return raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+    } catch { return {} }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('dh:sidebarGroups', JSON.stringify(collapsedGroups)) } catch { /* ignore */ }
+  }, [collapsedGroups])
+  const toggleGroup = (g: NavGroup) => setCollapsedGroups((p) => ({ ...p, [g]: !p[g] }))
   // Collapse chevron always points toward the edge it will move to:
   // expanded -> points outward (to collapse), collapsed -> points inward (to expand).
   const CollapseIcon = collapsed
@@ -111,13 +121,26 @@ export function Sidebar() {
         {GROUP_ORDER.map((g) => {
           const items = NAV.filter((n) => n.group === g)
           if (items.length === 0) return null
+          const groupCollapsed = !!collapsedGroups[g]
+          const GroupArrow = groupCollapsed
+            ? (isRtl ? <ChevronLeft size={13} /> : <ChevronRight size={13} />)
+            : <ChevronDown size={13} />
           return (
             <div key={g}>
               {collapsed ? (
                 <div className="divider my-1.5" />
               ) : (
-                <p className="px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-surface-500 select-none">{t(`side.${g}`)}</p>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(g)}
+                  aria-expanded={!groupCollapsed}
+                  className="w-full flex items-center justify-between px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-surface-500 select-none hover:text-surface-700"
+                >
+                  <span className="truncate">{t(`side.${g}`)}</span>
+                  <span className="shrink-0 opacity-70">{GroupArrow}</span>
+                </button>
               )}
+              {(!groupCollapsed || collapsed) && (
               <div className="space-y-0.5">
                 {items.map((n) => {
                   const active = page === n.id
@@ -132,7 +155,7 @@ export function Sidebar() {
                         'relative w-full flex items-center gap-3 rounded-xl py-2.5 text-sm group',
                         collapsed ? 'justify-center px-0' : 'px-3',
                         anim && 'transition-all duration-200',
-                        active ? 'text-accent-fg' : 'text-surface-700 hover:bg-surface-200 hover:text-surface-900',
+                        active ? 'text-accent-fg font-semibold' : 'text-surface-700 hover:bg-surface-200 hover:text-surface-900',
                       )}
                     >
                       {active && (settings.animations === 'full'
@@ -154,6 +177,7 @@ export function Sidebar() {
                   )
                 })}
               </div>
+              )}
             </div>
           )
         })}

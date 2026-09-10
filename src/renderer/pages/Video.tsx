@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Clapperboard, FolderOpen, Loader2, Play, Camera, Square, Zap, Music, VolumeX, Film, Info } from 'lucide-react'
+import { Clapperboard, FolderOpen, Loader2, Play, Camera, Square, Zap, Music, VolumeX, Film, Info, Maximize2, X } from 'lucide-react'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle, Slider, Empty } from '@/components/ui'
 import { invoke, on, toFileUrl } from '@/lib/api'
@@ -28,6 +28,12 @@ export default function Video() {
   const [crf, setCrf] = useState(23); const [preset, setPreset] = useState<VideoOp['preset']>('medium')
   const [fps, setFps] = useState(''); const [speed, setSpeed] = useState(1); const [volume, setVolume] = useState(1)
   const [rotate, setRotate] = useState<0 | 90 | 180 | 270>(0); const [mute, setMute] = useState(false); const [extract, setExtract] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+  const fsVid = useRef<HTMLVideoElement>(null)
+  const closeFullscreen = () => {
+    try { fsVid.current?.pause(); fsVid.current?.removeAttribute('src'); fsVid.current?.load() } catch { /* */ }
+    setFullscreen(false)
+  }
 
   useEffect(() => on<JobProgress>('job:progress', (p) => {
     if (!p.id.startsWith('vid-')) return
@@ -44,6 +50,13 @@ export default function Video() {
   useEffect(() => () => {
     try { vid.current?.pause(); vid.current?.removeAttribute('src'); vid.current?.load() } catch { /* */ }
   }, [])
+  useEffect(() => {
+    if (!fullscreen) return
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') closeFullscreen() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullscreen])
 
   const load = async (p: string) => {
     setSrc(p); setProgress(null)
@@ -112,6 +125,9 @@ export default function Video() {
             {!src ? <Empty icon={<Film size={48} />} text={t('video.noMedia')} action={<button className="btn-primary" onClick={openFile}>{t('video.open')}</button>} />
               : isAudio ? <div className="flex flex-col items-center gap-6 p-8"><Music size={80} className="text-accent" /><audio src={toFileUrl(src)} controls preload="metadata" className="w-96" /></div>
               : <video ref={vid} src={toFileUrl(src)} controls preload="metadata" className="max-w-full max-h-full" style={{ transform: `rotate(${rotate}deg)` }} />}
+            {src && !isAudio && (
+              <button className="btn-icon absolute top-3 end-3 bg-black/60 text-white hover:bg-black/80" onClick={() => setFullscreen(true)} title={t('video.fullscreen')} aria-label={t('video.fullscreen')}><Maximize2 size={16} /></button>
+            )}
           </div>
           {info && (
             <div className="card p-3 grid grid-cols-6 gap-3 text-xs">
@@ -178,6 +194,12 @@ export default function Video() {
           </div>
         </div>
       </div>
+      {fullscreen && src && !isAudio && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={closeFullscreen} role="dialog" aria-modal="true" aria-label={t('video.fullscreen')}>
+          <button className="btn-icon absolute top-4 end-4 bg-white/10 text-white hover:bg-white/20" onClick={closeFullscreen} title={t('video.exitFullscreen')} aria-label={t('video.exitFullscreen')} autoFocus><X size={18} /></button>
+          <video ref={fsVid} src={toFileUrl(src)} controls autoPlay preload="metadata" className="max-w-full max-h-full" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   )
 }
