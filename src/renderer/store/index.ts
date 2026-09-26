@@ -5,7 +5,19 @@ import { DEFAULT_SETTINGS, type AppSettings, type Note, type Project, type Task,
 
 export type PageId = 'dashboard' | 'notes' | 'projects' | 'tasks' | 'files' | 'editor' | 'downloads' | 'network' | 'resources' | 'compress' | 'images' | 'video' | 'vault' | 'shortcuts' | 'settings' | 'about'
 
-export interface Toast { id: string; type: 'success' | 'error' | 'info' | 'warning'; text: string }
+export interface ToastAction { label: string; run: () => void }
+export interface Toast { id: string; type: 'success' | 'error' | 'info' | 'warning'; text: string; action?: ToastAction; duration: number }
+export interface ToastOptions { action?: ToastAction; duration?: number }
+
+/** Recently opened entities (palette + dashboard "jump back in"). Renderer-only UI state. */
+export type RecentKind = 'note' | 'task' | 'project'
+export interface RecentItem { kind: RecentKind; id: string; at: number }
+const RECENTS_KEY = 'dh:recents'
+const loadRecents = (): RecentItem[] => {
+  try { const r = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); return Array.isArray(r) ? r.slice(0, 20) : [] } catch { return [] }
+}
+
+export const PAGE_IDS: PageId[] = ['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about']
 
 interface AppState {
   ready: boolean
@@ -15,7 +27,12 @@ interface AppState {
   systemTheme: 'dark' | 'light'
   toasts: Toast[]
   paletteOpen: boolean
+  shortcutsOpen: boolean
   windowMaximized: boolean
+  /** Back/forward navigation stacks (Alt+← / Alt+→, mouse buttons 4/5). */
+  backStack: PageId[]
+  fwdStack: PageId[]
+  recents: RecentItem[]
   notes: Note[]
   projects: Project[]
   tasks: Task[]
@@ -24,9 +41,13 @@ interface AppState {
   navigate: (p: PageId, params?: Record<string, unknown>) => void
   setSettings: (patch: Partial<AppSettings>) => Promise<void>
   resetSettings: () => Promise<void>
-  toast: (text: string, type?: Toast['type']) => void
+  toast: (text: string, type?: Toast['type'], opts?: ToastOptions) => void
   dismissToast: (id: string) => void
   setPalette: (open: boolean) => void
+  setShortcuts: (open: boolean) => void
+  goBack: () => void
+  goForward: () => void
+  touchRecent: (kind: RecentKind, id: string) => void
   saveNotes: (n: Note[]) => void
   saveProjects: (p: Project[]) => void
   saveTasks: (t: Task[]) => void
@@ -86,7 +107,8 @@ const toastTimers = new Map<string, ReturnType<typeof setTimeout>>()
 let initStarted = false
 
 export const useApp = create<AppState>((set, get) => ({
-  ready: false, page: 'dashboard', pageParams: {}, settings: DEFAULT_SETTINGS, systemTheme: 'dark', toasts: [], paletteOpen: false, windowMaximized: false,
+  ready: false, page: 'dashboard', pageParams: {}, settings: DEFAULT_SETTINGS, systemTheme: 'dark', toasts: [], paletteOpen: false, shortcutsOpen: false, windowMaximized: false,
+  backStack: [], fwdStack: [], recents: typeof window !== 'undefined' ? loadRecents() : [],
   notes: [], projects: [], tasks: [], downloads: [],
 
   init: async () => {
@@ -110,8 +132,7 @@ export const useApp = create<AppState>((set, get) => ({
       const downloads = val(rDownloads, [] as DownloadItem[])
       const maximized = val(rMax, false)
       applyTheme(settings, sys)
-      const validPages: PageId[] = ['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about']
-      const startPage = validPages.includes(settings.startPage as PageId) ? (settings.startPage as PageId) : 'dashboard'
+      const startPage = PAGE_IDS.includes(settings.startPage as PageId) ? (settings.startPage as PageId) : 'dashboard'
       set({ settings, systemTheme: sys, notes, projects, tasks, downloads, windowMaximized: maximized, page: startPage })
       window.dh.on('theme:system', (t) => { set({ systemTheme: t as 'dark' | 'light' }); applyTheme(get().settings, t as 'dark' | 'light') })
       window.dh.on('downloads:update', (d) => get().updateDownload(d as DownloadItem))
@@ -132,7 +153,28 @@ export const useApp = create<AppState>((set, get) => ({
     await new Promise((r) => setTimeout(r, s.animations === 'off' ? 100 : Math.min(900, 700 / speed)))
     set({ ready: true })
   },
-  navigate: (page, params = {}) => set({ page, pageParams: params, paletteOpen: false }),
+  navigate: (page, params = {}) => set((s) => (
+    s.page === page
+      ? { pageParams: params, paletteOpen: false }
+      : { page, pageParams: params, paletteOpen: false, backStack: [...s.backStack.slice(-29), s.page], fwdStack: [] }
+  )),
+  goBack: () => set((s) => {
+    const prev = s.backStack[s.backStack.length - 1]
+    if (!prev) return {}
+    return { page: prev, pageParams: {}, backStack: s.backStack.slice(0, -1), fwdStack: [s.page, ...s.fwdStack].slice(0, 30) }
+  }),
+  goForward: () => set((s) => {
+    const next = s.fwdStack[0]
+    if (!next) return {}
+    return { page: next, pageParams: {}, fwdStack: s.fwdStack.slice(1), backStack: [...s.backStack.slice(-29), s.page] }
+  }),
+  touchRecent: (kind, id) => {
+    const cur = get().recents
+    if (cur[0] && cur[0].kind === kind && cur[0].id === id) return
+    const recents = [{ kind, id, at: Date.now() }, ...cur.filter((r) => !(r.kind === kind && r.id === id))].slice(0, 20)
+    set({ recents })
+    try { localStorage.setItem(RECENTS_KEY, JSON.stringify(recents)) } catch { /* ignore quota */ }
+  },
   consumeParams: () => { const p = get().pageParams; if (Object.keys(p).length) set({ pageParams: {} }); return p },
   clearPageParams: () => { if (Object.keys(get().pageParams).length) set({ pageParams: {} }) },
   setSettings: async (patch) => {
@@ -142,10 +184,17 @@ export const useApp = create<AppState>((set, get) => ({
     if ('launchAtStartup' in patch) invoke('app:setLoginItem', !!patch.launchAtStartup).catch(() => {})
   },
   resetSettings: async () => { const next = await invoke<AppSettings>('settings:reset'); applyTheme(next, get().systemTheme); set({ settings: next }) },
-  toast: (text, type = 'success') => {
+  toast: (text, type = 'success', opts = {}) => {
     const id = Math.random().toString(36).slice(2)
-    set((s) => ({ toasts: [...s.toasts.slice(-3), { id, type, text }] }))
-    const timer = setTimeout(() => get().dismissToast(id), 3500)
+    // Errors and actionable toasts linger longer so they can be read / acted on.
+    const duration = opts.duration ?? (opts.action ? 6000 : type === 'error' ? 6000 : 3200)
+    set((s) => {
+      // Drop dismissed-overflow timers so they never fire on a recycled id.
+      const kept = s.toasts.slice(-3)
+      for (const old of s.toasts) if (!kept.includes(old)) { clearTimeout(toastTimers.get(old.id)); toastTimers.delete(old.id) }
+      return { toasts: [...kept, { id, type, text, action: opts.action, duration }] }
+    })
+    const timer = setTimeout(() => get().dismissToast(id), duration)
     toastTimers.set(id, timer)
   },
   dismissToast: (id) => {
@@ -153,7 +202,8 @@ export const useApp = create<AppState>((set, get) => ({
     if (timer) { clearTimeout(timer); toastTimers.delete(id) }
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
   },
-  setPalette: (open) => set({ paletteOpen: open }),
+  setPalette: (open) => set(open ? { paletteOpen: true, shortcutsOpen: false } : { paletteOpen: false }),
+  setShortcuts: (open) => set(open ? { shortcutsOpen: true, paletteOpen: false } : { shortcutsOpen: false }),
   saveNotes: (notes) => { if (!get().ready) return; set({ notes }); persist('notes', notes) },
   saveProjects: (projects) => { if (!get().ready) return; set({ projects }); persist('projects', projects) },
   saveTasks: (tasks) => { if (!get().ready) return; set({ tasks }); persist('tasks', tasks) },

@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { StickyNote, Plus, Pin, PinOff, Archive, ArchiveRestore, Star, Trash2, Search, Eye, Pencil, Columns, Download, Tag } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
+import { deleteWithUndo } from '@/lib/undo'
 import { PageHeader, Empty, TagInput, ColorPicker } from '@/components/ui'
 import { uid, COLORS, cn, relTime, stripPath } from '@/lib/utils'
 import { renderMarkdown } from '@/lib/markdown'
@@ -10,7 +12,8 @@ import type { Note } from '@shared/types'
 
 export default function Notes() {
   const { t } = useTranslation()
-  const { notes, saveNotes, pageParams, toast, settings } = useApp()
+  const { notes, saveNotes, pageParams, toast, settings, touchRecent } = useApp(useShallow((s) => ({ notes: s.notes, saveNotes: s.saveNotes, pageParams: s.pageParams, toast: s.toast, settings: s.settings, touchRecent: s.touchRecent })))
+  const [savedAt, setSavedAt] = useState<number | null>(null)
   const [sel, setSel] = useState<string | null>(null)
   const [q, setQ] = useState('')
   // Perf: defer the expensive full-text filter so typing stays smooth with
@@ -33,14 +36,13 @@ export default function Notes() {
     if (consumedParams.current === key) return
     consumedParams.current = key
     if (pageParams.create) create()
-    if (pageParams.open && notes.some((n) => n.id === pageParams.open)) setSel(pageParams.open as string)
+    if (pageParams.open && notes.some((n) => n.id === pageParams.open)) { setSel(pageParams.open as string); touchRecent('note', pageParams.open as string) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageParams, notes])
 
-  const update = (id: string, patch: Partial<Note>) => saveNotes(notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: Date.now() } : n)))
+  const update = (id: string, patch: Partial<Note>) => { saveNotes(useApp.getState().notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: Date.now() } : n))); setSavedAt(Date.now()) }
   const remove = async (id: string) => {
-    if (settings.confirmDelete && !(await invoke('dialog:confirm', t('common.confirmDelete'), t('common.irreversible')))) return
-    saveNotes(notes.filter((n) => n.id !== id)); if (sel === id) setSel(null); toast(t('notes.noteDeleted'), 'info')
+    if (await deleteWithUndo('notes', id, t('notes.noteDeleted')) && sel === id) setSel(null)
   }
   const allTags = useMemo(() => Array.from(new Set(notes.flatMap((n) => n.tags))).sort(), [notes])
   const list = useMemo(() => notes
@@ -91,7 +93,7 @@ export default function Notes() {
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
         <aside className="card flex flex-col min-h-0 overflow-hidden">
           <div className="p-3 space-y-2 border-b border-surface-300/60">
-            <div className="relative"><Search size={14} className="absolute start-3 top-2.5 text-surface-500" /><input className="input ps-9" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <div className="relative"><Search size={14} className="absolute start-3 top-2.5 text-surface-500" /><input data-search className="input ps-9" aria-label={t('common.search')} placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
             <div className="flex gap-1 text-xs flex-wrap">
               {(['all', 'pinned', 'favorites', 'archived'] as const).map((f) => <button key={f} onClick={() => setFilter(f)} className={cn('flex-1 rounded-lg py-1 transition-colors', filter === f ? 'bg-accent text-accent-fg' : 'hover:bg-surface-200')}>{t(f === 'all' ? 'common.all' : `common.${f}`)}</button>)}
             </div>
@@ -105,7 +107,7 @@ export default function Notes() {
               </div>
             )}
             {list.map((n) => (
-              <button key={n.id} onClick={() => setSel(n.id)} className={cn('w-full text-start rounded-xl p-3 transition-all duration-300 border-s-[3px]', sel === n.id ? 'bg-surface-200 shadow-card' : 'hover:bg-surface-200/60')} style={{ borderColor: n.color }}>
+              <button key={n.id} onClick={() => { setSel(n.id); touchRecent('note', n.id) }} className={cn('w-full text-start rounded-xl p-3 transition-all duration-300 border-s-[3px]', sel === n.id ? 'bg-surface-200 shadow-card' : 'hover:bg-surface-200/60')} style={{ borderColor: n.color }}>
                 <div className="flex items-center gap-1.5">{n.pinned && <Pin size={11} className="text-accent" />}{n.favorite && <Star size={11} className="text-amber-500 fill-amber-500" />}<span className="text-sm font-medium truncate flex-1">{n.title || t('common.untitled')}</span></div>
                 <p className="text-xs text-surface-600 line-clamp-2 mt-0.5">{n.content.slice(0, 120) || '…'}</p>
                 <p className="text-[10px] text-surface-500 mt-1">{relTime(n.updatedAt, settings.language)}</p>
@@ -136,7 +138,7 @@ export default function Notes() {
                 {mode !== 'edit' && <div className={cn('h-full overflow-auto p-4 prose-dh selectable', mode === 'split' && 'border-s border-surface-300/60')} dangerouslySetInnerHTML={{ __html: mdHtml }} onClick={handleExtNav} onAuxClick={handleExtNav} />}
               </div>
               <footer className="flex items-center gap-4 px-4 py-1.5 border-t border-surface-300/60 text-[11px] text-surface-500 flex-wrap">
-                <span>{t('notes.wordCount', { count: words })}</span><span>{t('notes.chars', { count: cur.content.length })}</span><span className="ms-auto">{relTime(cur.updatedAt, settings.language)}</span>
+                <span>{t('notes.wordCount', { count: words })}</span><span>{t('notes.chars', { count: cur.content.length })}</span><span className="ms-auto flex items-center gap-1.5" aria-live="polite"><span className={cn('h-1.5 w-1.5 rounded-full transition-colors duration-500', savedAt && Date.now() - savedAt < 1200 ? 'bg-amber-500' : 'bg-emerald-500')} />{t('notes.savedLocally')} · {relTime(cur.updatedAt, settings.language)}</span>
               </footer>
             </>
           )}

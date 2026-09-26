@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, Link, Play, Pause, X, Trash2, FolderOpen, ExternalLink, RotateCcw, Eraser, Youtube, Music, Loader2, FolderInput } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Empty, Progress } from '@/components/ui'
 import { invoke, on } from '@/lib/api'
@@ -61,7 +62,7 @@ const DownloadRow = React.memo(function DownloadRow({ d, onAct, onRemove }: {
 
 export default function Downloads() {
   const { t } = useTranslation()
-  const { downloads, setDownloads, settings, setSettings, toast, pageParams, consumeParams } = useApp()
+  const { downloads, setDownloads, settings, setSettings, toast, pageParams, consumeParams } = useApp(useShallow((s) => ({ downloads: s.downloads, setDownloads: s.setDownloads, settings: s.settings, setSettings: s.setSettings, toast: s.toast, pageParams: s.pageParams, consumeParams: s.consumeParams })))
   const urlRef = useRef<HTMLInputElement>(null)
   const [url, setUrl] = useState('')
   const [kind, setKind] = useState<'direct' | 'media'>('direct')

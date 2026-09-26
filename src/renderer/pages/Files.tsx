@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, Folder, File, FileText, FileImage, FileVideo, FileAudio, FileArchive, FileCode, ArrowLeft, ArrowRight, ArrowUp, RefreshCw, Home, Monitor, Download, Image as ImgIcon, Film, Music, HardDrive, Plus, Search, LayoutGrid, List, Eye, EyeOff, Copy, Scissors, Clipboard, Trash2, Pencil, Info, ExternalLink, Hash, Archive, Code2, Star, Columns } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, ContextMenu, Modal, Field, Empty } from '@/components/ui'
 import { invoke, toFileUrl } from '@/lib/api'
@@ -37,7 +38,7 @@ let clipboardState: Clip = null
 
 function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial: string; active: boolean; onActivate: () => void; onOpenIn: (kind: 'editor' | 'images' | 'video' | 'compress', p: string) => void; onPathChange?: (p: string) => void }) {
   const { t } = useTranslation()
-  const { settings, setSettings, toast } = useApp()
+  const { settings, setSettings, toast } = useApp(useShallow((s) => ({ settings: s.settings, setSettings: s.setSettings, toast: s.toast })))
   const [path, setPath] = useState(initial)
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [sel, setSel] = useState<Set<string>>(new Set())
@@ -299,7 +300,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
 
 export default function Files() {
   const { t } = useTranslation()
-  const { navigate, pageParams } = useApp()
+  const { navigate, pageParams } = useApp(useShallow((s) => ({ navigate: s.navigate, pageParams: s.pageParams })))
   const [special, setSpecial] = useState<Record<string, string> | null>(null)
   const [drives, setDrives] = useState<DriveInfo[]>([])
   const [dual, setDual] = useState(false)

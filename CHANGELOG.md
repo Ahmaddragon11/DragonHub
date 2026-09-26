@@ -1,5 +1,32 @@
 # DragonHub Changelog
 
+## Unreleased — premium foundation (design system, motion, palette v2)
+
+### Added
+- Command palette v2: fuzzy search across commands, notes, tasks and projects
+  (titles + content), recent items, match highlighting, keyboard hints.
+- Keyboard shortcuts overlay (`?` / `Ctrl+/`), back/forward navigation
+  (`Alt+←/→`, mouse buttons, title-bar arrows), `/` focuses page search.
+- Dashboard "Today" agenda with one-click complete and day progress; Focus
+  timer is now on the dashboard; "Jump back in" recents.
+- Smart task quick-add: `Call Sam tomorrow 3pm !high #work` (Arabic basics too).
+- Undo for deleted notes, tasks and projects.
+- Responsive shell: icon rail on narrow windows, drawer on small screens.
+- Error boundaries: a crashing section no longer blanks the app.
+- `npm run dev:web`: browser preview of the renderer with demo data.
+
+### Changed
+- New design tokens (radius, elevation, motion), calmer surfaces, unified
+  primitives (Segmented, Tooltip, Kbd, Skeleton), focus-trapped dialogs,
+  keyboard-navigable context menus, actionable toasts.
+- Motion system with shared springs/easings; respects reduced motion.
+- Store access via shallow selectors (far fewer re-renders).
+- Static ambient background instead of perpetually animated blurred blobs.
+
+### Fixed
+- Production build ran out of memory on low-RAM machines.
+- Focus timer drifted while the window was hidden.
+
 ## v1.4.5 — 2026-09-10 (startup/RAM/disk performance + icon + release fix)
 
 ### Added

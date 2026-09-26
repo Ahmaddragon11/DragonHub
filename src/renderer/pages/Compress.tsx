@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Archive, FilePlus, FolderPlus, X, Lock, Package, FolderOpen, ShieldCheck, Loader2, FileArchive, Folder, File } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle } from '@/components/ui'
 import { invoke, on } from '@/lib/api'
@@ -11,7 +12,7 @@ const FORMATS: { f: ArchiveFormat; ext: string; enc: boolean }[] = [{ f: 'zip', 
 
 export default function Compress() {
   const { t } = useTranslation()
-  const { pageParams, toast } = useApp()
+  const { pageParams, toast } = useApp(useShallow((s) => ({ pageParams: s.pageParams, toast: s.toast })))
   const [tab, setTab] = useState<'compress' | 'extract' | 'browse'>('compress')
   const [inputs, setInputs] = useState<string[]>([])
   const [format, setFormat] = useState<ArchiveFormat>('zip')

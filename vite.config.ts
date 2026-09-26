@@ -36,7 +36,9 @@ export default defineConfig({
     }),
     renderer(),
   ],
-  build: { outDir: 'dist', emptyOutDir: true, chunkSizeWarningLimit: 4000 },
+  // reportCompressedSize off: gzip-sizing every chunk (Monaco is huge) roughly
+  // doubles peak build memory and was the cause of OOM on low-RAM machines/CI.
+  build: { outDir: 'dist', emptyOutDir: true, chunkSizeWarningLimit: 4000, reportCompressedSize: false },
   // Relative asset URLs so the renderer also works via file:// in Electron.
   base: './',
   server: { port: 5173, strictPort: true },
