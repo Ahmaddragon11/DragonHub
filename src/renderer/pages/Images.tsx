@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Image as ImageIcon, FolderOpen, RotateCw, FlipVertical, FlipHorizontal, Download, Loader2, Layers, X, Info, Maximize2 } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle, Slider, Empty } from '@/components/ui'
 import { invoke, on, toFileUrl } from '@/lib/api'
@@ -12,7 +13,7 @@ const FORMATS: Fmt[] = ['jpeg', 'png', 'webp', 'avif', 'gif', 'tiff']
 
 export default function Images() {
   const { t } = useTranslation()
-  const { pageParams, toast } = useApp()
+  const { pageParams, toast } = useApp(useShallow((s) => ({ pageParams: s.pageParams, toast: s.toast })))
   const [tab, setTab] = useState<'edit' | 'batch'>('edit')
   const [src, setSrc] = useState<string | null>(null)
   const [info, setInfo] = useState<any>(null)

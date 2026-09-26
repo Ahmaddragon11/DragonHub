@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, ShieldCheck, Lock, Unlock, Plus, Search, Copy, Eye, EyeOff, Star, Trash2, Pencil, KeyRound, Wand2, Download, Upload, Globe, X } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Modal, Field, Toggle, Slider, TagInput, Empty } from '@/components/ui'
 import { invoke, on } from '@/lib/api'
@@ -77,7 +78,7 @@ function Row({ label, value, secret, revealed, onReveal, onCopy, onOpen, mono }:
 
 export default function Vault() {
   const { t, i18n } = useTranslation()
-  const { toast, settings } = useApp()
+  const { toast, settings } = useApp(useShallow((s) => ({ toast: s.toast, settings: s.settings })))
   const [meta, setMeta] = useState<VaultMeta | null>(null)
   const [metaLoading, setMetaLoading] = useState(true)
   const [unlocked, setUnlocked] = useState(false)

@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Lightbulb, Plus, Trash2, Link2, Flag, CheckCircle2, Circle, X, ExternalLink, LayoutGrid, List, Search } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
+import { deleteWithUndo } from '@/lib/undo'
 import { PageHeader, Empty, Modal, TagInput, ColorPicker, Progress, Field } from '@/components/ui'
 import { uid, COLORS, cn, relTime } from '@/lib/utils'
 import { invoke } from '@/lib/api'
@@ -33,7 +35,7 @@ const ProjectCard = React.memo(function ProjectCard({ p, linkedCount, lang, onOp
 
 export default function Projects() {
   const { t } = useTranslation()
-  const { projects, saveProjects, tasks, pageParams, consumeParams, toast, settings } = useApp()
+  const { projects, saveProjects, tasks, pageParams, consumeParams, toast, settings, touchRecent } = useApp(useShallow((s) => ({ projects: s.projects, saveProjects: s.saveProjects, tasks: s.tasks, pageParams: s.pageParams, consumeParams: s.consumeParams, toast: s.toast, settings: s.settings, touchRecent: s.touchRecent })))
   const [edit, setEdit] = useState<Project | null>(null)
   const [view, setView] = useState<'board' | 'list'>('board')
   const [q, setQ] = useState('')
@@ -70,15 +72,14 @@ export default function Projects() {
     setEdit(null); toast(t('toast.saved'))
   }
   const remove = async (id: string) => {
-    if (settings.confirmDelete && !(await invoke('dialog:confirm', t('common.confirmDelete')))) return
-    saveProjects(projects.filter((p) => p.id !== id)); setEdit(null); toast(t('toast.deleted'), 'info')
+    if (await deleteWithUndo('projects', id)) setEdit(null)
   }
   const move = useCallback((id: string, status: ProjectStatus) => {
     const list = useApp.getState().projects
     if (!list.some((p) => p.id === id)) return
     useApp.getState().saveProjects(list.map((p) => (p.id === id ? { ...p, status, updatedAt: Date.now() } : p)))
   }, [])
-  const openCard = useCallback((p: Project) => setEdit(p), [])
+  const openCard = useCallback((p: Project) => { setEdit(p); touchRecent('project', p.id) }, [touchRecent])
   const onDrag = useCallback((e: React.DragEvent, id: string) => { e.dataTransfer.setData('text/plain', id) }, [])
   const filteredProjects = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -102,7 +103,7 @@ export default function Projects() {
         </div>
         <button className="btn-primary" onClick={() => setEdit(blank())}><Plus size={16} />{t('projects.newProject')}</button>
       </PageHeader>
-      <div className="relative mb-4 max-w-md"><Search size={14} className="absolute start-3 top-2.5 text-surface-500" /><input className="input ps-9 py-1.5 text-xs" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="relative mb-4 max-w-md"><Search size={14} className="absolute start-3 top-2.5 text-surface-500" /><input data-search className="input ps-9 py-1.5 text-xs" aria-label={t('common.search')} placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {projects.length === 0 ? <Empty icon={<Lightbulb size={40} />} text={t('projects.noProjects')} action={<button className="btn-primary" onClick={() => setEdit(blank())}><Plus size={16} />{t('projects.newProject')}</button>} /> :
         filteredProjects.length === 0 ? (
           <div className="text-center p-6">

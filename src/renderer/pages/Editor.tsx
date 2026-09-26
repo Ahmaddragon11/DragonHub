@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import MonacoEditor, { loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import { Code2, FolderOpen, Plus, Save, X, WrapText, Map as MapIcon, Search } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Empty } from '@/components/ui'
 import { invoke } from '@/lib/api'
@@ -59,7 +60,7 @@ function readStash(): StashedTab[] {
 
 export default function Editor() {
   const { t } = useTranslation()
-  const { settings, setSettings, pageParams, toast, systemTheme } = useApp()
+  const { settings, setSettings, pageParams, toast, systemTheme } = useApp(useShallow((s) => ({ settings: s.settings, setSettings: s.setSettings, pageParams: s.pageParams, toast: s.toast, systemTheme: s.systemTheme })))
   const [tabs, setTabs] = useState<Tab[]>([])
   const [cur, setCur] = useState<string | null>(null)
   const [pos, setPos] = useState({ l: 1, c: 1 })

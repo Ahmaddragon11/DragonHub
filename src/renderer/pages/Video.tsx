@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Clapperboard, FolderOpen, Loader2, Play, Camera, Square, Zap, Music, VolumeX, Film, Info, Maximize2, X } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle, Slider, Empty } from '@/components/ui'
 import { invoke, on, toFileUrl } from '@/lib/api'
@@ -14,7 +15,7 @@ const PRESETS: VideoOp['preset'][] = ['ultrafast', 'superfast', 'veryfast', 'fas
 
 export default function Video() {
   const { t } = useTranslation()
-  const { pageParams, toast } = useApp()
+  const { pageParams, toast } = useApp(useShallow((s) => ({ pageParams: s.pageParams, toast: s.toast })))
   const vid = useRef<HTMLVideoElement>(null)
   const [src, setSrc] = useState<string | null>(null)
   const [info, setInfo] = useState<MediaInfo | null>(null)

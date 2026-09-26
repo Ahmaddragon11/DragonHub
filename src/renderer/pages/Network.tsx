@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Wifi, ArrowDown, ArrowUp, Download, Upload, ShieldAlert, AlertTriangle, Radar, Ban, Gauge, FileDown, Signal } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Field, Toggle, Slider, Empty, Progress } from '@/components/ui'
 import { invoke, on } from '@/lib/api'
@@ -72,7 +73,7 @@ function isValidExePath(p: string): boolean {
 
 export default function Network() {
   const { t, i18n } = useTranslation()
-  const { toast } = useApp()
+  const { toast } = useApp(useShallow((s) => ({ toast: s.toast })))
   const [tab, setTab] = useState<Tab>(() => {
     try { const v = localStorage.getItem('dh-net-tab'); return TABS.includes(v as Tab) ? (v as Tab) : 'overview' } catch { return 'overview' }
   })

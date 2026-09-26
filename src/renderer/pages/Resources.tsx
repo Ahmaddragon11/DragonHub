@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Gauge, Cpu, MemoryStick, HardDrive, MonitorCog, Snowflake, Play, Download, Search, Skull, PictureInPicture2, Bell } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Field, Toggle, Slider, Empty, Progress, Ring } from '@/components/ui'
 import { invoke, on } from '@/lib/api'
@@ -42,7 +43,7 @@ type SortKey = 'cpu' | 'mem' | 'pid' | 'name'
 
 export default function Resources() {
   const { t } = useTranslation()
-  const { toast } = useApp()
+  const { toast } = useApp(useShallow((s) => ({ toast: s.toast })))
   const [snap, setSnap] = useState<ResLive | null>(null)
   const [procs, setProcs] = useState<ResProcess[]>([])
   const [cfg, setCfg] = useState<ResConfig | null>(null)

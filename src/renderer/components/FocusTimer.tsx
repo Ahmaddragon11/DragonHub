@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Play, Pause, RotateCcw, Timer } from 'lucide-react'
-import { Ring } from './ui'
+import { Ring, Segmented } from './ui'
 import { invoke } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -27,8 +27,13 @@ export default function FocusTimer() {
 
   useEffect(() => {
     if (!running) return
-    const i = setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000)
+    // Deadline-based countdown: immune to timer throttling when the window is
+    // hidden/minimised (a naive `s - 1` per tick drifts by minutes in background).
+    const deadline = Date.now() + left * 1000
+    const tick = () => setLeft(Math.max(0, Math.round((deadline - Date.now()) / 1000)))
+    const i = setInterval(tick, 500)
     return () => clearInterval(i)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running])
 
   // Reflect the countdown in the window title while running; restore on stop/unmount.
@@ -55,25 +60,24 @@ export default function FocusTimer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [left])
 
+  const pct = ((MODES[mode] - left) / MODES[mode]) * 100
   return (
-    <section className="card p-5">
-      <h2 className="font-semibold mb-3 flex items-center gap-2"><Timer size={16} className="text-accent" />{t('focus.title')}</h2>
-      <div className="flex items-center gap-4">
-        <Ring value={((MODES[mode] - left) / MODES[mode]) * 100} size={96} stroke={10}>
-          <span className="text-lg font-black tabular-nums">{fmt(left)}</span>
-          <span className="text-[10px] text-surface-500">{t(`focus.${mode}`)}</span>
+    <section className="card p-4 flex flex-col" aria-label={t('focus.title')}>
+      <header className="flex items-center justify-between gap-2 mb-3 px-1">
+        <h2 className="section-title"><Timer size={15} />{t('focus.title')}</h2>
+        <span className="text-[11px] text-surface-500 tabular-nums">{t('focus.sessions', { count: sessions })}</span>
+      </header>
+      <div className="flex-1 flex flex-col items-center justify-center gap-4">
+        <Ring value={pct} size={132} stroke={7}>
+          <span className="text-[28px] font-semibold tracking-tight tabular-nums leading-none" aria-live="off">{fmt(left)}</span>
+          <span className={cn('mt-1 text-[11px] font-medium flex items-center gap-1.5', running ? 'text-accent' : 'text-surface-500')}>
+            {running && <span className="live-dot h-1.5 w-1.5 rounded-full bg-current" />}{t(`focus.${mode}`)}
+          </span>
         </Ring>
-        <div className="flex-1 min-w-0 space-y-2">
-          <div className="flex gap-1 p-1 rounded-xl bg-surface-200 w-fit">
-            {(['work', 'short', 'long'] as Mode[]).map((m) => (
-              <button key={m} onClick={() => switchMode(m)} className={cn('px-2 py-1 rounded-lg text-[11px] transition-all duration-300', mode === m ? 'bg-surface-100 text-accent font-semibold shadow-sm' : 'text-surface-600 hover:text-surface-900')}>{t(`focus.${m}`)}</button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="btn-primary px-3 py-1.5 text-xs" onClick={() => setRunning((r) => !r)}>{running ? <Pause size={13} /> : <Play size={13} />}{running ? t('common.pause') : t('common.start')}</button>
-            <button className="btn-icon" title={t('common.reset')} onClick={() => { setRunning(false); setLeft(MODES[mode]) }}><RotateCcw size={14} /></button>
-          </div>
-          <p className="text-[11px] text-surface-500">{t('focus.sessions', { count: sessions })}</p>
+        <Segmented size="sm" value={mode} onChange={switchMode} label={t('focus.title')} options={(['work', 'short', 'long'] as Mode[]).map((m) => ({ value: m, label: t(`focus.${m}`) }))} />
+        <div className="flex items-center gap-2">
+          <button className="btn-primary min-w-[112px]" onClick={() => setRunning((r) => !r)} aria-pressed={running}>{running ? <Pause size={14} /> : <Play size={14} />}{running ? t('common.pause') : t('common.start')}</button>
+          <button className="btn-icon" title={t('common.reset')} aria-label={t('common.reset')} disabled={left === MODES[mode] && !running} onClick={() => { setRunning(false); setLeft(MODES[mode]) }}><RotateCcw size={15} /></button>
         </div>
       </div>
     </section>

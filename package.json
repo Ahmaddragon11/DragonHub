@@ -13,6 +13,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "dev:web": "vite --config vite.web.config.ts",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "build:renderer": "vite build",
     "preview": "vite preview",
