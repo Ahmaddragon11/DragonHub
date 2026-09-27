@@ -117,6 +117,7 @@ html:not(.dark) .aurora { opacity: .7; }
 html[data-anim='off'] *, html[data-anim='off'] *::before, html[data-anim='off'] *::after { animation: none !important; transition: none !important; }
 html[data-anim='reduced'] .stagger > * { animation: none; }
 html[data-anim='off'] .splash-ring { animation: none; }
+html[data-anim='off'] .card-interactive:hover, html[data-anim='reduced'] .card-interactive:hover { transform: none; }
 
 @layer components {
 /* ==========================================================================
@@ -148,12 +149,33 @@ html[data-glass='off'] .glass { background: rgb(var(--surface-100)); backdrop-fi
 .card-interactive {
   transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out), background-color var(--dur-2);
 }
-.card-interactive:hover { transform: translateY(-2px); box-shadow: var(--shadow-2), var(--inner-hi); border-color: rgb(var(--accent) / 0.28); }
+.card-interactive:hover { transform: translateY(-3px); box-shadow: var(--shadow-2), var(--inner-hi); border-color: rgb(var(--accent) / 0.32); }
 .card-interactive:active { transform: translateY(0) scale(.995); transition-duration: var(--dur-1); }
 
 /* Section heading used inside cards */
 .section-title { @apply flex items-center gap-2 text-[13px] font-semibold text-surface-800; }
-.section-title > svg { @apply text-surface-500; }
+.section-title > svg { @apply text-accent; }
+
+/* Consistent spacing, directional highlights and hierarchy across the workspace. */
+.workspace-main { background: radial-gradient(ellipse 65% 40% at 50% -12%, rgb(var(--accent) / .055), transparent 85%); }
+.dashboard-hero {
+  border-radius: var(--r-xl);
+  border: 1px solid rgb(var(--accent) / .18);
+  background: linear-gradient(115deg, rgb(var(--accent) / .12), rgb(var(--surface-100) / .92) 58%, rgb(var(--accent-soft) / .06));
+  box-shadow: var(--shadow-1), var(--inner-hi);
+}
+.dashboard-hero::after {
+  content: ''; position: absolute; width: 260px; height: 260px; inset-block-start: -170px; inset-inline-end: -40px;
+  border-radius: 50%; background: rgb(var(--accent) / .09); filter: blur(36px); pointer-events: none; z-index: -1;
+}
+.dashboard-stat { position: relative; overflow: hidden; }
+.dashboard-stat::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: rgb(var(--accent) / .6); opacity: 0; transition: opacity var(--dur-2); }
+[dir='rtl'] .dashboard-stat::before { inset: 0 0 0 auto; }
+.dashboard-stat:hover::before, .dashboard-stat:focus-visible::before { opacity: 1; }
+.dashboard-stat-icon { transition: transform var(--dur-3) var(--ease-spring), background-color var(--dur-2); }
+.dashboard-stat:hover .dashboard-stat-icon { transform: rotate(-7deg) scale(1.07); background: rgb(var(--accent) / .16); }
+.dashboard-action > span:first-child { transition: transform var(--dur-3) var(--ease-spring), background-color var(--dur-2), color var(--dur-2); }
+.dashboard-action:hover > span:first-child { transform: scale(1.08); }
 
 /* ==========================================================================
    Controls
@@ -304,6 +326,6 @@ input[type='text']:focus-visible, input[type='search']:focus-visible, input:not(
 
 /* Respect OS-level reduced motion even before the app setting loads. */
 @media (prefers-reduced-motion: reduce) {
-  .stagger > *, .live-dot::after, .splash-ring, .shimmer { animation: none !important; }
-  .card-interactive:hover { transform: none; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  .card-interactive:hover, .dashboard-stat:hover .dashboard-stat-icon, .dashboard-action:hover > span:first-child { transform: none; }
 }

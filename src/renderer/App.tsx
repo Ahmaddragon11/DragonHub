@@ -113,7 +113,7 @@ export default function App() {
             <TitleBar onMenu={viewport === 'mobile' ? () => setDrawer(true) : undefined} />
             <div className="flex flex-1 min-h-0">
               <Sidebar viewport={viewport} drawerOpen={drawer} onCloseDrawer={() => setDrawer(false)} />
-              <main id="main" className="flex-1 min-w-0 min-h-0 relative" tabIndex={-1}>
+              <main id="main" className="workspace-main flex-1 min-w-0 min-h-0 relative" tabIndex={-1}>
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div key={page} className="absolute inset-0 overflow-y-auto px-3 pb-3 pt-1 sm:px-5 sm:pb-5 lg:px-6" variants={v} initial="initial" animate="enter" exit="exit">
                     <div className="min-h-full h-full max-w-[1600px] mx-auto">
