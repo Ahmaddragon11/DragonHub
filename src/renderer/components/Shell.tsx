@@ -37,7 +37,7 @@ export const NAV: { id: PageId; icon: React.ReactNode; group: NavGroup }[] = [
 ]
 
 const GROUP_ORDER: NavGroup[] = ['main', 'productivity', 'files', 'media', 'security', 'system']
-const EXPANDED_W = 228
+const EXPANDED_W = 244
 const COLLAPSED_W = 64
 /** Below this width the sidebar auto-collapses to icons; below MOBILE it becomes a drawer. */
 const NARROW = 1120
@@ -76,7 +76,7 @@ export function TitleBar({ onMenu }: { onMenu?: () => void }) {
   const BackIcon = rtl ? ArrowRight : ArrowLeft
   const FwdIcon = rtl ? ArrowLeft : ArrowRight
   return (
-    <div className="drag flex items-center h-11 ps-2 gap-2 select-none shrink-0 relative z-20">
+    <div className="drag flex items-center h-12 ps-2 gap-2 select-none shrink-0 relative z-20 border-b border-[color:var(--hairline)] bg-surface-100/60">
       <div className="no-drag flex items-center gap-0.5">
         {onMenu && <button className="btn-icon" aria-label={t('side.menu')} onClick={onMenu}><Menu size={17} /></button>}
         <Tooltip label={t('common.back')} shortcut="Alt+←"><button className="btn-icon p-1.5" aria-label={t('common.back')} disabled={!canBack} onClick={goBack}><BackIcon size={15} /></button></Tooltip>
@@ -106,7 +106,15 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
   })))
   const { t } = useTranslation()
   const { reduced } = useMotionPrefs()
+  const drawerRef = useRef<HTMLElement>(null)
   const mobile = viewport === 'mobile'
+  useFocusTrap(drawerRef, mobile && drawerOpen)
+  useEffect(() => {
+    if (!mobile || !drawerOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseDrawer() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mobile, drawerOpen, onCloseDrawer])
   const collapsed = mobile ? false : userCollapsed || viewport === 'narrow'
   const isRtl = language === 'ar'
   const darkNow = theme === 'dark' || (theme === 'system' && systemTheme === 'dark')
@@ -121,7 +129,7 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
   const ThemeIcon = theme === 'system' ? Monitor : darkNow ? Sun : Moon
 
   const body = (
-    <aside aria-label={t('side.menu')}
+    <aside ref={drawerRef} aria-label={t('side.menu')} role={mobile ? 'dialog' : undefined} aria-modal={mobile ? true : undefined} tabIndex={mobile ? -1 : undefined}
       style={{ width: collapsed ? COLLAPSED_W : EXPANDED_W }}
       className={cn('flex flex-col overflow-hidden shrink-0 relative z-10 transition-[width] duration-200 ease-out',
         mobile ? 'h-full surface-raised rounded-none rounded-e-2xl' : 'glass rounded-2xl m-2 mt-0 me-0')}>
@@ -204,7 +212,7 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
       {drawerOpen && (
         <motion.div className="fixed inset-0 z-[80] flex" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
           <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" onClick={onCloseDrawer} aria-hidden />
-          <motion.div className="relative h-full" initial={{ x: isRtl ? 240 : -240 }} animate={{ x: 0 }} exit={{ x: isRtl ? 240 : -240 }} transition={spring.soft}>{body}</motion.div>
+          <motion.div className="relative h-full" initial={reduced ? false : { x: isRtl ? 260 : -260 }} animate={{ x: 0 }} exit={reduced ? { opacity: 0 } : { x: isRtl ? 260 : -260 }} transition={reduced ? { duration: 0 } : spring.soft}>{body}</motion.div>
         </motion.div>
       )}
     </AnimatePresence>

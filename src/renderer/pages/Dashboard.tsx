@@ -9,7 +9,7 @@ import FocusTimer from '@/components/FocusTimer'
 import { invoke } from '@/lib/api'
 import { cn, formatBytes, formatDuration, relTime } from '@/lib/utils'
 import { isDueToday, isOverdue, moveTask } from '@/lib/tasks'
-import { ease } from '@/lib/motion'
+import { ease, revealItem, revealSequence, useMotionPrefs } from '@/lib/motion'
 
 interface SysInfo { cpus: number; cpuModel: string; totalMem: number; freeMem: number; uptime: number; platform: string; release: string; arch: string }
 
@@ -17,14 +17,15 @@ const greetingKey = (h: number) => (h < 5 ? 'night' : h < 12 ? 'morning' : h < 1
 
 /** Card section with consistent header + optional "view all" affordance. */
 function Panel({ icon, title, action, children, className }: { icon: React.ReactNode; title: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
+  const { reduced, k } = useMotionPrefs()
   return (
-    <section className={cn('card p-4 flex flex-col min-w-0', className)}>
+    <motion.section variants={revealItem(reduced, k)} className={cn('card p-4 flex flex-col min-w-0', className)}>
       <header className="flex items-center justify-between gap-2 mb-2 px-1">
         <h2 className="section-title">{icon}{title}</h2>
         {action}
       </header>
       {children}
-    </section>
+    </motion.section>
   )
 }
 
@@ -44,6 +45,7 @@ function MiniEmpty({ text, cta, onClick }: { text: string; cta: string; onClick:
 
 export default function Dashboard() {
   const { t } = useTranslation()
+  const { reduced, k } = useMotionPrefs()
   const { notes, tasks, projects, downloads, navigate, lang, recents, touchRecent, saveTasks } = useApp(useShallow((s) => ({
     notes: s.notes, tasks: s.tasks, projects: s.projects, downloads: s.downloads, navigate: s.navigate, lang: s.settings.language, recents: s.recents, touchRecent: s.touchRecent, saveTasks: s.saveTasks,
   })))
@@ -104,39 +106,50 @@ export default function Dashboard() {
   const memPct = sys ? ((sys.totalMem - sys.freeMem) / sys.totalMem) * 100 : 0
 
   return (
-    <div className="pb-2">
-      {/* Hero: date + greeting + day progress */}
-      <header className="flex flex-wrap items-end justify-between gap-4 mb-5 pt-1">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-surface-500">{dateLabel}</p>
-          <h1 className="text-[26px] font-semibold tracking-tight leading-tight mt-0.5">{t(`dashboard.greeting.${greetingKey(now.getHours())}`)}</h1>
-          <p className="text-sm text-surface-500 mt-1">
+    <motion.div className="dashboard pb-4" variants={revealSequence(reduced, k)} initial="initial" animate="enter">
+      <motion.header variants={revealItem(reduced, k)} className="dashboard-hero relative isolate overflow-hidden flex flex-wrap items-center justify-between gap-5 mb-5 px-5 py-6 sm:px-7 sm:py-7">
+        <div className="min-w-0 relative z-10">
+          <p className="inline-flex items-center gap-2 text-xs font-medium text-accent"><Sparkles size={14} />{dateLabel}</p>
+          <h1 className="text-[clamp(1.65rem,3vw,2.35rem)] font-semibold tracking-tight leading-tight mt-2">{t(`dashboard.greeting.${greetingKey(now.getHours())}`)}</h1>
+          <p className="text-sm text-surface-600 mt-2 max-w-xl">
             {agenda.length === 0 && doneToday === 0 ? t('dashboard.dayClear') : t('dashboard.daySummary', { open: agenda.length, done: doneToday })}
           </p>
         </div>
-        <button onClick={() => useApp.getState().setPalette(true)} className="btn-outline hidden md:inline-flex text-surface-500">
-          <Command size={14} />{t('dashboard.quickFind')}<Kbd keys={['Ctrl', 'K']} />
+        <button onClick={() => useApp.getState().setPalette(true)} className="btn-outline relative z-10 text-surface-600">
+          <Command size={14} />{t('dashboard.quickFind')}<Kbd keys={['Ctrl', 'K']} className="hidden sm:inline-flex" />
         </button>
-      </header>
+      </motion.header>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 stagger">
-        {stats.map((s) => (
-          <button key={s.label} onClick={() => navigate(s.page)} className="card card-interactive p-4 text-start group">
-            <div className="flex items-center justify-between text-surface-500">
-              <span className="flex items-center gap-2 text-xs font-medium">{s.icon}{s.label}</span>
-              <ArrowUpRight size={14} className="opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 rtl:-scale-x-100" />
+      <motion.section variants={revealItem(reduced, k)} aria-label={t('dashboard.stats')} className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        {stats.map((s, i) => (
+          <button key={s.label} onClick={() => navigate(s.page)} className="card card-interactive dashboard-stat p-4 sm:p-5 text-start group" style={{ '--stat-index': i } as React.CSSProperties}>
+            <div className="flex items-center justify-between gap-2 text-surface-600">
+              <span className="dashboard-stat-icon grid place-items-center h-9 w-9 rounded-xl bg-accent/10 text-accent">{s.icon}</span>
+              <ArrowUpRight size={15} className="text-surface-400 group-hover:text-accent transition-colors rtl:-scale-x-100" />
             </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-[28px] font-semibold tracking-tight tabular-nums leading-none">{s.value}</span>
+            <div className="mt-4 flex items-baseline gap-2 flex-wrap">
+              <span className="text-[30px] font-semibold tracking-tight tabular-nums leading-none">{s.value}</span>
               {!!s.alert && <span className="badge bg-rose-500/12 text-rose-500"><AlertCircle size={10} />{t('dashboard.overdueN', { count: s.alert })}</span>}
               {s.locked && <span className="text-[11px] text-surface-500">{t('vault.locked')}</span>}
             </div>
+            <span className="block mt-2 text-xs font-medium text-surface-500">{s.label}</span>
           </button>
         ))}
-      </div>
+      </motion.section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
+      <motion.section variants={revealItem(reduced, k)} className="mt-6" aria-label={t('dashboard.quickActions')}>
+        <h2 className="label mb-3 px-1">{t('dashboard.quickActions')}</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5">
+          {quick.map((q) => (
+            <button key={q.l} onClick={q.go} className="card card-interactive dashboard-action flex items-center gap-3 px-3 py-3 text-[13px] font-medium text-surface-700 hover:text-surface-950 group text-start min-w-0">
+              <span className="grid place-items-center h-9 w-9 shrink-0 rounded-xl bg-accent/10 text-accent group-hover:bg-accent group-hover:text-accent-fg transition-colors duration-200">{q.i}</span>
+              <span className="truncate">{q.l}</span>
+            </button>
+          ))}
+        </div>
+      </motion.section>
+
+      <motion.div variants={revealItem(reduced, k)} className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-6">
         {/* Today agenda */}
         <Panel className="lg:col-span-2 min-h-[260px]" icon={<CalendarClock size={15} />} title={t('dashboard.today')}
           action={<div className="flex items-center gap-3">{dayTotal > 0 && <div className="hidden sm:flex items-center gap-2 w-36"><Progress value={dayPct} tone="success" /><span className="text-[11px] tabular-nums text-surface-500">{dayPct}%</span></div>}<ViewAll onClick={() => navigate('tasks')} /></div>}>
@@ -170,19 +183,9 @@ export default function Dashboard() {
         </Panel>
 
         <FocusTimer />
-      </div>
+      </motion.div>
 
-      {/* Quick actions */}
-      <section className="mt-3 grid grid-cols-3 sm:grid-cols-6 gap-2">
-        {quick.map((q) => (
-          <button key={q.l} onClick={q.go} className="card card-interactive flex flex-col items-center justify-center gap-2 py-3.5 px-2 text-xs text-surface-700 hover:text-surface-950 group">
-            <span className="grid place-items-center h-8 w-8 rounded-lg bg-accent/10 text-accent group-hover:bg-accent group-hover:text-accent-fg transition-colors duration-200">{q.i}</span>
-            <span className="truncate max-w-full">{q.l}</span>
-          </button>
-        ))}
-      </section>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-3">
+      <motion.div variants={revealItem(reduced, k)} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mt-3">
         <Panel icon={<Sparkles size={15} />} title={jumpBack.length ? t('dashboard.jumpBack') : t('dashboard.recentNotes')} action={<ViewAll onClick={() => navigate('notes')} />}>
           {jumpBack.length > 0 ? (
             <ul className="space-y-0.5">
@@ -265,7 +268,7 @@ export default function Dashboard() {
             )}
           </Panel>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
