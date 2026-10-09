@@ -27,6 +27,15 @@
 - Production build ran out of memory on low-RAM machines.
 - Focus timer drifted while the window was hidden.
 
+## v1.4.6 — 2026-10-09 (in-app updates)
+
+### Added
+- Check for a newer release and download its Windows installer from the About page.
+- Update download progress, cancellation, and install-now-or-later controls.
+
+### Security
+- Validate GitHub release URLs, download hosts, and Windows installer signatures before launch.
+
 ## v1.4.5 — 2026-09-10 (startup/RAM/disk performance + icon + release fix)
 
 ### Added

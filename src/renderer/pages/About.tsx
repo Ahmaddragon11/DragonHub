@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
-import { Info, Send, Heart, Sparkles, Bug, Wrench, ShieldCheck, Cpu, RefreshCw } from 'lucide-react'
+import { Info, Send, Heart, Sparkles, Bug, Wrench, ShieldCheck, Cpu, RefreshCw, Download, CheckCircle2, X } from 'lucide-react'
 import { PageHeader } from '@/components/ui'
 import { Logo } from '@/components/Shell'
 import { invoke } from '@/lib/api'
+import { useApp } from '@/store'
+import { formatBytes } from '@/lib/utils'
 import { CHANGELOG, DEVELOPER, TELEGRAM_URL, APP_VERSION } from '@shared/types'
 import type { VersionInfo } from '@shared/types'
 
@@ -12,8 +14,64 @@ const ICON = { added: <Sparkles size={12} className="text-emerald-400" />, chang
 
 export default function About() {
   const { t } = useTranslation()
+  const {
+    toast, updateProgress, updateAvailableVersion, setUpdateProgress, setUpdateAvailableVersion,
+  } = useApp()
   const [v, setV] = useState<VersionInfo | null>(null)
+  const [cancellingUpdate, setCancellingUpdate] = useState(false)
+  const [installingUpdate, setInstallingUpdate] = useState(false)
+  const [updateReadyDismissed, setUpdateReadyDismissed] = useState(false)
   useEffect(() => { invoke('app:version').then(setV).catch(() => {}) }, [])
+
+  const checkForUpdates = async () => {
+    setUpdateReadyDismissed(false)
+    setUpdateProgress({ phase: 'checking' })
+    try {
+      const result = await invoke<{ status: 'unsupported' | 'up-to-date' | 'available' | 'cancelled'; version?: string }>(
+        'app:checkForUpdates',
+      )
+      setUpdateProgress(null)
+      if (result.status === 'up-to-date') {
+        setUpdateAvailableVersion(null)
+        toast(t('about.upToDate'), 'success')
+      } else if (result.status === 'unsupported') {
+        toast(t('about.updateUnsupported'), 'info')
+      } else if (result.status === 'cancelled') {
+        toast(t('about.updateCancelled'), 'info')
+      } else if (result.status === 'available' && result.version) {
+        setUpdateAvailableVersion(result.version)
+      }
+    } catch (error) {
+      setUpdateProgress(null)
+      toast(error instanceof Error ? error.message : t('toast.error'), 'error')
+    }
+  }
+
+  const cancelUpdateCheck = async () => {
+    setCancellingUpdate(true)
+    try {
+      const cancelled = await invoke<boolean>('app:cancelUpdateDownload')
+      if (!cancelled) toast(t('about.updateCancelUnavailable'), 'info')
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t('toast.error'), 'error')
+    } finally {
+      setCancellingUpdate(false)
+    }
+  }
+
+  const installUpdate = async () => {
+    setInstallingUpdate(true)
+    try {
+      await invoke('app:installUpdate')
+    } catch (error) {
+      setInstallingUpdate(false)
+      toast(error instanceof Error ? error.message : t('toast.error'), 'error')
+    }
+  }
+
+  const downloadPercent = updateProgress?.totalBytes
+    ? Math.min(100, Math.round(((updateProgress.receivedBytes ?? 0) / updateProgress.totalBytes) * 100))
+    : null
 
   return (
     <div className="flex flex-col h-full page-enter">
@@ -43,8 +101,69 @@ export default function About() {
                   <div key={k} className="flex justify-between gap-3 border-b border-surface-300/50 pb-1 min-w-0"><dt className="opacity-50 capitalize shrink-0">{k}</dt><dd className="font-mono text-xs min-w-0 text-end break-all" dir="ltr">{val}</dd></div>
                 ))}
               </dl>
-              <button className="btn mt-4 w-full" onClick={() => invoke('app:openExternal', TELEGRAM_URL)} title={TELEGRAM_URL}><RefreshCw size={14} /> {t('about.checkUpdate')}</button>
+              <button className="btn mt-4 w-full" onClick={checkForUpdates} disabled={!!updateProgress}>
+                <RefreshCw size={14} className={updateProgress?.phase === 'checking' ? 'animate-spin' : ''} />
+                {updateProgress?.phase === 'checking' ? t('about.updateChecking') : t('about.checkUpdate')}
+              </button>
               <p className="text-[11px] opacity-50 mt-2">{t('about.updatesNote')}</p>
+              {updateProgress && (
+                <div className="mt-4 rounded-xl bg-surface-200/70 p-3 space-y-2" aria-live="polite">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="flex items-center gap-2">
+                      {updateProgress.phase === 'checking'
+                        ? <RefreshCw size={14} className="animate-spin text-accent" />
+                        : <Download size={14} className="text-accent" />}
+                      {t(updateProgress.phase === 'checking' ? 'about.updateChecking' : 'about.updateDownloading')}
+                    </span>
+                    {downloadPercent !== null && <span className="font-mono" dir="ltr">{downloadPercent}%</span>}
+                  </div>
+                  {updateProgress.phase === 'downloading' && (
+                    <>
+                      <div
+                        className="h-2 overflow-hidden rounded-full bg-surface-300"
+                        role="progressbar"
+                        aria-label={t('about.updateDownloading')}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={downloadPercent ?? undefined}
+                      >
+                        <div
+                          className={`h-full rounded-full bg-accent transition-all duration-200 ${downloadPercent === null ? 'w-1/3 animate-pulse' : ''}`}
+                          style={downloadPercent === null ? undefined : { width: `${downloadPercent}%` }}
+                        />
+                      </div>
+                      <div className="text-[11px] opacity-60" dir="ltr">
+                        {formatBytes(updateProgress.receivedBytes ?? 0)}
+                        {updateProgress.totalBytes ? ` / ${formatBytes(updateProgress.totalBytes)}` : ''}
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-end">
+                    <button className="btn-ghost py-0.5 text-xs" onClick={cancelUpdateCheck} disabled={cancellingUpdate}>
+                      <X size={12} /> {cancellingUpdate ? t('about.updateCancelling') : t('about.updateCancel')}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {updateAvailableVersion && (
+                <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 space-y-2" aria-live="polite">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-500" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{t('about.updateReady', { version: updateAvailableVersion })}</p>
+                      <p className="mt-1 text-xs opacity-70">{updateReadyDismissed ? t('about.updateReadyLater') : t('about.updateReadyPrompt')}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn-primary flex-1 justify-center" onClick={installUpdate} disabled={installingUpdate}>
+                      <Download size={14} /> {installingUpdate ? t('about.updateInstalling') : t('about.updateInstallNow')}
+                    </button>
+                    {!updateReadyDismissed && (
+                      <button className="btn justify-center" onClick={() => setUpdateReadyDismissed(true)}>{t('about.updateLaterAction')}</button>
+                    )}
+                  </div>
+                </div>
+              )}
             </section>
             <section className="card p-5 min-w-0">
               <h3 className="font-semibold mb-3 flex items-center gap-2 text-accent"><ShieldCheck size={16} /> {t('about.license')}</h3>

@@ -1,6 +1,6 @@
 // Shared type contracts between main process and renderer
 
-export const APP_VERSION = '1.4.5'
+export const APP_VERSION = '1.4.6'
 export const DEVELOPER = 'AHMADDRAGON'
 export const TELEGRAM_URL = 'https://t.me/ahmaddragon'
 
@@ -294,6 +294,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.4.6',
+    date: '2026-10-09',
+    changes: [
+      { type: 'added', text: 'Check for new releases and download the Windows installer from the About page' },
+      { type: 'changed', text: 'Update downloads now show progress, support cancellation, and let you install now or later' },
+      { type: 'security', text: 'Update installers are downloaded from verified GitHub release URLs and validated before launch' },
+    ],
+  },
   {
     version: '1.4.5',
     date: '2026-09-10',

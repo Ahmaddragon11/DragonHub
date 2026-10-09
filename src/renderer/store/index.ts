@@ -18,6 +18,11 @@ const loadRecents = (): RecentItem[] => {
 }
 
 export const PAGE_IDS: PageId[] = ['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about']
+export interface UpdateProgress {
+  phase: 'checking' | 'downloading'
+  receivedBytes?: number
+  totalBytes?: number
+}
 
 interface AppState {
   ready: boolean
@@ -33,6 +38,8 @@ interface AppState {
   backStack: PageId[]
   fwdStack: PageId[]
   recents: RecentItem[]
+  updateProgress: UpdateProgress | null
+  updateAvailableVersion: string | null
   notes: Note[]
   projects: Project[]
   tasks: Task[]
@@ -43,6 +50,8 @@ interface AppState {
   resetSettings: () => Promise<void>
   toast: (text: string, type?: Toast['type'], opts?: ToastOptions) => void
   dismissToast: (id: string) => void
+  setUpdateProgress: (progress: UpdateProgress | null) => void
+  setUpdateAvailableVersion: (version: string | null) => void
   setPalette: (open: boolean) => void
   setShortcuts: (open: boolean) => void
   goBack: () => void
@@ -109,6 +118,7 @@ let initStarted = false
 export const useApp = create<AppState>((set, get) => ({
   ready: false, page: 'dashboard', pageParams: {}, settings: DEFAULT_SETTINGS, systemTheme: 'dark', toasts: [], paletteOpen: false, shortcutsOpen: false, windowMaximized: false,
   backStack: [], fwdStack: [], recents: typeof window !== 'undefined' ? loadRecents() : [],
+  updateProgress: null, updateAvailableVersion: null,
   notes: [], projects: [], tasks: [], downloads: [],
 
   init: async () => {
@@ -137,6 +147,7 @@ export const useApp = create<AppState>((set, get) => ({
       window.dh.on('theme:system', (t) => { set({ systemTheme: t as 'dark' | 'light' }); applyTheme(get().settings, t as 'dark' | 'light') })
       window.dh.on('downloads:update', (d) => get().updateDownload(d as DownloadItem))
       window.dh.on('window:state', (s: any) => { if (s && 'maximized' in s) set({ windowMaximized: s.maximized }) })
+      window.dh.on('updates:progress', (progress) => set({ updateProgress: progress as UpdateProgress }))
       if ([rSettings, rNotes, rProjects, rTasks].some((r) => r.status === 'rejected')) {
         get().toast(i18n.t('app.loadFailed'), 'error')
       }
@@ -204,6 +215,8 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setPalette: (open) => set(open ? { paletteOpen: true, shortcutsOpen: false } : { paletteOpen: false }),
   setShortcuts: (open) => set(open ? { shortcutsOpen: true, paletteOpen: false } : { shortcutsOpen: false }),
+  setUpdateProgress: (updateProgress) => set({ updateProgress }),
+  setUpdateAvailableVersion: (updateAvailableVersion) => set({ updateAvailableVersion }),
   saveNotes: (notes) => { if (!get().ready) return; set({ notes }); persist('notes', notes) },
   saveProjects: (projects) => { if (!get().ready) return; set({ projects }); persist('projects', projects) },
   saveTasks: (tasks) => { if (!get().ready) return; set({ tasks }); persist('tasks', tasks) },

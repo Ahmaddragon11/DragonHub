@@ -11,6 +11,7 @@ import * as media from './services/media'
 import * as netmon from './services/netmonitor'
 import * as netblock from './services/netblock'
 import * as resmon from './services/resmonitor'
+import { cancelUpdateDownload, downloadLatestUpdate, getDownloadedInstaller } from './services/updater'
 import { settingsStore, dataCollections } from './services/settings'
 import type { AppSettings, CompressOptions, ImageOp, VideoOp, VaultItem, VersionInfo, NetPlan, NetLimits, NetConfig, NetCycle, ResConfig, ResCardConfig } from '../../src/shared/types'
 import { CHANGELOG, TELEGRAM_URL, DEFAULT_NET_LIMITS } from '../../src/shared/types'
@@ -45,6 +46,9 @@ const RATE_LIMITS: Record<string, { n: number; ms: number }> = {
   'net:appBlocked': { n: 20, ms: 60000 },
   'net:speedTest': { n: 5, ms: 60000 },
   'app:openExternal': { n: 30, ms: 60000 },
+  'app:checkForUpdates': { n: 10, ms: 60000 },
+  'app:cancelUpdateDownload': { n: 10, ms: 60000 },
+  'app:installUpdate': { n: 5, ms: 60000 },
   'app:openTelegram': { n: 30, ms: 60000 },
   'app:openUserData': { n: 20, ms: 60000 },
   'app:setLoginItem': { n: 20, ms: 60000 },
@@ -102,8 +106,8 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   const cardCtl: CardControls = card ?? { show: () => {}, hide: () => {}, toggle: () => false, isOpen: () => false }
   // ---------- App / system ----------
   h('app:version', (): VersionInfo => ({
-    version: app.getVersion(), build: '2026.09.10', electron: process.versions.electron, chrome: process.versions.chrome,
-    node: process.versions.node, platform: process.platform, arch: process.arch, releaseDate: '2026-09-10', channel: 'stable',
+    version: app.getVersion(), build: '2026.10.09', electron: process.versions.electron, chrome: process.versions.chrome,
+    node: process.versions.node, platform: process.platform, arch: process.arch, releaseDate: '2026-10-09', channel: 'stable',
   }))
   h('app:changelog', () => CHANGELOG)
   h('app:paths', () => ({ userData: app.getPath('userData'), temp: app.getPath('temp'), logs: app.getPath('logs'), ...files.specialFolders() }))
@@ -142,6 +146,18 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
     return shell.openExternal(url)
   })
   h('app:openTelegram', () => shell.openExternal(TELEGRAM_URL))
+  h('app:checkForUpdates', () => downloadLatestUpdate((progress) => {
+    const win = getWin()
+    if (win && !win.isDestroyed()) win.webContents.send('updates:progress', progress)
+  }))
+  h('app:cancelUpdateDownload', () => cancelUpdateDownload())
+  h('app:installUpdate', async () => {
+    const installer = getDownloadedInstaller()
+    if (!installer) throw new Error('The downloaded installer is no longer available')
+    const openError = await shell.openPath(installer.path)
+    if (openError) throw new Error(`Could not launch the installer: ${openError}`)
+    app.quit()
+  })
   h('app:systemTheme', () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'))
   h('app:openUserData', () => shell.openPath(app.getPath('userData')))
   h('app:setLoginItem', (enabled: boolean) => {

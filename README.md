@@ -255,6 +255,8 @@ Then:
 5. Start working
 ```
 
+To update DragonHub later, open **About DragonHub** and select **Check for updates**. If a newer version is available, DragonHub downloads the Windows installer and asks before launching it.
+
 ---
 
 # 💻 System Requirements
@@ -497,8 +499,7 @@ git push origin v1.4.0
 
 ## القيود المعروفة (باختصار)
 
-- لا يوجد محدّث تلقائي — الإصدارات تُعلن عبر قناة تيليجرام.
+- يمكن التحقق من التحديثات وتنزيلها من صفحة «حول البرنامج»؛ لا يبدأ التثبيت إلا بعد موافقة المستخدم.
 - تحميل الوسائط (yt-dlp) يعتمد على الموقع المصدر وقد يفشل مع المحتوى المحمي.
 - التراجع (Undo) لعمليات الملفات غير متوفر بعد — الحذف يستخدم سلة المحذوفات افتراضياً.
 - التفاصيل: `SUPPORTED_FORMATS.md`.
-
