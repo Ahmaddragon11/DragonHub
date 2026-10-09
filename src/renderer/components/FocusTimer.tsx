@@ -7,7 +7,10 @@ import { cn } from '@/lib/utils'
 
 const MODES = { work: 25 * 60, short: 5 * 60, long: 15 * 60 } as const
 type Mode = keyof typeof MODES
-const todayKey = () => new Date().toISOString().slice(0, 10)
+const todayKey = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 
 /** Pomodoro-style focus timer widget: work/break cycles, desktop notification,

@@ -41,12 +41,22 @@ export function useMotionPrefs() {
 
 /** Route transition: subtle lift + fade; exit is shorter than enter. */
 export const pageVariants = (reduced: boolean, k: number): Variants => reduced
-  ? { initial: { opacity: 0 }, enter: { opacity: 1, transition: { duration: dur.sm * k } }, exit: { opacity: 0, transition: { duration: dur.xs * k } } }
+  ? { initial: { opacity: 1 }, enter: { opacity: 1, transition: { duration: 0 } }, exit: { opacity: 1, transition: { duration: 0 } } }
   : {
       initial: { opacity: 0, y: 10, scale: 0.995 },
       enter: { opacity: 1, y: 0, scale: 1, transition: { duration: dur.md * k, ease: ease.out } },
       exit: { opacity: 0, y: -4, transition: { duration: dur.xs * k, ease: ease.in } },
     }
+
+/** Dashboard sections enter in reading order; never stagger individual list rows. */
+export const revealSequence = (reduced: boolean, k: number): Variants => ({
+  initial: {},
+  enter: { transition: { staggerChildren: reduced ? 0 : 0.055 * k, delayChildren: reduced ? 0 : 0.04 * k } },
+})
+
+export const revealItem = (reduced: boolean, k: number): Variants => reduced
+  ? { initial: { opacity: 1 }, enter: { opacity: 1, transition: { duration: 0 } } }
+  : { initial: { opacity: 0, y: 12 }, enter: { opacity: 1, y: 0, transition: { duration: dur.md * k, ease: ease.out } } }
 
 /** Dialog surface: scale-from-0.96 with spring; backdrop fades independently. */
 export const dialogVariants = (reduced: boolean): Variants => reduced
