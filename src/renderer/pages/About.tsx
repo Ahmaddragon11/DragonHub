@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
-import { Info, Send, Heart, Sparkles, Bug, Wrench, ShieldCheck, Cpu, RefreshCw, Download, CheckCircle2, X } from 'lucide-react'
+import { Info, Send, Heart, Sparkles, Bug, Wrench, ShieldCheck, Cpu, RefreshCw, Download, CheckCircle2, X, Search, ChevronDown, ChevronUp, History } from 'lucide-react'
 import { PageHeader } from '@/components/ui'
 import { Logo } from '@/components/Shell'
 import { invoke } from '@/lib/api'
@@ -11,6 +11,8 @@ import { CHANGELOG, DEVELOPER, TELEGRAM_URL, APP_VERSION } from '@shared/types'
 import type { VersionInfo } from '@shared/types'
 
 const ICON = { added: <Sparkles size={12} className="text-emerald-400" />, changed: <Wrench size={12} className="text-blue-400" />, fixed: <Bug size={12} className="text-amber-400" />, security: <ShieldCheck size={12} className="text-violet-400" /> }
+const CHANGE_TYPES = ['all', 'added', 'changed', 'fixed', 'security'] as const
+type ChangeFilter = typeof CHANGE_TYPES[number]
 
 export default function About() {
   const { t } = useTranslation()
@@ -21,7 +23,25 @@ export default function About() {
   const [cancellingUpdate, setCancellingUpdate] = useState(false)
   const [installingUpdate, setInstallingUpdate] = useState(false)
   const [updateReadyDismissed, setUpdateReadyDismissed] = useState(false)
+  const [changelogQuery, setChangelogQuery] = useState('')
+  const [changeFilter, setChangeFilter] = useState<ChangeFilter>('all')
+  const [showAllVersions, setShowAllVersions] = useState(false)
   useEffect(() => { invoke('app:version').then(setV).catch(() => {}) }, [])
+
+  const filteredChangelog = useMemo(() => {
+    const query = changelogQuery.trim().toLocaleLowerCase()
+    return CHANGELOG.map((release) => ({
+      ...release,
+      changes: release.changes.filter((change) =>
+        (changeFilter === 'all' || change.type === changeFilter) &&
+        (!query || `${release.version} ${release.date} ${change.text}`.toLocaleLowerCase().includes(query)),
+      ),
+    })).filter((release) => release.changes.length > 0)
+  }, [changelogQuery, changeFilter])
+  const isFilteringChangelog = !!changelogQuery.trim() || changeFilter !== 'all'
+  const visibleChangelog = isFilteringChangelog || showAllVersions
+    ? filteredChangelog
+    : filteredChangelog.slice(0, 3)
 
   const checkForUpdates = async () => {
     setUpdateReadyDismissed(false)
@@ -172,14 +192,81 @@ export default function About() {
             </section>
           </div>
 
-          <section className="card p-5">
-            <h3 className="font-semibold mb-3 text-accent">{t('about.changelog')}</h3>
-            {CHANGELOG.map((c) => (
-              <div key={c.version} className="mb-4">
-                <div className="flex items-center gap-2 mb-2"><span className="badge bg-accent text-white">v{c.version}</span><span className="text-xs opacity-50">{c.date}</span></div>
-                <ul className="space-y-1 text-sm">{c.changes.map((ch, i) => <li key={i} className="flex items-start gap-2"><span className="mt-1">{ICON[ch.type]}</span><span>{ch.text}</span></li>)}</ul>
+          <section className="card p-5 sm:p-6" aria-labelledby="changelog-heading">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 id="changelog-heading" className="flex items-center gap-2 font-semibold text-accent"><History size={17} />{t('about.changelog')}</h3>
+                <p className="mt-1 text-xs opacity-60">{t('about.changelogDescription')}</p>
               </div>
-            ))}
+              <span className="badge bg-surface-200 text-surface-700">{t('about.changelogVersionCount', { count: CHANGELOG.length })}</span>
+            </div>
+
+            <label className="relative block">
+              <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 opacity-50" />
+              <input
+                type="search"
+                value={changelogQuery}
+                onChange={(event) => setChangelogQuery(event.target.value)}
+                placeholder={t('about.searchChangelog')}
+                aria-label={t('about.searchChangelog')}
+                className="input w-full ps-9"
+              />
+            </label>
+
+            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={t('about.filterChangelog')}>
+              {CHANGE_TYPES.map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${changeFilter === filter ? 'border-accent bg-accent text-white' : 'border-surface-300 bg-surface-100 hover:bg-surface-200'}`}
+                  aria-pressed={changeFilter === filter}
+                  onClick={() => setChangeFilter(filter)}
+                >
+                  {t(`about.changeType.${filter}`)}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-5 space-y-3" aria-live="polite">
+              {visibleChangelog.map((release) => {
+                const isLatest = CHANGELOG[0]?.version === release.version
+                return (
+                  <article
+                    key={release.version}
+                    className={`rounded-xl border p-4 sm:p-5 ${isLatest ? 'border-accent/30 bg-accent/5' : 'border-surface-300/70 bg-surface-100/40'}`}
+                  >
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <span className={`badge ${isLatest ? 'bg-accent text-white' : 'bg-surface-200 text-surface-700'}`}>v{release.version}</span>
+                      {isLatest && <span className="text-[11px] font-semibold text-accent">{t('about.latestRelease')}</span>}
+                      <time className="ms-auto text-xs opacity-50" dateTime={release.date}>{release.date}</time>
+                    </div>
+                    <ul className="space-y-2">
+                      {release.changes.map((change, changeIndex) => (
+                        <li key={`${release.version}-${change.type}-${changeIndex}`} className="flex items-start gap-2.5 text-sm leading-relaxed">
+                          <span className="mt-1 shrink-0" aria-hidden="true">{ICON[change.type]}</span>
+                          <span className="min-w-0 break-words">{change.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                )
+              })}
+              {visibleChangelog.length === 0 && (
+                <p className="rounded-xl bg-surface-100 p-5 text-center text-sm opacity-60">{t('about.noChangelogResults')}</p>
+              )}
+            </div>
+
+            {!isFilteringChangelog && filteredChangelog.length > 3 && (
+              <button
+                type="button"
+                className="btn mt-4 w-full justify-center"
+                aria-expanded={showAllVersions}
+                onClick={() => setShowAllVersions((expanded) => !expanded)}
+              >
+                {showAllVersions ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                {t(showAllVersions ? 'about.showFewerVersions' : 'about.showMoreVersions', { count: filteredChangelog.length - 3 })}
+              </button>
+            )}
           </section>
         </div>
       </div>

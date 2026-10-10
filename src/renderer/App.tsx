@@ -32,8 +32,10 @@ const PAGES: Record<string, React.ComponentType> = { dashboard: Dashboard, notes
 /** Fires a desktop notification + toast once per task when its reminder time arrives. */
 function useReminders() {
   const { t } = useTranslation()
+  const ready = useApp((s) => s.ready)
   const fired = useRef(new Set<string>())
   useEffect(() => {
+    if (!ready) return
     const { toast } = useApp.getState()
     const ensurePermission = async () => {
       try {
@@ -74,7 +76,7 @@ function useReminders() {
     check()
     const i = setInterval(check, 30000)
     return () => clearInterval(i)
-  }, [t])
+  }, [ready, t])
 }
 
 function PageFallback() {

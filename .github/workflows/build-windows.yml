@@ -1,69 +1,182 @@
-name: Build Windows
+name: Windows CI and Release
 
 on:
-  workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: build-windows-${{ github.ref }}
-  cancel-in-progress: true
+  group: windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
   build:
-    runs-on: windows-latest
-
+    name: Build Windows x64
+    runs-on: windows-2025
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Checkout source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: npm
 
-      - name: Install dependencies
+      - name: Read and validate version
+        id: version
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Invalid package version: $version"
+          }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match package version v$version"
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Install locked dependencies
         run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Build Windows packages
+      - name: Build Windows installer and portable app
         run: npm run dist
 
-      - name: Prepare release notes
+      - name: Generate release notes
+        shell: bash
+        env:
+          GITHUB_REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/release-body.mjs > "release/$APP_VERSION/RELEASE-NOTES.md"
+
+      - name: Generate CycloneDX SBOM
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        run: npm sbom --package-lock-only --sbom-format=cyclonedx --sbom-type=application > "release/$APP_VERSION/DragonHub-$APP_VERSION-sbom.cdx.json"
+
+      - name: Generate checksums and build manifest
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: node scripts/release-manifest.mjs
+
+      - name: Add build summary
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $directory = "release/$env:APP_VERSION"
+          @"
+          ## DragonHub $env:APP_VERSION — Windows x64
+
+          | File | Size |
+          |---|---:|
+          $(Get-ChildItem "$directory/DragonHub-*-win-x64.exe" | ForEach-Object { "| ``$($_.Name)`` | $([math]::Round($_.Length / 1MB, 2)) MB |" } | Out-String)
+
+          SBOM, SHA-256 checksums, build manifest, and release notes are included in the artifacts.
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Upload Windows build and release metadata
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: DragonHub-Windows-${{ steps.version.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/${{ steps.version.outputs.version }}/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  attest:
+    name: Attest release artifacts
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download Windows build
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: DragonHub-Windows-${{ needs.build.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/${{ needs.build.outputs.version }}
+
+      - name: Attest installer provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: release/${{ needs.build.outputs.version }}/DragonHub-*-win-x64.exe
+
+  publish:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, attest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release files
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: DragonHub-Windows-${{ needs.build.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/${{ needs.build.outputs.version }}
+
+      - name: Publish release and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
         shell: bash
         run: |
-          node scripts/release-body.mjs > release-notes.md
-          echo "--- release notes preview ---"
-          sed -n '1,80p' release-notes.md
+          set -euo pipefail
+          if [[ "$RELEASE_TAG" != "v$RELEASE_VERSION" ]]; then
+            echo "::error::Release tag and package version do not match"
+            exit 1
+          fi
 
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v5
-        with:
-          name: DragonHub-Windows
-          path: |
-            release/**/DragonHub-Setup-*-win-x64.exe
-            release/**/DragonHub-Portable-*-win-x64.exe
-          if-no-files-found: error
-          retention-days: 14
+          asset_dir="release/$RELEASE_VERSION"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "DragonHub $RELEASE_VERSION" \
+              --notes-file "$asset_dir/RELEASE-NOTES.md"
+            gh release upload "$RELEASE_TAG" "$asset_dir"/* --clobber
+          else
+            gh release create "$RELEASE_TAG" "$asset_dir"/* \
+              --verify-tag \
+              --title "DragonHub $RELEASE_VERSION" \
+              --notes-file "$asset_dir/RELEASE-NOTES.md"
+          fi
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}
-          name: ${{ startsWith(github.ref, 'refs/tags/') && format('DragonHub {0}', github.ref_name) || format('DragonHub Build {0}', github.run_number) }}
-          body_path: release-notes.md
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          files: |
-            release/**/DragonHub-Setup-*-win-x64.exe
-            release/**/DragonHub-Portable-*-win-x64.exe
+          {
+            echo "## Published DragonHub $RELEASE_VERSION"
+            echo
+            echo "Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+            echo
+            echo "Installer provenance was attested. Verify with:"
+            echo '```sh'
+            echo "gh attestation verify DragonHub-Setup-${RELEASE_VERSION}-win-x64.exe --repo ${GITHUB_REPOSITORY}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
