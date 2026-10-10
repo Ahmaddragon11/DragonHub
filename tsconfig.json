@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -16,9 +20,12 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/renderer/*"], "@shared/*": ["src/shared/*"] },
+    "paths": { "@/*": ["./src/renderer/*"], "@shared/*": ["./src/shared/*"] },
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "electron", "vite.config.ts"]
+  "include": [
+    "src",
+    "electron",
+    "vite.config.ts"
+  ]
 }
