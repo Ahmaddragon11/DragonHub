@@ -12,7 +12,8 @@ import * as netmon from './services/netmonitor'
 import * as netblock from './services/netblock'
 import * as resmon from './services/resmonitor'
 import { cancelUpdateDownload, downloadLatestUpdate, getDownloadedInstaller } from './services/updater'
-import { settingsStore, dataCollections } from './services/settings'
+import { settingsStore, dataCollections, GENERIC_SET_BLOCKED_KEYS } from './services/settings'
+import { refreshGlobalShortcuts } from './services/globalShortcuts'
 import type { AppSettings, CompressOptions, ImageOp, VideoOp, VaultItem, VersionInfo, NetPlan, NetLimits, NetConfig, NetCycle, ResConfig, ResCardConfig } from '../../src/shared/types'
 import { CHANGELOG, TELEGRAM_URL, DEFAULT_NET_LIMITS } from '../../src/shared/types'
 
@@ -54,6 +55,8 @@ const RATE_LIMITS: Record<string, { n: number; ms: number }> = {
   'app:setLoginItem': { n: 20, ms: 60000 },
   'app:keepAwake': { n: 20, ms: 60000 },
   'app:version': { n: 120, ms: 10000 },
+  'app:lastSeenVersion': { n: 60, ms: 10000 },
+  'app:markVersionSeen': { n: 30, ms: 10000 },
   'window:minimize': { n: 120, ms: 10000 },
   'window:maximize': { n: 120, ms: 10000 },
   'window:close': { n: 120, ms: 10000 },
@@ -106,8 +109,8 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   const cardCtl: CardControls = card ?? { show: () => {}, hide: () => {}, toggle: () => false, isOpen: () => false }
   // ---------- App / system ----------
   h('app:version', (): VersionInfo => ({
-    version: app.getVersion(), build: '2026.10.09', electron: process.versions.electron, chrome: process.versions.chrome,
-    node: process.versions.node, platform: process.platform, arch: process.arch, releaseDate: '2026-10-09', channel: 'stable',
+    version: app.getVersion(), build: '2026.10.10', electron: process.versions.electron, chrome: process.versions.chrome,
+    node: process.versions.node, platform: process.platform, arch: process.arch, releaseDate: '2026-10-10', channel: 'stable',
   }))
   h('app:changelog', () => CHANGELOG)
   h('app:paths', () => ({ userData: app.getPath('userData'), temp: app.getPath('temp'), logs: app.getPath('logs'), ...files.specialFolders() }))
@@ -160,6 +163,12 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   })
   h('app:systemTheme', () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'))
   h('app:openUserData', () => shell.openPath(app.getPath('userData')))
+  h('app:lastSeenVersion', () => dataCollections.get<{ lastSeen: string | null }>('appMeta', { lastSeen: null }).lastSeen ?? null)
+  h('app:markVersionSeen', (version: string) => {
+    const v = typeof version === 'string' ? version.slice(0, 16) : ''
+    if (v) dataCollections.set('appMeta', { lastSeen: v, seenAt: Date.now() })
+    return true
+  })
   h('app:setLoginItem', (enabled: boolean) => {
     if (typeof enabled !== 'boolean') throw new Error('Invalid argument: enabled must be boolean')
     return app.setLoginItemSettings({ openAtLogin: Boolean(!!enabled) })
@@ -184,12 +193,23 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
 
   // ---------- Settings ----------
   h('settings:get', () => settingsStore.get())
-  h('settings:set', (patch: Partial<AppSettings>) => settingsStore.set(patch))
+  h('settings:set', (patch: Partial<AppSettings>) => {
+    const next = settingsStore.set(patch)
+    // Re-register system-wide hotkeys when the user toggles the feature on/off.
+    if (patch && 'globalShortcutsEnabled' in patch) refreshGlobalShortcuts()
+    return next
+  })
   h('settings:reset', () => settingsStore.reset())
 
   // ---------- Data collections ----------
   h('data:get', (key: string, fallback: unknown) => dataCollections.get(key, fallback))
-  h('data:set', (key: string, value: unknown) => dataCollections.set(key, value))
+  h('data:set', (key: string, value: unknown) => {
+    // Sensitive validated state (network plan/limits/history/app-blocks) must not
+    // be writable through this generic channel — only their dedicated handlers
+    // may persist them. See GENERIC_SET_BLOCKED_KEYS.
+    if (typeof key === 'string' && GENERIC_SET_BLOCKED_KEYS.has(key)) throw new Error('Blocked data key')
+    return dataCollections.set(key, value)
+  })
   h('data:exportAll', async () => {
     const r = await dialog.showSaveDialog(getWin()!, { defaultPath: `DragonHub-backup-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: 'JSON', extensions: ['json'] }] })
     if (r.canceled || !r.filePath) return null

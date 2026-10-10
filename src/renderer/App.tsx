@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useApp } from '@/store'
 import { TitleBar, Sidebar, Splash, CommandPalette, ShortcutsOverlay, useGlobalShortcuts, useViewport } from '@/components/Shell'
 import { Toasts, Skeleton } from '@/components/ui'
+import { Onboarding, WhatsNew } from '@/components/Onboarding'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { pageVariants, useMotionPrefs } from '@/lib/motion'
 import Dashboard from '@/pages/Dashboard'
@@ -129,6 +130,8 @@ export default function App() {
             </div>
             <CommandPalette />
             <ShortcutsOverlay />
+            <Onboarding />
+            <WhatsNew />
             <Toasts />
           </div>
         )}

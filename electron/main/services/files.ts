@@ -62,8 +62,32 @@ export async function listDir(dir: string, showHidden = false): Promise<FileEntr
   return out
 }
 
-async function isHiddenWin(_p: string): Promise<boolean> {
-  return false // attribute check is expensive; dotfile heuristic used. Extended via settings later.
+// Windows "hidden" attribute detection. `attrib` per-file is slow, so batch the
+// whole folder in one call and cache the result set keyed by directory + a coarse
+// mtime bucket. Falls back to false (dotfile heuristic still applies) on any
+// error or non-Windows. This finally honours the "show hidden files" setting.
+const hiddenCache = new Map<string, { at: number; set: Set<string> }>()
+async function hiddenSetForDir(dir: string): Promise<Set<string>> {
+  if (process.platform !== 'win32') return new Set()
+  const cached = hiddenCache.get(dir)
+  if (cached && Date.now() - cached.at < 4000) return cached.set
+  try {
+    const { stdout } = await execFileP('cmd', ['/c', 'attrib', path.join(dir, '*')], { windowsHide: true, timeout: 4000 })
+    const set = new Set<string>()
+    for (const line of stdout.split(/\r?\n/)) {
+      const m = /^([AHRSIOX]+)\s+(.+)$/i.exec(line.trim())
+      if (!m) continue
+      const attrs = m[1].toUpperCase()
+      if (attrs.includes('H') || attrs.includes('S')) set.add(path.basename(m[2].trim()))
+    }
+    hiddenCache.set(dir, { at: Date.now(), set })
+    if (hiddenCache.size > 64) hiddenCache.delete(hiddenCache.keys().next().value as string)
+    return set
+  } catch { return new Set() }
+}
+async function isHiddenWin(p: string): Promise<boolean> {
+  const set = await hiddenSetForDir(path.dirname(p))
+  return set.has(path.basename(p))
 }
 
 export async function stat(p: string) {

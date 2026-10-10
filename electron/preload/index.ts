@@ -10,6 +10,7 @@ const INVOKE_ALLOW = new Set([
   'app:version', 'app:changelog', 'app:paths', 'app:system', 'app:openExternal', 'app:openTelegram',
   'app:checkForUpdates', 'app:cancelUpdateDownload', 'app:installUpdate',
   'app:systemTheme', 'app:openUserData', 'app:setLoginItem', 'app:keepAwake', 'app:quit',
+  'app:lastSeenVersion', 'app:markVersionSeen',
   'window:minimize', 'window:maximize', 'window:close', 'window:fullscreen', 'window:isMaximized', 'window:show',
   'clipboard:write', 'clipboard:read',
   'settings:get', 'settings:set', 'settings:reset',
@@ -59,7 +60,7 @@ async function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise
 }
 
 // Whitelisted event channels renderer may subscribe to
-const EVENTS = new Set(['downloads:update', 'downloads:ytdlp-status', 'job:progress', 'vault:locked', 'theme:system', 'window:state', 'net:update', 'res:update', 'updates:progress'])
+const EVENTS = new Set(['downloads:update', 'downloads:ytdlp-status', 'job:progress', 'vault:locked', 'theme:system', 'window:state', 'net:update', 'res:update', 'updates:progress', 'dh:openPalette', 'dh:trayAction'])
 // Card renderer only needs live resource updates.
 const CARD_EVENTS = new Set(['res:update'])
 

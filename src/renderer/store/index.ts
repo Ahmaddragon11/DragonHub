@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { invoke } from '@/lib/api'
 import i18n from '@/i18n'
-import { DEFAULT_SETTINGS, type AppSettings, type Note, type Project, type Task, type DownloadItem } from '@shared/types'
+import { DEFAULT_SETTINGS, APP_VERSION, type AppSettings, type Note, type Project, type Task, type DownloadItem } from '@shared/types'
 
 export type PageId = 'dashboard' | 'notes' | 'projects' | 'tasks' | 'files' | 'editor' | 'downloads' | 'network' | 'resources' | 'compress' | 'images' | 'video' | 'vault' | 'shortcuts' | 'settings' | 'about'
 
@@ -40,6 +40,12 @@ interface AppState {
   recents: RecentItem[]
   updateProgress: UpdateProgress | null
   updateAvailableVersion: string | null
+  /** Version the user has already acknowledged (onboarding/whats-new gate). */
+  lastSeenVersion: string | null
+  /** Recent file locations opened in the file manager (palette indexing). */
+  recentFiles: { path: string; at: number }[]
+  onboardingOpen: boolean
+  whatsNewOpen: boolean
   notes: Note[]
   projects: Project[]
   tasks: Task[]
@@ -54,6 +60,11 @@ interface AppState {
   setUpdateAvailableVersion: (version: string | null) => void
   setPalette: (open: boolean) => void
   setShortcuts: (open: boolean) => void
+  setOnboardingOpen: (open: boolean) => void
+  setWhatsNewOpen: (open: boolean) => void
+  dismissWhatsNew: () => void
+  touchRecentFile: (path: string) => void
+  checkUpdatesSilently: () => Promise<void>
   goBack: () => void
   goForward: () => void
   touchRecent: (kind: RecentKind, id: string) => void
@@ -117,8 +128,9 @@ let initStarted = false
 
 export const useApp = create<AppState>((set, get) => ({
   ready: false, page: 'dashboard', pageParams: {}, settings: DEFAULT_SETTINGS, systemTheme: 'dark', toasts: [], paletteOpen: false, shortcutsOpen: false, windowMaximized: false,
-  backStack: [], fwdStack: [], recents: typeof window !== 'undefined' ? loadRecents() : [],
+  backStack: [], fwdStack: [], recents: typeof window !== 'undefined' ? loadRecents() : [], recentFiles: [],
   updateProgress: null, updateAvailableVersion: null,
+  lastSeenVersion: null, onboardingOpen: false, whatsNewOpen: false,
   notes: [], projects: [], tasks: [], downloads: [],
 
   init: async () => {
@@ -128,10 +140,11 @@ export const useApp = create<AppState>((set, get) => ({
       // allSettled: one failing channel (e.g. dl:list) must never wipe the
       // other collections — each falls back to its own safe default, and
       // saves stay disabled until ready (see saveNotes/saveProjects/saveTasks).
-      const [rSettings, rSys, rNotes, rProjects, rTasks, rDownloads, rMax] = await Promise.allSettled([
+      const [rSettings, rSys, rNotes, rProjects, rTasks, rDownloads, rMax, rSeen, rFiles] = await Promise.allSettled([
         invoke<AppSettings>('settings:get'), invoke<'dark' | 'light'>('app:systemTheme'),
         invoke<Note[]>('data:get', 'notes', []), invoke<Project[]>('data:get', 'projects', []), invoke<Task[]>('data:get', 'tasks', []),
         invoke<DownloadItem[]>('dl:list'), window.dh.window.isMaximized(),
+        invoke<string | null>('app:lastSeenVersion'), invoke<{ path: string; at: number }[]>('data:get', 'recentFiles', []),
       ])
       const val = <T,>(r: PromiseSettledResult<T>, fb: T): T => (r.status === 'fulfilled' ? r.value : fb)
       const settings = val(rSettings, get().settings)
@@ -141,13 +154,25 @@ export const useApp = create<AppState>((set, get) => ({
       const tasks = val(rTasks, [] as Task[])
       const downloads = val(rDownloads, [] as DownloadItem[])
       const maximized = val(rMax, false)
+      const lastSeen = val(rSeen, null as string | null)
+      const recentFiles = Array.isArray(val(rFiles, [] as { path: string; at: number }[])) ? val(rFiles, [] as { path: string; at: number }[]) : []
       applyTheme(settings, sys)
       const startPage = PAGE_IDS.includes(settings.startPage as PageId) ? (settings.startPage as PageId) : 'dashboard'
-      set({ settings, systemTheme: sys, notes, projects, tasks, downloads, windowMaximized: maximized, page: startPage })
+      set({ settings, systemTheme: sys, notes, projects, tasks, downloads, windowMaximized: maximized, page: startPage, lastSeenVersion: lastSeen, recentFiles: recentFiles.slice(0, 20) })
       window.dh.on('theme:system', (t) => { set({ systemTheme: t as 'dark' | 'light' }); applyTheme(get().settings, t as 'dark' | 'light') })
       window.dh.on('downloads:update', (d) => get().updateDownload(d as DownloadItem))
       window.dh.on('window:state', (s: any) => { if (s && 'maximized' in s) set({ windowMaximized: s.maximized }) })
       window.dh.on('updates:progress', (progress) => set({ updateProgress: progress as UpdateProgress }))
+      // System-wide hotkey (Ctrl+Shift+Space): reveal + focus the palette.
+      window.dh.on('dh:openPalette', () => { set({ paletteOpen: true, shortcutsOpen: false }) })
+      // Tray quick actions: navigate + create, mirroring in-app behavior.
+      window.dh.on('dh:trayAction', (action) => {
+        const a = action as string
+        if (a === 'new-note') get().navigate('notes', { create: true })
+        else if (a === 'new-task') get().navigate('tasks', { create: true })
+        else if (a === 'settings') get().navigate('settings')
+        else if (a === 'focus') get().navigate('dashboard')
+      })
       if ([rSettings, rNotes, rProjects, rTasks].some((r) => r.status === 'rejected')) {
         get().toast(i18n.t('app.loadFailed'), 'error')
       }
@@ -163,6 +188,14 @@ export const useApp = create<AppState>((set, get) => ({
     // it short (was 2200ms) to let the app paint fast, especially on HDD.
     await new Promise((r) => setTimeout(r, s.animations === 'off' ? 100 : Math.min(900, 700 / speed)))
     set({ ready: true })
+    // First-run vs post-update: show onboarding only on a brand-new install
+    // (never seen a version); otherwise show "What's new" when the running
+    // version is newer than the last one the user acknowledged.
+    const seen = get().lastSeenVersion
+    if (!seen) set({ onboardingOpen: true })
+    else if (seen !== APP_VERSION) set({ whatsNewOpen: true })
+    // Silent background update check (24h throttle) — never blocks the UI.
+    void get().checkUpdatesSilently()
   },
   navigate: (page, params = {}) => set((s) => (
     s.page === page
@@ -215,6 +248,38 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setPalette: (open) => set(open ? { paletteOpen: true, shortcutsOpen: false } : { paletteOpen: false }),
   setShortcuts: (open) => set(open ? { shortcutsOpen: true, paletteOpen: false } : { shortcutsOpen: false }),
+  setOnboardingOpen: (open) => set({ onboardingOpen: open }),
+  setWhatsNewOpen: (open) => set({ whatsNewOpen: open }),
+  // Acknowledges the running version so onboarding/whats-new never reappear for it.
+  dismissWhatsNew: () => {
+    const seen = APP_VERSION
+    set({ whatsNewOpen: false, onboardingOpen: false, lastSeenVersion: seen })
+    invoke('app:markVersionSeen', seen).catch(() => {})
+  },
+  touchRecentFile: (path) => {
+    if (!path) return
+    const cur = get().recentFiles
+    if (cur[0] && cur[0].path === path) return
+    const next = [{ path, at: Date.now() }, ...cur.filter((f) => f.path !== path)].slice(0, 20)
+    set({ recentFiles: next })
+    persist('recentFiles', next)
+  },
+  checkUpdatesSilently: async () => {
+    if (!get().settings.checkUpdates) return
+    // Throttle to once per 24h so a background check never spams GitHub.
+    const key = 'dh:lastUpdateCheck'
+    let last = 0
+    try { last = Number(localStorage.getItem(key) || 0) || 0 } catch { /* ignore */ }
+    if (Date.now() - last < 86400000) return
+    try { localStorage.setItem(key, String(Date.now())) } catch { /* ignore */ }
+    try {
+      const r = await invoke<{ status: string; version?: string }>('app:checkForUpdates')
+      if (r.status === 'available' && r.version && r.version !== APP_VERSION) {
+        set({ updateAvailableVersion: r.version })
+        get().toast(i18n.t('about.updateAvailableBadge', { version: r.version }), 'info', { action: { label: i18n.t('about.checkUpdate'), run: () => get().navigate('about') } })
+      }
+    } catch { /* silent: no toast on a background check */ }
+  },
   setUpdateProgress: (updateProgress) => set({ updateProgress }),
   setUpdateAvailableVersion: (updateAvailableVersion) => set({ updateAvailableVersion }),
   saveNotes: (notes) => { if (!get().ready) return; set({ notes }); persist('notes', notes) },

@@ -1,9 +1,10 @@
-import { app, BrowserWindow, shell, ipcMain, nativeTheme, Menu, Tray, protocol, net, session, globalShortcut } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, nativeTheme, Menu, Tray, protocol, net, session } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { registerAllHandlers } from './ipc'
 import { settingsStore, dataCollections } from './services/settings'
+import { initGlobalShortcuts, refreshGlobalShortcuts, stopGlobalShortcuts } from './services/globalShortcuts'
 import * as netmon from './services/netmonitor'
 import * as netblock from './services/netblock'
 import * as resmon from './services/resmonitor'
@@ -209,14 +210,27 @@ function createWindow() {
   win.on('leave-full-screen', () => win?.webContents.send('window:state', { fullscreen: false }))
 }
 
+// ---------- global shortcuts (system-wide hotkeys) ----------
+// Logic lives in services/globalShortcuts.ts (refreshable when the setting
+// changes). Initialised with the window provider once the window exists.
+
 function createTray() {
   try {
     const iconPath = runtimeIconPath()
     if (!fs.existsSync(iconPath)) return
     tray = new Tray(iconPath)
     tray.setToolTip('DragonHub — by AHMADDRAGON')
+    // Reveal the window, then ask the renderer to run a quick action. Reusing
+    // the existing navigation-params IPC keeps behavior identical to in-app.
+    const focusAnd = (channel: string, ...args: unknown[]) => { win?.show(); win?.focus(); win?.webContents.send(channel, ...args) }
     const menu = Menu.buildFromTemplate([
       { label: 'Show DragonHub', click: () => { win?.show(); win?.focus() } },
+      { type: 'separator' },
+      { label: 'New note', click: () => focusAnd('dh:trayAction', 'new-note') },
+      { label: 'Quick task', click: () => focusAnd('dh:trayAction', 'new-task') },
+      { label: 'Focus timer', click: () => focusAnd('dh:trayAction', 'focus') },
+      { type: 'separator' },
+      { label: 'Settings', click: () => focusAnd('dh:trayAction', 'settings') },
       { label: 'Show/Hide monitor card', click: () => { cardControls.toggle() } },
       { type: 'separator' },
       { label: 'Telegram: @ahmaddragon', click: () => shell.openExternal('https://t.me/ahmaddragon') },
@@ -341,6 +355,10 @@ app.whenReady().then(() => {
   })
   createWindow()
   createTray()
+  // Register system-wide hotkeys after the window exists; ignored if the user
+  // disabled them or a key is already taken by another app.
+  initGlobalShortcuts(() => win)
+  refreshGlobalShortcuts()
   // Perf: monitors spawn child processes (netstat/PowerShell/netsh) and hit the
   // disk — start them after the window is created so first paint isn't delayed,
   // especially on HDD. Quota enforcement uses in-memory state, unaffected.
@@ -372,7 +390,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true
-  globalShortcut.unregisterAll()
+  stopGlobalShortcuts()
   try { netmon.stopNetMonitor() } catch { /* ignore */ }
   try { resmon.stopResMonitor() } catch { /* ignore */ }
   try {

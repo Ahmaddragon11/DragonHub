@@ -1,5 +1,49 @@
 # DragonHub Changelog
 
+## v1.4.7 — 2026-10-10 (onboarding, global shortcuts & polish)
+
+### Added
+- **First-run onboarding**: a 3-step welcome wizard (language → theme/accent →
+  feature tour). Shown once, then the running version is remembered so it never
+  reappears (`app:lastSeenVersion` / `app:markVersionSeen`, stored in `appMeta`).
+- **"What's new" after updates**: a dialog listing the running version's
+  highlights from the built-in `CHANGELOG` (works offline), shown once per release.
+- **Silent background update check** every 24h (Settings → Check for updates);
+  shows a toast and a red dot on the About sidebar icon when a newer release exists.
+- **Real global (system-wide) shortcuts** — previously `globalShortcut` was
+  imported but never registered:
+  - `Ctrl+Shift+D` — show/hide the window (to tray).
+  - `Ctrl+Shift+Space` — show the window and open the command palette.
+  - Toggle in Settings → General; re-registered live when the setting changes;
+    a key already taken by another app is silently skipped.
+- **Richer tray menu**: New note, Quick task, Focus timer and Settings alongside
+  the existing show/card/Telegram/quit actions.
+- **Command palette** now indexes recent file locations (open straight into the
+  file manager at that path).
+- **Notes editor**: lightweight Markdown toolbar (bold/italic/heading/quote/
+  lists/task/code/link) that acts on the selection, plus `Tab`/`Shift+Tab`
+  indentation and `Ctrl+B`/`Ctrl+I` — no editor library, keeps the bundle small.
+- **Settings page**: sticky section index with active-section highlighting and a
+  search box that filters sections by title and keywords.
+
+### Fixed
+- **Hidden files on Windows** are now actually detected (batch `attrib` per folder
+  with a short cache) — `showHiddenFiles` finally honours the hidden attribute
+  instead of always reporting files as visible.
+- **Symbolic links to folders** open in the file browser instead of falling back
+  to the system app (resolved once via `fs:stat`).
+
+### Changed
+- **Network plan/limits/history/app-blocks** can no longer be written through the
+  generic `data:set` channel (`GENERIC_SET_BLOCKED_KEYS`); only their validated
+  handlers (`net:setPlan`, `net:setLimits`, monitor rollover) persist them.
+- Focus timer keeps the device awake while a session runs (`app:keepAwake`).
+- Recent file locations are included in the data backup (`recentFiles`).
+
+### Quality
+- First automated tests: **30 Vitest cases** over the pure helpers
+  (`lib/tasks.ts`, `lib/fuzzy.ts`, `lib/netplan.ts`). `npm test`.
+
 ## Unreleased — premium foundation (design system, motion, palette v2)
 
 ### Added

@@ -1,6 +1,6 @@
 // Shared type contracts between main process and renderer
 
-export const APP_VERSION = '1.4.6'
+export const APP_VERSION = '1.4.7'
 export const DEVELOPER = 'AHMADDRAGON'
 export const TELEGRAM_URL = 'https://t.me/ahmaddragon'
 
@@ -36,6 +36,7 @@ export interface AppSettings {
   minimizeToTray: boolean
   launchAtStartup: boolean
   checkUpdates: boolean
+  globalShortcutsEnabled: boolean
   telemetry: false
 }
 
@@ -67,6 +68,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   minimizeToTray: true,
   launchAtStartup: false,
   checkUpdates: true,
+  globalShortcutsEnabled: true,
   telemetry: false,
 }
 
@@ -294,6 +296,24 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.4.7',
+    date: '2026-10-10',
+    changes: [
+      { type: 'added', text: 'First-run onboarding: pick your language and theme, with a quick tour of the sections' },
+      { type: 'added', text: '“What’s new” dialog after updates, shown once per release from the built-in changelog' },
+      { type: 'added', text: 'Silent background update check every 24h with a badge on the About icon when a newer release exists' },
+      { type: 'added', text: 'Real global shortcuts: Ctrl+Shift+D to show/hide the window and Ctrl+Shift+Space to show it and open the command palette' },
+      { type: 'added', text: 'Richer tray menu: new note, quick task, focus timer and settings alongside show/card/quit' },
+      { type: 'added', text: 'Command palette now indexes recent file locations and (when unlocked) vault item titles' },
+      { type: 'added', text: 'Notes editor gains a lightweight Markdown toolbar and Tab/Shift+Tab indentation' },
+      { type: 'added', text: 'Settings page gets a sticky section index and a search box' },
+      { type: 'fixed', text: 'Hidden files on Windows are now actually detected (previously always reported as visible)' },
+      { type: 'fixed', text: 'Symbolic links to folders now open correctly instead of falling back to the system app' },
+      { type: 'changed', text: 'Network history/plan/limits can no longer be written through the generic data channel (validated handlers only)' },
+      { type: 'added', text: 'Recent items are included in the data backup export' },
+    ],
+  },
   {
     version: '1.4.6',
     date: '2026-10-09',

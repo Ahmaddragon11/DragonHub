@@ -59,6 +59,7 @@ function sanitizePatch(patch: Partial<AppSettings>): Partial<AppSettings> {
   if (patch.minimizeToTray !== undefined) out.minimizeToTray = !!patch.minimizeToTray
   if (patch.launchAtStartup !== undefined) out.launchAtStartup = !!patch.launchAtStartup
   if (patch.checkUpdates !== undefined) out.checkUpdates = !!patch.checkUpdates
+  if (patch.globalShortcutsEnabled !== undefined) out.globalShortcutsEnabled = !!patch.globalShortcutsEnabled
   // telemetry is hard-off by design: never accepted from any caller.
   return out
 }
@@ -86,8 +87,14 @@ export const settingsStore = {
 // Generic JSON collection store (notes, projects, tasks, downloads history)
 // Only these renderer-known keys may be read/written; everything else is rejected
 // so a compromised renderer cannot corrupt internal state (e.g. downloads queue).
-const ALLOWED_DATA_KEYS = new Set(['notes', 'projects', 'tasks', 'downloads', 'fileFavorites', 'recentLocations', 'activity', 'netState', 'netPlan', 'netLimits', 'netAppBlocks', 'resConfig', 'resCardConfig', 'focus'])
+const ALLOWED_DATA_KEYS = new Set(['notes', 'projects', 'tasks', 'downloads', 'fileFavorites', 'recentLocations', 'recentFiles', 'activity', 'netState', 'netPlan', 'netLimits', 'netAppBlocks', 'resConfig', 'resCardConfig', 'focus', 'appMeta'])
 const MAX_DATA_BYTES = 50 * 1024 * 1024
+// Keys that internal services may write via dataCollections.set, but the generic
+// renderer `data:set` channel must NEVER touch — they carry validated state
+// (network plan/limits/history) whose corruption could spoof usage or the
+// firewall kill-switch. Only their dedicated validated handlers (net:setPlan,
+// net:setLimits, netmon rollover) may write them.
+export const GENERIC_SET_BLOCKED_KEYS = new Set(['netState', 'netPlan', 'netLimits', 'netAppBlocks'])
 const dataStore = new Store<Record<string, unknown>>({ name: 'dragonhub-data' })
 export const dataCollections = {
   get<T>(key: string, fallback: T): T {

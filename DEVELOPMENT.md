@@ -2,6 +2,54 @@
 
 Lightweight log of architectural/UX decisions. Keep it short; update per cycle.
 
+## Cycle 2 — v1.4.7 "Onboarding, global shortcuts & polish" (2026-10-10)
+
+### Audit findings (baseline v1.4.6)
+| Area | Finding | Severity |
+|---|---|---|
+| UX | No first-run onboarding and no post-update "what's new" — new users land on an empty dashboard | P1 |
+| UX | `globalShortcut` imported + `unregisterAll()` called, but **never registered** — advertised system hotkeys did nothing | P1 |
+| UX | Tray menu was minimal (show/card/quit) — no quick create actions | P2 |
+| Bug | `isHiddenWin()` returned `false` always → `showHiddenFiles` setting had no effect on Windows | P2 |
+| Bug | symlink→folder reported as a file → opened via system app, not the browser | P2 |
+| Security | generic `data:set` could write `netState/netPlan/netLimits/netAppBlocks`, bypassing validated handlers (documented Critical in AUDIT_REPORT) | P1 |
+| UX | Palette didn't index recent file locations; notes editor was a bare textarea; Settings had no index/search | P2 |
+| Quality | No automated tests despite pure helpers (`tasks`/`fuzzy`/`netplan`) | P2 |
+
+### Decisions
+- **Onboarding / whats-new gate** on a persisted `lastSeenVersion` (`appMeta` data
+  key, dedicated IPC). First launch → onboarding; newer running version → whats-new.
+  Highlights come from the built-in `CHANGELOG` so it works offline.
+- **Global shortcuts** live in `services/globalShortcuts.ts` with `refresh()` /
+  `stop()`; the window provider is injected once (`initGlobalShortcuts`). The
+  Settings toggle calls `settings:set`, which triggers `refreshGlobalShortcuts()`.
+  `Ctrl+Shift+D` toggles window; `Ctrl+Shift+Space` sends `dh:openPalette`.
+- **Tray quick actions** reuse navigation-params via a `dh:trayAction` event so
+  behavior matches in-app create flows.
+- **Notes Markdown toolbar** is selection-aware text manipulation on the existing
+  `textarea` (no CodeMirror) to keep the bundle and RAM budget unchanged.
+- **Settings index/search** is a sticky `<aside>` + scroll-spy on `[data-section]`;
+  search filters by translated title or a keyword string (works before i18n load).
+
+### Delivered
+- Onboarding (3 steps) + offline whats-new dialog + 24h silent update check with
+  an About-icon badge.
+- Global shortcuts (`Ctrl+Shift+D`, `Ctrl+Shift+Space`) with a Settings toggle and
+  live re-registration; richer tray menu.
+- Palette indexes recent file locations; notes toolbar + Tab/Ctrl+B/Ctrl+I;
+  Settings section index + search.
+- Fixes: Windows hidden-attribute detection (batch `attrib` + cache), symlink→dir
+  open, network keys blocked from the generic data channel.
+- Vitest suite (30 cases) for `tasks`/`fuzzy`/`netplan` + `npm test`.
+
+### How to verify
+```bash
+npm run typecheck
+npm test            # 30 pure-function cases
+npm run dev:web     # browser preview (onboarding shows on first load)
+npm run dev         # full Electron app (global shortcuts + tray)
+```
+
 ## Cycle 1 — v1.5.0 "Premium foundation" (2026-09-26)
 
 ### Audit findings (baseline v1.4.5)

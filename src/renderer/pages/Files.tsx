@@ -38,7 +38,7 @@ let clipboardState: Clip = null
 
 function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial: string; active: boolean; onActivate: () => void; onOpenIn: (kind: 'editor' | 'images' | 'video' | 'compress', p: string) => void; onPathChange?: (p: string) => void }) {
   const { t } = useTranslation()
-  const { settings, setSettings, toast } = useApp(useShallow((s) => ({ settings: s.settings, setSettings: s.setSettings, toast: s.toast })))
+  const { settings, setSettings, toast, touchRecentFile } = useApp(useShallow((s) => ({ settings: s.settings, setSettings: s.setSettings, toast: s.toast, touchRecentFile: s.touchRecentFile })))
   const [path, setPath] = useState(initial)
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [sel, setSel] = useState<Set<string>>(new Set())
@@ -72,7 +72,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   useEffect(() => { onPathChange?.(path) }, [path, onPathChange])
 
   const go = (p: string, push = true) => {
-    setPath(p); setQ('')
+    setPath(p); setQ(''); touchRecentFile(p)
     if (push) {
       const base = [...hist.slice(0, hi + 1), p]
       // Cap history at 50 entries (drop oldest).
@@ -86,6 +86,13 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
 
   const openEntry = async (e: FileEntry) => {
     if (e.isDirectory) return go(e.path)
+    // A symlink reported as a file may point at a directory (lstat doesn't
+    // follow links). Resolve it once via fs:stat so linked folders open in the
+    // browser instead of falling back to the system app.
+    if (e.isSymlink) {
+      const st = await invoke<{ isDirectory: boolean } | null>('fs:stat', e.path).catch(() => null)
+      if (st?.isDirectory) return go(e.path)
+    }
     // Text/code files open in the built-in editor only when small enough to fit
     // memory safely; huge logs fall back to the system viewer instead of OOMing.
     if (TEXT_EXT.has(e.ext)) {

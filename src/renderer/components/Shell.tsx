@@ -8,7 +8,7 @@ import {
   ArrowLeft, ArrowRight, Menu, CornerDownLeft, History, PanelLeft, Monitor, CircleHelp, FileText,
 } from 'lucide-react'
 import { useApp, type PageId, type RecentKind } from '@/store'
-import { cn, relTime } from '@/lib/utils'
+import { cn, relTime, stripPath } from '@/lib/utils'
 import { invoke } from '@/lib/api'
 import { fuzzyMatch, highlightParts } from '@/lib/fuzzy'
 import { spring, useMotionPrefs, dialogVariants } from '@/lib/motion'
@@ -98,11 +98,12 @@ export function TitleBar({ onMenu }: { onMenu?: () => void }) {
 
 /* ==================================================================== Sidebar */
 export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mobile' | 'narrow' | 'wide'; drawerOpen: boolean; onCloseDrawer: () => void }) {
-  const { page, navigate, setSettings, userCollapsed, theme, language, systemTheme, openTasks, activeDl } = useApp(useShallow((s) => ({
+  const { page, navigate, setSettings, userCollapsed, theme, language, systemTheme, openTasks, activeDl, updateAvailable } = useApp(useShallow((s) => ({
     page: s.page, navigate: s.navigate, setSettings: s.setSettings, userCollapsed: s.settings.sidebarCollapsed,
     theme: s.settings.theme, language: s.settings.language, systemTheme: s.systemTheme,
     openTasks: s.tasks.reduce((n, x) => n + (x.status !== 'done' ? 1 : 0), 0),
     activeDl: s.downloads.reduce((n, d) => n + (d.status === 'downloading' || d.status === 'queued' ? 1 : 0), 0),
+    updateAvailable: !!s.updateAvailableVersion,
   })))
   const { t } = useTranslation()
   const { reduced } = useMotionPrefs()
@@ -118,7 +119,9 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
   const collapsed = mobile ? false : userCollapsed || viewport === 'narrow'
   const isRtl = language === 'ar'
   const darkNow = theme === 'dark' || (theme === 'system' && systemTheme === 'dark')
+  // Badge count per page; `about` uses a special dot when an update is pending.
   const badgeOf = (id: PageId): number => (id === 'tasks' ? openTasks : id === 'downloads' ? activeDl : 0)
+  const dotOf = (id: PageId): boolean => id === 'about' && updateAvailable
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
     try { const raw = localStorage.getItem('dh:sidebarGroups'); return raw ? (JSON.parse(raw) as Record<string, boolean>) : {} } catch { return {} }
   })
@@ -158,6 +161,7 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
                     {items.map((n) => {
                       const active = page === n.id
                       const badge = badgeOf(n.id)
+                      const dot = dotOf(n.id)
                       const btn = (
                         <button key={n.id} onClick={() => go(n.id)} aria-current={active ? 'page' : undefined} aria-label={collapsed ? t(`nav.${n.id}`) : undefined}
                           className={cn('relative w-full flex items-center gap-2.5 rounded-[10px] h-9 text-[13px] group transition-colors duration-150',
@@ -175,6 +179,8 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
                             ? <span className="absolute top-1 end-1.5 z-10 h-2 w-2 rounded-full bg-accent ring-2 ring-surface-100" aria-label={String(badge)} />
                             : <motion.span key={badge} initial={reduced ? false : { scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring.snappy}
                                 className="relative z-10 text-[10.5px] tabular-nums font-semibold rounded-md px-1.5 min-w-[20px] h-5 grid place-items-center bg-surface-200 text-surface-600 dark:bg-surface-400/40">{badge > 99 ? '99+' : badge}</motion.span>)}
+                          {dot && <motion.span key="dot" initial={reduced ? false : { scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring.snappy}
+                            className={cn('z-10 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-surface-100 dark:ring-surface-300', collapsed ? 'absolute top-1 end-1.5' : 'relative ms-auto')} aria-label={t('about.updateAvailableBadge', { version: useApp.getState().updateAvailableVersion ?? '' })} />}
                         </button>
                       )
                       return collapsed ? <Tooltip key={n.id} label={t(`nav.${n.id}`)} side={isRtl ? 'left' : 'right'}>{btn}</Tooltip> : btn
@@ -261,6 +267,7 @@ export function CommandPalette() {
     open: st.paletteOpen, setPalette: st.setPalette, navigate: st.navigate, setSettings: st.setSettings, setShortcuts: st.setShortcuts,
     theme: st.settings.theme, language: st.settings.language, sidebarCollapsed: st.settings.sidebarCollapsed,
     notes: st.notes, tasks: st.tasks, projects: st.projects, recents: st.recents, touchRecent: st.touchRecent, goBack: st.goBack,
+    recentFiles: st.recentFiles,
   })))
   const { t } = useTranslation()
   const { reduced } = useMotionPrefs()
@@ -329,6 +336,13 @@ export function CommandPalette() {
     const notes = entity(s.notes.filter((n) => !n.archived), 'note', (n) => n.title, (n) => n.content + ' ' + n.tags.join(' '), (n) => n.id, (n) => relTime(n.updatedAt, s.language))
     const tasks = entity(s.tasks, 'task', (k) => k.title, (k) => k.description + ' ' + k.tags.join(' '), (k) => k.id, (k) => t(`tasks.status.${k.status}`))
     const projects = entity(s.projects, 'project', (p) => p.name, (p) => p.description, (p) => p.id, (p) => t(`projects.status.${p.status}`))
+    // Recent file locations open straight into the file manager at that path.
+    const files = take(s.recentFiles.map((f) => {
+      const name = stripPath(f.path) || f.path
+      const m = fuzzyMatch(query, f.path)
+      if (!m) return null
+      return { id: `file:${f.path}`, label: name, sub: t('palette.recentLocation'), icon: <FolderOpen size={16} />, group: t('palette.kind.files'), score: m.score - 30, hits: m.indices, run: () => s.navigate('files', { path: f.path }) } as Cmd
+    }), 3)
     // Groups are ordered by their best hit, so the strongest match is always first.
     const best = (g: Cmd[]) => g[0]?.score ?? -Infinity
     return [
@@ -336,9 +350,10 @@ export function CommandPalette() {
       { group: t('palette.kind.notes'), items: notes },
       { group: t('palette.kind.tasks'), items: tasks },
       { group: t('palette.kind.projects'), items: projects },
+      { group: t('palette.kind.files'), items: files },
     ].filter((g) => g.items.length).sort((a, b) => best(b.items) - best(a.items))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dq, baseCmds, s.notes, s.tasks, s.projects, s.recents, s.language, t])
+  }, [dq, baseCmds, s.notes, s.tasks, s.projects, s.recents, s.recentFiles, s.language, t])
 
   const flat = useMemo(() => results.flatMap((g) => g.items), [results])
   useEffect(() => { setIdx(0) }, [dq, s.open])

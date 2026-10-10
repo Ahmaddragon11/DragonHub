@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { StickyNote, Plus, Pin, PinOff, Archive, ArchiveRestore, Star, Trash2, Search, Eye, Pencil, Columns, Download, Tag } from 'lucide-react'
+import { StickyNote, Plus, Pin, PinOff, Archive, ArchiveRestore, Star, Trash2, Search, Eye, Pencil, Columns, Download, Tag, Bold, Italic, Heading2, List, ListOrdered, ListChecks, Quote, Code, Link2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { deleteWithUndo } from '@/lib/undo'
@@ -43,6 +43,32 @@ export default function Notes() {
   const update = (id: string, patch: Partial<Note>) => { saveNotes(useApp.getState().notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: Date.now() } : n))); setSavedAt(Date.now()) }
   const remove = async (id: string) => {
     if (await deleteWithUndo('notes', id, t('notes.noteDeleted')) && sel === id) setSel(null)
+  }
+  const taRef = useRef<HTMLTextAreaElement>(null)
+  // Wrap or prefix the current selection in the Markdown editor. Keeps it light:
+  // no editor library — just selection-aware insertion into the textarea.
+  const mdAction = (kind: 'bold' | 'italic' | 'code' | 'h' | 'ul' | 'ol' | 'task' | 'link' | 'quote') => {
+    const ta = taRef.current
+    if (!ta || !cur) return
+    const { selectionStart: a, selectionEnd: b, value } = ta
+    const sel = value.slice(a, b) || (kind === 'link' ? 'https://' : '')
+    const wrap = (before: string, after = before) => `${before}${sel}${after}`
+    const linePrefix = (p: string) => { const ls = value.lastIndexOf('\n', a - 1) + 1; return `${p}${value.slice(ls, b)}` }
+    let text: string
+    switch (kind) {
+      case 'bold': text = wrap('**'); break
+      case 'italic': text = wrap('*'); break
+      case 'code': text = value.slice(a, b).includes('\n') ? wrap('```\n', '\n```') : wrap('`'); break
+      case 'h': text = linePrefix('## '); break
+      case 'quote': text = linePrefix('> '); break
+      case 'ul': text = linePrefix('- '); break
+      case 'ol': text = linePrefix('1. '); break
+      case 'task': text = linePrefix('- [ ] '); break
+      case 'link': text = `[${sel || 'text'}](https://)`; break
+    }
+    const next = value.slice(0, a) + text + value.slice(b)
+    update(cur.id, { content: next })
+    requestAnimationFrame(() => { ta.focus(); const caret = a + text.length; ta.setSelectionRange(caret, caret) })
   }
   const allTags = useMemo(() => Array.from(new Set(notes.flatMap((n) => n.tags))).sort(), [notes])
   const list = useMemo(() => notes
@@ -133,8 +159,32 @@ export default function Notes() {
                 <ColorPicker value={cur.color} onChange={(c) => update(cur.id, { color: c })} colors={COLORS} />
                 <div className="flex-1 min-w-[160px]"><TagInput tags={cur.tags} onChange={(tags) => update(cur.id, { tags })} placeholder={t('notes.addTag')} /></div>
               </div>
+              {mode !== 'preview' && (
+                <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-surface-300/60 flex-wrap" role="toolbar" aria-label={t('notes.toolbar')}>
+                  {([['bold', <Bold size={15} />, 'notes.mdBold'], ['italic', <Italic size={15} />, 'notes.mdItalic'], ['h', <Heading2 size={15} />, 'notes.mdHeading'], ['quote', <Quote size={15} />, 'notes.mdQuote'], ['ul', <List size={15} />, 'notes.mdBullet'], ['ol', <ListOrdered size={15} />, 'notes.mdNumber'], ['task', <ListChecks size={15} />, 'notes.mdTask'], ['code', <Code size={15} />, 'notes.mdCode'], ['link', <Link2 size={15} />, 'notes.mdLink']] as const).map(([kind, icon, key]) => (
+                    <button key={kind} className="btn-icon p-1.5" title={t(key)} aria-label={t(key)} onClick={() => mdAction(kind)}>{icon}</button>
+                  ))}
+                </div>
+              )}
               <div className={cn('flex-1 min-h-0 grid overflow-auto', mode === 'split' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1')}>
-                {mode !== 'preview' && <textarea className="h-full w-full resize-none bg-transparent p-4 outline-none font-mono text-sm leading-6 selectable" placeholder={t('notes.placeholderBody')} value={cur.content} onChange={(e) => update(cur.id, { content: e.target.value })} spellCheck />}
+                {mode !== 'preview' && <textarea ref={taRef} className="h-full w-full resize-none bg-transparent p-4 outline-none font-mono text-sm leading-6 selectable" placeholder={t('notes.placeholderBody')} value={cur.content} onChange={(e) => update(cur.id, { content: e.target.value })}
+                  onKeyDown={(e) => {
+                    const ta = e.currentTarget
+                    if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey) {
+                      e.preventDefault()
+                      const { selectionStart: a, selectionEnd: b, value } = ta
+                      // Indent / outdent the whole selection by adding/removing two leading spaces.
+                      const ls = value.lastIndexOf('\n', a - 1) + 1
+                      if (e.shiftKey) {
+                        const lineStart = value.slice(ls).replace(/^ {1,2}/, '')
+                        update(cur.id, { content: value.slice(0, ls) + lineStart + value.slice(b) })
+                      } else {
+                        update(cur.id, { content: value.slice(0, ls) + '  ' + value.slice(ls, b) + value.slice(b) })
+                      }
+                      requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(a, b) })
+                    } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'b') { e.preventDefault(); mdAction('bold') }
+                    else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); mdAction('italic') }
+                  }} spellCheck />}
                 {mode !== 'edit' && <div className={cn('h-full overflow-auto p-4 prose-dh selectable', mode === 'split' && 'border-s border-surface-300/60')} dangerouslySetInnerHTML={{ __html: mdHtml }} onClick={handleExtNav} onAuxClick={handleExtNav} />}
               </div>
               <footer className="flex items-center gap-4 px-4 py-1.5 border-t border-surface-300/60 text-[11px] text-surface-500 flex-wrap">

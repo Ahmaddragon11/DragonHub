@@ -30,12 +30,15 @@ export default function FocusTimer() {
 
   useEffect(() => {
     if (!running) return
+    // Keep the device awake while a focus session runs so the screen can't
+    // sleep mid-session (best-effort; main tracks the blocker id, no-ops on refuse).
+    invoke('app:keepAwake', true).catch(() => {})
     // Deadline-based countdown: immune to timer throttling when the window is
     // hidden/minimised (a naive `s - 1` per tick drifts by minutes in background).
     const deadline = Date.now() + left * 1000
     const tick = () => setLeft(Math.max(0, Math.round((deadline - Date.now()) / 1000)))
     const i = setInterval(tick, 500)
-    return () => clearInterval(i)
+    return () => { clearInterval(i); invoke('app:keepAwake', false).catch(() => {}) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running])
 

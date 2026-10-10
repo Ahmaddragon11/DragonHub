@@ -27,9 +27,13 @@ DragonHub/
 │   │       ├── resmonitor.ts # CPU (os.cpus diff) / temp / RAM+pagefile / disks /
 │   │       │                 #   GPU (nvidia-smi + name fallback) / Get-Process top-N,
 │   │       │                 #   2s tick → res:update (main + card), safe killProcess
+│   │       ├── globalShortcuts.ts # system-wide hotkeys (Ctrl+Shift+D toggle window,
+│   │       │                 #   Ctrl+Shift+Space open palette); refresh()/stop(),
+│   │       │                 #   window provider injected once from index.ts
 │   │       └── settings.ts   # electron-store: validated settings + allow-listed
 │   │                         #   data collections (…/netState/netPlan/netLimits/
-│   │                         #   netAppBlocks/resConfig/resCardConfig/…)
+│   │                         #   netAppBlocks/resConfig/resCardConfig/appMeta/…);
+│   │                         #   GENERIC_SET_BLOCKED_KEYS keeps net* off data:set
 │   └── preload/index.ts      # contextBridge: invoke/on/toFileUrl (sandbox-safe)
 ├── src/
 │   ├── shared/types.ts       # IPC + store contracts, defaults, CHANGELOG
