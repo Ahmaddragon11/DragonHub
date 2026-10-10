@@ -138,6 +138,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
       - name: Download verified release files
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
@@ -158,16 +163,30 @@ jobs:
           fi
 
           asset_dir="release/$RELEASE_VERSION"
+          assets=(
+            "$asset_dir/DragonHub-Setup-$RELEASE_VERSION-win-x64.exe"
+            "$asset_dir/DragonHub-Portable-$RELEASE_VERSION-win-x64.exe"
+            "$asset_dir/DragonHub-$RELEASE_VERSION-sbom.cdx.json"
+            "$asset_dir/SHA256SUMS.txt"
+            "$asset_dir/release-manifest.json"
+          )
+          for f in "${assets[@]}"; do
+            if [[ ! -s "$f" ]]; then
+              echo "::error::Release asset is missing or empty: $f"
+              exit 1
+            fi
+          done
+
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" \
               --title "DragonHub $RELEASE_VERSION" \
               --notes-file "$asset_dir/RELEASE-NOTES.md"
-            gh release upload "$RELEASE_TAG" "$asset_dir"/* --clobber
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else
-            gh release create "$RELEASE_TAG" "$asset_dir"/* \
-              --verify-tag \
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
               --title "DragonHub $RELEASE_VERSION" \
-              --notes-file "$asset_dir/RELEASE-NOTES.md"
+              --notes-file "$asset_dir/RELEASE-NOTES.md" \
+              --latest
           fi
 
           {
@@ -179,4 +198,80 @@ jobs:
             echo '```sh'
             echo "gh attestation verify DragonHub-Setup-${RELEASE_VERSION}-win-x64.exe --repo ${GITHUB_REPOSITORY}"
             echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  continuous:
+    name: Publish continuous prerelease
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Download Windows build
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: DragonHub-Windows-${{ needs.build.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/${{ needs.build.outputs.version }}
+
+      - name: Publish rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_dir="release/$RELEASE_VERSION"
+          names=(
+            "DragonHub-Setup-$RELEASE_VERSION-win-x64.exe"
+            "DragonHub-Portable-$RELEASE_VERSION-win-x64.exe"
+            "DragonHub-$RELEASE_VERSION-sbom.cdx.json"
+            "SHA256SUMS.txt"
+            "release-manifest.json"
+          )
+          assets=()
+          for n in "${names[@]}"; do
+            f="$asset_dir/$n"
+            if [[ ! -s "$f" ]]; then
+              echo "::error::Release asset is missing or empty: $f"
+              exit 1
+            fi
+            assets+=("$f")
+          done
+
+          title="DragonHub Continuous Build ($RELEASE_VERSION)"
+          if gh release view continuous >/dev/null 2>&1; then
+            gh release edit continuous \
+              --prerelease \
+              --title "$title" \
+              --notes-file "$asset_dir/RELEASE-NOTES.md"
+            gh release upload continuous "${assets[@]}" --clobber
+            # Remove stale assets from older versions so the page stays tidy.
+            old_names=$(gh release view continuous --json assets --jq '.assets[].name')
+            for old in $old_names; do
+              keep=false
+              for n in "${names[@]}"; do
+                if [[ "$old" == "$n" ]]; then keep=true; break; fi
+              done
+              if [[ "$keep" == false ]]; then
+                gh release delete-asset continuous "$old" --yes
+              fi
+            done
+          else
+            gh release create continuous "${assets[@]}" \
+              --prerelease \
+              --title "$title" \
+              --notes-file "$asset_dir/RELEASE-NOTES.md"
+          fi
+
+          {
+            echo "## Published continuous build $RELEASE_VERSION"
+            echo
+            echo "Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/continuous"
           } >> "$GITHUB_STEP_SUMMARY"
