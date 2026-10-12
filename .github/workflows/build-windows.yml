@@ -59,6 +59,7 @@ jobs:
       # which is exactly where the advisories concentrate. Advisory only: failing the whole
       # pipeline on build-time deps would block every release until Dependabot lands fixes.
       - name: Audit dev/build toolchain (advisory)
+        continue-on-error: true
         run: npm audit --audit-level=critical || echo "::warning::dev-tree audit findings — tracked by Dependabot"
 
       - name: Typecheck
