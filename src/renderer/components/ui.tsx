@@ -65,10 +65,10 @@ export function Kbd({ keys, className }: { keys: string | string[]; className?: 
 export function Tooltip({ label, shortcut, children, side = 'bottom' }: { label: string; shortcut?: string; children: React.ReactElement; side?: 'top' | 'bottom' | 'right' | 'left' }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const [show, setShow] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout>>()
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tipRef = useRef<HTMLDivElement>(null)
   const open = (el: HTMLElement) => {
-    clearTimeout(timer.current)
+    clearTimeout(timer.current ?? undefined)
     timer.current = setTimeout(() => {
       const r = el.getBoundingClientRect()
       const x = side === 'right' ? r.right + 8 : side === 'left' ? r.left - 8 : r.left + r.width / 2
@@ -76,8 +76,8 @@ export function Tooltip({ label, shortcut, children, side = 'bottom' }: { label:
       setPos({ x, y }); requestAnimationFrame(() => setShow(true))
     }, 380)
   }
-  const close = () => { clearTimeout(timer.current); setShow(false); setPos(null) }
-  useEffect(() => () => clearTimeout(timer.current), [])
+  const close = () => { if (timer.current) clearTimeout(timer.current); setShow(false); setPos(null) }
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
   useLayoutEffect(() => {
     const el = tipRef.current
     if (!el || !pos) return
@@ -88,7 +88,13 @@ export function Tooltip({ label, shortcut, children, side = 'bottom' }: { label:
     top = Math.max(6, Math.min(top, window.innerHeight - r.height - 6))
     el.style.left = `${left}px`; el.style.top = `${top}px`
   }, [pos, side])
-  const child = React.Children.only(children)
+  const child = React.Children.only(children) as React.ReactElement<{
+    onMouseEnter?: (e: React.MouseEvent<HTMLElement>) => void
+    onMouseLeave?: (e: React.MouseEvent<HTMLElement>) => void
+    onFocus?: (e: React.FocusEvent<HTMLElement>) => void
+    onBlur?: (e: React.FocusEvent<HTMLElement>) => void
+    onMouseDown?: (e: React.MouseEvent<HTMLElement>) => void
+  }>
   return (
     <>
       {React.cloneElement(child, {
@@ -110,7 +116,7 @@ export function Tooltip({ label, shortcut, children, side = 'bottom' }: { label:
 /* ------------------------------------------------------------ Focus trap */
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 /** Traps Tab inside `ref`, restores focus to the opener on unmount. */
-export function useFocusTrap(ref: React.RefObject<HTMLElement>, active: boolean) {
+export function useFocusTrap<T extends HTMLElement>(ref: React.RefObject<T | null>, active: boolean) {
   useEffect(() => {
     if (!active) return
     const opener = document.activeElement as HTMLElement | null
@@ -258,11 +264,11 @@ export function TagInput({ tags, onChange, placeholder }: { tags: string[]; onCh
         {tags.map((tg) => (
           <motion.span key={tg} layout initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} transition={spring.snappy}
             className="badge bg-accent/12 text-accent">#{tg}
-            <button type="button" className="rounded-full hover:bg-accent/20 p-0.5 -me-1" aria-label={`${t('common.delete')} ${tg}`} onClick={() => onChange(tags.filter((x) => x !== tg))}><X size={10} /></button>
+            <button type="button" className="rounded-full hover:bg-accent/20 p-0.5 -me-1" aria-label={`${t('common.delete')} ${tg}`} onClick={() => onChange(tags.filter((x) => x !== tg))}><X size={12} /></button>
           </motion.span>
         ))}
       </AnimatePresence>
-      <input className="bg-transparent outline-none flex-1 min-w-[80px] text-sm" value={v} placeholder={placeholder} aria-label={placeholder || t('common.tags')} onChange={(e) => setV(e.target.value)} onBlur={commit}
+      <input className="bg-transparent outline-none flex-1 min-w-[80px] text-sm" value={v} placeholder={placeholder} aria-label={placeholder || t('common.tags')} onChange={(e) => setV(e.target.value)}
         onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ',') && v.trim()) { e.preventDefault(); commit() } if (e.key === 'Backspace' && !v && tags.length) onChange(tags.slice(0, -1)) }} />
     </div>
   )
@@ -368,9 +374,11 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
   }, [])
   return (
     <motion.div ref={ref} role="menu" initial={{ opacity: 0, scale: 0.97, y: -3 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed z-[95] surface-raised p-1 min-w-[200px] max-w-[min(300px,calc(100vw-16px))] max-h-[calc(100vh-16px)] overflow-y-auto origin-top-left rtl:origin-top-right" style={{ left, top }}>
+      className="fixed z-[95] surface-raised p-1 min-w-[200px] max-w-[min(300px,calc(100vw-16px))] max-h-[calc(100vh-16px)] overflow-y-auto origin-top-left rtl:origin-top-right" style={{ left, top }}
+      onMouseDown={(e) => e.stopPropagation()}>
       {items.map((it, i) => it.sep ? <div key={i} className="divider my-1" role="separator" /> : (
-        <button key={i} role="menuitem" className={cn('w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] text-start transition-colors duration-100 hover:bg-surface-200 focus:bg-surface-200 focus-visible:outline-none min-w-0', it.danger && 'text-rose-500 hover:bg-rose-500/10 focus:bg-rose-500/10')} onClick={() => { it.onClick?.(); onClose() }}>
+        <button key={i} role="menuitem" className={cn('w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] text-start transition-colors duration-100 hover:bg-surface-200 focus:bg-surface-200', it.danger && 'text-rose-600')}
+          onClick={() => { it.onClick?.(); onClose() }}>
           {it.icon && <span className={cn('shrink-0 [&>svg]:h-[15px] [&>svg]:w-[15px]', it.danger ? 'text-rose-500' : 'text-surface-500')}>{it.icon}</span>}
           <span className="min-w-0 flex-1 break-words">{it.label}</span>
           {it.shortcut && <span className="text-[10.5px] text-surface-500 font-mono" dir="ltr">{it.shortcut}</span>}
