@@ -262,7 +262,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
             </thead>
             <tbody>
               {list.map((e) => (
-                <tr key={e.path} onClick={(ev) => { const n = new Set(ev.ctrlKey ? sel : []); n.has(e.path) ? n.delete(e.path) : n.add(e.path); setSel(n) }} onDoubleClick={() => openEntry(e)} onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); if (!sel.has(e.path)) setSel(new Set([e.path])); setCtx({ x: ev.clientX, y: ev.clientY, e }) }}
+                <tr key={e.path} onClick={(ev) => { const n = new Set(ev.ctrlKey ? sel : []); if (n.has(e.path)) n.delete(e.path); else n.add(e.path); setSel(n) }} onDoubleClick={() => openEntry(e)} onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); if (!sel.has(e.path)) setSel(new Set([e.path])); setCtx({ x: ev.clientX, y: ev.clientY, e }) }}
                   className={cn('cursor-default transition-colors', sel.has(e.path) ? 'bg-accent/20' : 'hover:bg-surface-200/60', e.isHidden && 'opacity-50')}>
                   <td className="px-3 py-1.5 flex items-center gap-2 truncate">{iconFor(e)}<span className="truncate min-w-0">{e.name}</span></td>
                   <td className="px-3 py-1.5 text-xs text-surface-500 uppercase">{e.isDirectory ? '' : e.ext}</td>
@@ -275,7 +275,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-2 p-3">
             {list.map((e) => (
-              <button key={e.path} onClick={(ev) => { const n = new Set(ev.ctrlKey ? sel : []); n.has(e.path) ? n.delete(e.path) : n.add(e.path); setSel(n) }} onDoubleClick={() => openEntry(e)} onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); setSel(new Set([e.path])); setCtx({ x: ev.clientX, y: ev.clientY, e }) }}
+              <button key={e.path} onClick={(ev) => { const n = new Set(ev.ctrlKey ? sel : []); if (n.has(e.path)) n.delete(e.path); else n.add(e.path); setSel(n) }} onDoubleClick={() => openEntry(e)} onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); setSel(new Set([e.path])); setCtx({ x: ev.clientX, y: ev.clientY, e }) }}
                 className={cn('flex flex-col items-center gap-2 rounded-xl p-3 transition-all duration-300', sel.has(e.path) ? 'bg-accent/20' : 'hover:bg-surface-200/60')}>
                 {IMAGE_EXT.has(e.ext) && e.size < 15e6 ? <img src={toFileUrl(e.path)} className="h-12 w-12 object-cover rounded-lg" loading="lazy" decoding="async" /> : <span className="h-12 flex items-center">{iconFor(e, 36)}</span>}
                 <span className="text-xs truncate w-full text-center">{e.name}</span>

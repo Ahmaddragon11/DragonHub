@@ -10,15 +10,10 @@ import { invoke } from '@/lib/api'
 import { cn, extToLang, stripPath, uid } from '@/lib/utils'
 
 // Bundle monaco locally (no CDN) for offline + CSP compliance
-// @ts-ignore
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-// @ts-ignore
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-// @ts-ignore
 import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
-// @ts-ignore
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
-// @ts-ignore
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 ;(self as any).MonacoEnvironment = {
   getWorker(_: unknown, label: string) {

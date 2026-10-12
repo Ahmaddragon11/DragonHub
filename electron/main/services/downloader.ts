@@ -101,6 +101,7 @@ function emit(win: BrowserWindow | null, item: DownloadItem) {
 }
 
 function sanitizeFilename(name: string) {
+  // eslint-disable-next-line no-control-regex -- Strip control characters from untrusted filenames.
   let n = String(name || '').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').slice(0, 200)
   // Never allow bare dots / reserved device names / trailing dots-spaces (traversal + Win quirks).
   if (/^\.+$/.test(n)) n = 'download'

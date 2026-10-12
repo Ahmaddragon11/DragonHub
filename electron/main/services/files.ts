@@ -18,6 +18,7 @@ export function safePath(p: string): string {
   // remaining C0 controls are refused here: they can never be legitimate and
   // would corrupt logs or smuggle characters into spawned args. NUL is already
   // covered by the includes('\0') guard above.
+  // eslint-disable-next-line no-control-regex -- Reject invalid control characters in filesystem paths.
   if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(p)) throw new Error('Invalid path: control characters')
   // Windows forbids `< > : " / \ | ? *` and ASCII 0-31 in names. Only the
   // non-structural ones can be rejected: `/` and `\` are the path separators

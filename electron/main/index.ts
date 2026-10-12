@@ -431,7 +431,10 @@ function winOnly(channel: string, fn: (e: Electron.IpcMainInvokeEvent) => unknow
   }
 }
 ipcMain.handle('window:minimize', winOnly('window:minimize', () => win?.minimize()))
-ipcMain.handle('window:maximize', winOnly('window:maximize', () => { win?.isMaximized() ? win.unmaximize() : win?.maximize() }))
+ipcMain.handle('window:maximize', winOnly('window:maximize', () => {
+  if (win?.isMaximized()) win.unmaximize()
+  else win?.maximize()
+}))
 ipcMain.handle('window:show', winOnly('window:show', () => { win?.show(); win?.focus() }))
 ipcMain.handle('window:close', winOnly('window:close', () => win?.close()))
 ipcMain.handle('window:isMaximized', winOnly('window:isMaximized', () => win?.isMaximized() ?? false))

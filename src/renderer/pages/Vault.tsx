@@ -179,7 +179,7 @@ export default function Vault() {
           </motion.div>
           <h2 className="text-xl font-bold mb-1">{isSetup ? t('vault.setup') : t('vault.locked')}</h2>
           <p className="text-sm opacity-60 mb-5">{isSetup ? t('vault.setupDesc') : t('vault.enterPassword')}</p>
-          <form onSubmit={(e) => { e.preventDefault(); isSetup ? setup() : unlock() }} className="space-y-3 text-start">
+          <form onSubmit={(e) => { e.preventDefault(); if (isSetup) setup(); else unlock() }} className="space-y-3 text-start">
             <input type="password" className="input" autoFocus placeholder={t('vault.masterPassword')} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={isSetup ? 'new-password' : 'current-password'} />
             {isSetup && <><StrengthBar pw={pw} /><input type="password" className="input" placeholder={t('vault.confirmPassword')} value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" /></>}
             {err && <div className="text-sm text-red-400">{err}</div>}

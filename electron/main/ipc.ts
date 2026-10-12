@@ -173,7 +173,7 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   })
   h('app:setLoginItem', (enabled: boolean) => {
     if (typeof enabled !== 'boolean') throw new Error('Invalid argument: enabled must be boolean')
-    return app.setLoginItemSettings({ openAtLogin: Boolean(!!enabled) })
+    return app.setLoginItemSettings({ openAtLogin: enabled })
   })
   let psb: number | null = null
   h('app:keepAwake', (on: boolean) => {

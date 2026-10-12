@@ -82,7 +82,7 @@ export async function compress(win: BrowserWindow | null, jobId: string, inputs:
   const Seven = (await import('node-7z')).default
   const bin = await sevenBin()
   const ins = inputs.map(safePath)
-  let out = safePath(output)
+  const out = safePath(output)
   validateCompressInputs(ins, opts)
   // Never silently crush an existing archive: fail EEXIST with a clear error.
   if (fs.existsSync(out)) {
