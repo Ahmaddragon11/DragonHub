@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell, clipboard, app, nativeTheme, BrowserWindow, powerSaveBlocker } from 'electron'
+import { ipcMain, dialog, shell, clipboard, nativeImage, app, nativeTheme, BrowserWindow, powerSaveBlocker, desktopCapturer, screen } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -54,6 +54,8 @@ const RATE_LIMITS: Record<string, { n: number; ms: number }> = {
   'app:openUserData': { n: 20, ms: 60000 },
   'app:setLoginItem': { n: 20, ms: 60000 },
   'app:keepAwake': { n: 20, ms: 60000 },
+  'screen:sources': { n: 30, ms: 60000 },
+  'clipboard:writeImage': { n: 40, ms: 60000 },
   'app:version': { n: 120, ms: 10000 },
   'app:lastSeenVersion': { n: 60, ms: 10000 },
   'app:markVersionSeen': { n: 30, ms: 10000 },
@@ -180,6 +182,37 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
     return psb !== null
   })
 
+  // ---------- Screen capture (desktopCapturer) ----------
+  // Returns each display (plus open windows) as a PNG data URL at near-native
+  // resolution so the renderer can crop a region. Thumbnails are sized to the
+  // largest display (× scaleFactor, capped) so single/same-res multi-monitor
+  // setups are pixel-exact; the crop maps back to the decoded pixel size anyway.
+  h('screen:sources', async (types?: ('screen' | 'window')[]) => {
+    const want: ('screen' | 'window')[] = Array.isArray(types) && types.length ? types : ['screen']
+    const displays = screen.getAllDisplays()
+    const scale = displays.reduce((m, d) => Math.max(m, d.scaleFactor), 1)
+    const maxW = displays.reduce((m, d) => Math.max(m, d.size.width), 0)
+    const maxH = displays.reduce((m, d) => Math.max(m, d.size.height), 0)
+    const sources = await desktopCapturer.getSources({
+      types: want,
+      thumbnailSize: {
+        width: Math.min(6000, Math.max(1, Math.round(maxW * scale))),
+        height: Math.min(6000, Math.max(1, Math.round(maxH * scale))),
+      },
+    })
+    return sources.map((s) => {
+      const size = s.thumbnail.getSize()
+      return {
+        id: s.id,
+        name: s.name,
+        display_id: s.display_id,
+        thumbnail: s.thumbnail.toDataURL(),
+        width: size.width,
+        height: size.height,
+      }
+    })
+  })
+
   // ---------- Clipboard (with auto-clear for secrets) ----------
   h('clipboard:write', (text: string, clearAfterSec?: number) => {
     if (typeof text !== 'string') throw new Error('Invalid clipboard text')
@@ -190,6 +223,14 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
     }
   })
   h('clipboard:read', () => clipboard.readText())
+  h('clipboard:writeImage', (dataUrl: string) => {
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) throw new Error('Invalid image data URL')
+    if (dataUrl.length > 100 * 1024 * 1024) throw new Error('Image too large')
+    const img = nativeImage.createFromDataURL(dataUrl)
+    if (img.isEmpty()) throw new Error('Invalid image')
+    clipboard.writeImage(img)
+    return true
+  })
 
   // ---------- Settings ----------
   h('settings:get', () => settingsStore.get())
@@ -247,9 +288,12 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   h('fs:readBase64', (p: string) => files.readBase64(p))
   h('fs:mkdir', (p: string) => files.mkdir(p))
   h('fs:createFile', (p: string) => files.createFile(p))
-  h('fs:rename', (a: string, b: string) => files.rename(a, b))
-  h('fs:copy', (a: string, b: string) => files.copy(a, b))
-  h('fs:move', (a: string, b: string) => files.move(a, b))
+  // overwrite is opt-in and must be the boolean literal true: the renderer
+  // only sets it after a dialog:confirm, and anything else (e.g. a truthy
+  // string from a compromised renderer) leaves the EEXIST guard in files.ts armed.
+  h('fs:rename', (a: string, b: string, overwrite?: boolean) => files.rename(a, b, { overwrite: overwrite === true }))
+  h('fs:copy', (a: string, b: string, overwrite?: boolean) => files.copy(a, b, { overwrite: overwrite === true }))
+  h('fs:move', (a: string, b: string, overwrite?: boolean) => files.move(a, b, { overwrite: overwrite === true }))
   h('fs:remove', (p: string, useTrash: boolean) => files.remove(p, useTrash))
   h('fs:drives', () => files.getDrives())
   h('fs:special', () => files.specialFolders())

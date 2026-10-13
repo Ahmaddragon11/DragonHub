@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Wifi, ArrowDown, ArrowUp, Download, Upload, ShieldAlert, AlertTriangle, Radar, Ban, Gauge, FileDown, Signal } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
@@ -585,8 +585,8 @@ export default function Network() {
                               <th className="text-start font-medium py-1.5 pe-3">{t('net.process')}</th>
                               <th className="text-start font-medium py-1.5 pe-3">{t('net.remote')}</th>
                               <th className="text-start font-medium py-1.5 pe-3">{t('net.local')}</th>
-                              <th className="text-start font-medium py-1.5 pe-3">PID</th>
-                              <th className="text-start font-medium py-1.5 pe-3">State</th>
+                              <th className="text-start font-medium py-1.5 pe-3">{t('net.colPid')}</th>
+                              <th className="text-start font-medium py-1.5 pe-3">{t('net.colState')}</th>
                             </tr>
                           </thead>
                           <tbody>

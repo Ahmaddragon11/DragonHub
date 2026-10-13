@@ -1,0 +1,12 @@
+# Normalize text files to LF in the repository and on checkout, so shell
+# scripts and CI steps behave the same on Windows, macOS and Linux.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted or diffed.
+*.ico binary
+*.png binary
+*.bmp binary
+*.webp binary
+*.exe binary
+*.pdf binary
+*.asar binary

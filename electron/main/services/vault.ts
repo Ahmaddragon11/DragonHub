@@ -198,11 +198,6 @@ async function loadDataAs(k: Buffer): Promise<VaultItem[]> {
   return JSON.parse(decrypt(k, blob).toString('utf8'))
 }
 
-async function loadData(): Promise<VaultItem[]> {
-  if (!key) throw new Error('Vault locked')
-  return loadDataAs(key)
-}
-
 async function saveData() {
   if (!key || !cache) throw new Error('Vault locked')
   const blob = encrypt(key, Buffer.from(JSON.stringify(cache), 'utf8'))

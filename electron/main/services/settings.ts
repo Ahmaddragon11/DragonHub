@@ -31,9 +31,19 @@ function sanitizePatch(patch: Partial<AppSettings>): Partial<AppSettings> {
   if (patch.fontScale !== undefined) out.fontScale = clamp(patch.fontScale, 0.8, 1.4, d.fontScale)
   if (patch.compactMode !== undefined) out.compactMode = !!patch.compactMode
   if (patch.glassEffect !== undefined) out.glassEffect = !!patch.glassEffect
+  if (patch.backgroundImage !== undefined && typeof patch.backgroundImage === 'string') {
+    const v = patch.backgroundImage
+    // Empty string clears the wallpaper; otherwise require an absolute, safe path.
+    if (v === '') out.backgroundImage = ''
+    else if (!v.includes('\0') && v.length <= 1024 && path.isAbsolute(v)) out.backgroundImage = v
+  }
+  if (patch.backgroundBlur !== undefined) out.backgroundBlur = clamp(patch.backgroundBlur, 0, 30, d.backgroundBlur)
+  if (patch.backgroundDim !== undefined) out.backgroundDim = clamp(patch.backgroundDim, 0, 90, d.backgroundDim)
+  if (patch.ambientGlow !== undefined) out.ambientGlow = !!patch.ambientGlow
+  if (patch.lowPowerMode !== undefined) out.lowPowerMode = !!patch.lowPowerMode
   if (patch.sidebarCollapsed !== undefined) out.sidebarCollapsed = !!patch.sidebarCollapsed
   if (patch.startPage !== undefined && typeof patch.startPage === 'string') {
-    const pages = new Set(['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about'])
+    const pages = new Set(['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'taskManager', 'screenshot', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about'])
     out.startPage = (pages.has(patch.startPage) ? patch.startPage : d.startPage).slice(0, 32)
   }
   if (patch.downloadDir !== undefined && typeof patch.downloadDir === 'string') {

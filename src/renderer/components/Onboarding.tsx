@@ -35,7 +35,7 @@ const CHANGE_ICON: Record<ChangeType, React.ReactNode> = {
 /** First-run wizard: language → theme/accent → feature tour. Never shown again once dismissed. */
 export function Onboarding() {
   const { t } = useTranslation()
-  const { onboardingOpen, setOnboardingOpen, settings, setSettings, dismissWhatsNew, navigate } = useApp()
+  const { onboardingOpen, settings, setSettings, dismissWhatsNew, navigate } = useApp()
   const [step, setStep] = useState(0)
   if (!onboardingOpen) return null
 

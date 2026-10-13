@@ -14,7 +14,23 @@ const execFileP = promisify(execFile)
  *  own allowlist/blocklist on top (see SECURITY_NOTES.md). */
 export function safePath(p: string): string {
   if (typeof p !== 'string' || p.length === 0 || p.length > 32000 || p.includes('\0')) throw new Error('Invalid path')
-  if (/[\x00-\x1F]/.test(p)) throw new Error('Invalid path: control characters')
+  // Windows legally allows TAB/LF/CR inside file and folder names, so only the
+  // remaining C0 controls are refused here: they can never be legitimate and
+  // would corrupt logs or smuggle characters into spawned args. NUL is already
+  // covered by the includes('\0') guard above.
+  if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(p)) throw new Error('Invalid path: control characters')
+  // Windows forbids `< > : " / \ | ? *` and ASCII 0-31 in names. Only the
+  // non-structural ones can be rejected: `/` and `\` are the path separators
+  // and `:` is required by drive letters ("C:\Users"), so those stay. `?` and
+  // `*` stay allowed too — no caller passes a glob today (the only wildcard,
+  // `path.join(dir, '*')` in hiddenSetForDir(), is appended after resolve) and
+  // a literal `*` just makes a node fs call fail safely, so rejecting them
+  // would only break a future glob-aware caller.
+  // The previous class also rejected `& ^ !`, which are perfectly legal Windows
+  // filename characters ("R&D", "a^b", "wow!.txt") and bought nothing: attrib
+  // runs as an argv array via execFile (never cmd.exe) and every other consumer
+  // is a native fs call or an Electron shell API. `%` likewise stays allowed.
+  if (/[<>|"]/.test(p)) throw new Error('Invalid path: illegal Windows filename characters')
   const n = path.resolve(p)
   return n
 }
@@ -67,12 +83,22 @@ export async function listDir(dir: string, showHidden = false): Promise<FileEntr
 // mtime bucket. Falls back to false (dotfile heuristic still applies) on any
 // error or non-Windows. This finally honours the "show hidden files" setting.
 const hiddenCache = new Map<string, { at: number; set: Set<string> }>()
+
+/** attrib is an external executable in System32 (not only a cmd builtin). Calling it
+ *  directly avoids cmd.exe re-parsing renderer-controlled paths (command injection). */
+function attribBin(): string {
+  if (process.platform !== 'win32') return 'attrib'
+  const sysRoot = process.env.SystemRoot || 'C:\\Windows'
+  const abs = path.join(sysRoot, 'System32', 'attrib.exe')
+  return fs.existsSync(abs) ? abs : 'attrib'
+}
+
 async function hiddenSetForDir(dir: string): Promise<Set<string>> {
   if (process.platform !== 'win32') return new Set()
   const cached = hiddenCache.get(dir)
   if (cached && Date.now() - cached.at < 4000) return cached.set
   try {
-    const { stdout } = await execFileP('cmd', ['/c', 'attrib', path.join(dir, '*')], { windowsHide: true, timeout: 4000 })
+    const { stdout } = await execFileP(attribBin(), [path.join(dir, '*')], { windowsHide: true, timeout: 4000 })
     const set = new Set<string>()
     for (const line of stdout.split(/\r?\n/)) {
       const m = /^([AHRSIOX]+)\s+(.+)$/i.exec(line.trim())

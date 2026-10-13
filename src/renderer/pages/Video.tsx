@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Clapperboard, FolderOpen, Loader2, Play, Camera, Square, Zap, Music, VolumeX, Film, Info, Maximize2, X } from 'lucide-react'
+import { Clapperboard, FolderOpen, Play, Camera, Square, Zap, Music, Film, Maximize2, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle, Slider, Empty } from '@/components/ui'
@@ -169,8 +169,8 @@ export default function Video() {
           <div className="divider" />
           <Field label={t('video.format')}>
             <select className="select" value={format} onChange={(e) => setFormat(e.target.value as Fmt)}>
-              {!isAudio && <optgroup label="Video">{VFMT.map((f) => <option key={f}>{f}</option>)}</optgroup>}
-              <optgroup label="Audio">{AFMT.map((f) => <option key={f}>{f}</option>)}</optgroup>
+              {!isAudio && <optgroup label={t('video.groupVideo')}>{VFMT.map((f) => <option key={f}>{f}</option>)}</optgroup>}
+              <optgroup label={t('video.groupAudio')}>{AFMT.map((f) => <option key={f}>{f}</option>)}</optgroup>
             </select>
           </Field>
           {!isAudio && !AFMT.includes(format) && format !== 'gif' && (

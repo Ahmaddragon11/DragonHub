@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { Readable, Transform } from 'node:stream'
@@ -7,6 +7,10 @@ import { pipeline } from 'node:stream/promises'
 
 const RELEASE_API = 'https://api.github.com/repos/Ahmaddragon11/DragonHub/releases/latest'
 const GITHUB_ASSET_HOSTS = new Set(['github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'])
+const RELEASE_DOWNLOAD_PATH_PREFIX = '/Ahmaddragon11/DragonHub/releases/download/'
+const CHECKSUMS_ASSET_NAME = 'SHA256SUMS.txt'
+const MAX_CHECKSUMS_BYTES = 256 * 1024
+const SHA256_HEX_LINE = /^([0-9a-f]{64})[ \t]+\*?(.+)$/
 
 interface ReleaseAsset {
   name?: unknown
@@ -56,6 +60,87 @@ async function getLatestRelease(signal: AbortSignal): Promise<LatestRelease> {
   return release as LatestRelease
 }
 
+function isTrustedReleaseDownloadUrl(url: URL): boolean {
+  return url.protocol === 'https:' &&
+    url.hostname === 'github.com' &&
+    url.pathname.startsWith(RELEASE_DOWNLOAD_PATH_PREFIX)
+}
+
+async function fetchGitHubAsset(url: URL, signal: AbortSignal, timeoutMs: number, label: string): Promise<Response> {
+  if (!isTrustedReleaseDownloadUrl(url)) throw new Error(`Refusing to fetch the ${label} from an untrusted URL`)
+  const response = await fetch(url, {
+    headers: { 'user-agent': 'DragonHub-Updater' },
+    redirect: 'follow',
+    signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
+  })
+  if (!response.ok || !response.body) throw new Error(`Could not download the ${label} (HTTP ${response.status})`)
+  if (!GITHUB_ASSET_HOSTS.has(new URL(response.url).hostname)) {
+    throw new Error(`The ${label} download redirected to an untrusted host`)
+  }
+  return response
+}
+
+function sha256File(p: string): Promise<string> {
+  return new Promise((res, rej) => {
+    const h = createHash('sha256')
+    const s = fs.createReadStream(p)
+    s.on('data', (d) => h.update(d))
+    s.on('error', rej)
+    s.on('end', () => res(h.digest('hex')))
+  })
+}
+
+// Format written by scripts/release-manifest.mjs: `<64 lowercase hex><space><space><basename>`, LF separated,
+// covering DragonHub-Setup-<version>-win-x64.exe, DragonHub-Portable-<version>-win-x64.exe, the SBOM and RELEASE-NOTES.md.
+async function readPublishedChecksums(url: URL, signal: AbortSignal): Promise<Map<string, string>> {
+  const response = await fetchGitHubAsset(url, signal, 20_000, CHECKSUMS_ASSET_NAME)
+  const declaredLength = Number(response.headers.get('content-length'))
+  if (Number.isSafeInteger(declaredLength) && declaredLength > MAX_CHECKSUMS_BYTES) {
+    throw new Error('The published checksum file is unexpectedly large')
+  }
+  const chunks: Buffer[] = []
+  let received = 0
+  for await (const chunk of Readable.fromWeb(response.body as import('node:stream/web').ReadableStream)) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    received += buf.length
+    if (received > MAX_CHECKSUMS_BYTES) throw new Error('The published checksum file is unexpectedly large')
+    chunks.push(buf)
+  }
+  signal.throwIfAborted()
+
+  const checksums = new Map<string, string>()
+  for (const rawLine of Buffer.concat(chunks).toString('utf8').split('\n')) {
+    const line = rawLine.trim()
+    if (!line) continue
+    const match = SHA256_HEX_LINE.exec(line)
+    if (!match) throw new Error('The published checksum file is malformed and cannot be trusted')
+    checksums.set(path.basename(match[2].trim()).toLowerCase(), match[1])
+  }
+  if (checksums.size === 0) throw new Error('The published checksum file is empty and cannot be trusted')
+  return checksums
+}
+
+async function verifyInstallerIntegrity(
+  installerPath: string,
+  assetName: string,
+  assetUrl: URL,
+  signal: AbortSignal,
+): Promise<void> {
+  const checksumUrl = new URL(CHECKSUMS_ASSET_NAME, assetUrl)
+  if (!isTrustedReleaseDownloadUrl(checksumUrl)) throw new Error('GitHub returned an invalid checksum URL')
+  const expected = (await readPublishedChecksums(checksumUrl, signal)).get(path.basename(assetName).toLowerCase())
+  signal.throwIfAborted()
+  if (!expected) throw new Error(`The published checksums do not cover ${assetName}`)
+
+  const actual = await sha256File(installerPath)
+  signal.throwIfAborted()
+  const expectedBytes = Buffer.from(expected, 'hex')
+  const actualBytes = Buffer.from(actual, 'hex')
+  if (expectedBytes.length !== actualBytes.length || !timingSafeEqual(expectedBytes, actualBytes)) {
+    throw new Error(`The downloaded installer ${assetName} failed its SHA-256 integrity check and will not be installed`)
+  }
+}
+
 export async function downloadLatestUpdate(
   onProgress: (progress: { phase: 'checking' | 'downloading'; receivedBytes?: number; totalBytes?: number }) => void,
 ): Promise<UpdateCheckResult> {
@@ -80,8 +165,7 @@ export async function downloadLatestUpdate(
     }
 
     const assetUrl = new URL(asset.browser_download_url)
-    if (assetUrl.protocol !== 'https:' || assetUrl.hostname !== 'github.com' ||
-        !assetUrl.pathname.startsWith('/Ahmaddragon11/DragonHub/releases/download/')) {
+    if (!isTrustedReleaseDownloadUrl(assetUrl)) {
       throw new Error('GitHub returned an invalid installer URL')
     }
 
@@ -93,15 +177,7 @@ export async function downloadLatestUpdate(
       pendingInstaller = null
     }
 
-    const response = await fetch(assetUrl, {
-      headers: { 'user-agent': 'DragonHub-Updater' },
-      redirect: 'follow',
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30 * 60_000)]),
-    })
-    if (!response.ok || !response.body) throw new Error(`Could not download the update (HTTP ${response.status})`)
-    if (!GITHUB_ASSET_HOSTS.has(new URL(response.url).hostname)) {
-      throw new Error('The installer download redirected to an untrusted host')
-    }
+    const response = await fetchGitHubAsset(assetUrl, controller.signal, 30 * 60_000, 'update')
 
     const contentLength = Number(response.headers.get('content-length'))
     const totalBytes = Number.isSafeInteger(contentLength) && contentLength > 0 ? contentLength : undefined
@@ -141,6 +217,8 @@ export async function downloadLatestUpdate(
       } finally {
         await installerFile.close()
       }
+
+      await verifyInstallerIntegrity(installerPath, expectedName, assetUrl, controller.signal)
       pendingInstaller = { path: installerPath, version }
     } catch (error) {
       await fs.promises.rm(installerPath, { force: true })

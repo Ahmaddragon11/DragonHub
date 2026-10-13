@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import {
   LayoutDashboard, StickyNote, Lightbulb, CheckSquare, FolderOpen, Code2, Download, Archive, Image, Clapperboard, ShieldCheck,
   Keyboard, Settings, Info, Minus, Square, X, Copy, Search, ChevronsLeft, ChevronsRight, ChevronDown, Sun, Moon, Languages, Send, Wifi, Gauge,
-  ArrowLeft, ArrowRight, Menu, CornerDownLeft, History, PanelLeft, Monitor, CircleHelp, FileText,
+  ArrowLeft, ArrowRight, Menu, CornerDownLeft, History, PanelLeft, Monitor, CircleHelp, FileText, Activity, Camera,
 } from 'lucide-react'
 import { useApp, type PageId, type RecentKind } from '@/store'
 import { cn, relTime, stripPath } from '@/lib/utils'
@@ -15,28 +15,63 @@ import { spring, useMotionPrefs, dialogVariants } from '@/lib/motion'
 import { Kbd, Tooltip, useFocusTrap } from '@/components/ui'
 import { APP_VERSION, DEVELOPER } from '@shared/types'
 
-export type NavGroup = 'main' | 'productivity' | 'files' | 'media' | 'security' | 'system'
+export type NavGroup = 'workspace' | 'filesMedia' | 'internet' | 'tools' | 'device' | 'security' | 'system'
 
 export const NAV: { id: PageId; icon: React.ReactNode; group: NavGroup }[] = [
-  { id: 'dashboard', icon: <LayoutDashboard size={18} />, group: 'main' },
-  { id: 'notes', icon: <StickyNote size={18} />, group: 'productivity' },
-  { id: 'projects', icon: <Lightbulb size={18} />, group: 'productivity' },
-  { id: 'tasks', icon: <CheckSquare size={18} />, group: 'productivity' },
-  { id: 'files', icon: <FolderOpen size={18} />, group: 'files' },
-  { id: 'editor', icon: <Code2 size={18} />, group: 'files' },
-  { id: 'downloads', icon: <Download size={18} />, group: 'files' },
-  { id: 'network', icon: <Wifi size={18} />, group: 'files' },
-  { id: 'resources', icon: <Gauge size={18} />, group: 'files' },
-  { id: 'compress', icon: <Archive size={18} />, group: 'files' },
-  { id: 'images', icon: <Image size={18} />, group: 'media' },
-  { id: 'video', icon: <Clapperboard size={18} />, group: 'media' },
+  { id: 'dashboard', icon: <LayoutDashboard size={18} />, group: 'workspace' },
+  { id: 'notes', icon: <StickyNote size={18} />, group: 'workspace' },
+  { id: 'tasks', icon: <CheckSquare size={18} />, group: 'workspace' },
+  { id: 'projects', icon: <Lightbulb size={18} />, group: 'workspace' },
+  { id: 'files', icon: <FolderOpen size={18} />, group: 'filesMedia' },
+  { id: 'editor', icon: <Code2 size={18} />, group: 'filesMedia' },
+  { id: 'images', icon: <Image size={18} />, group: 'filesMedia' },
+  { id: 'video', icon: <Clapperboard size={18} />, group: 'filesMedia' },
+  { id: 'downloads', icon: <Download size={18} />, group: 'internet' },
+  { id: 'network', icon: <Wifi size={18} />, group: 'internet' },
+  { id: 'compress', icon: <Archive size={18} />, group: 'tools' },
+  { id: 'resources', icon: <Gauge size={18} />, group: 'device' },
+  { id: 'taskManager', icon: <Activity size={18} />, group: 'device' },
+  { id: 'screenshot', icon: <Camera size={18} />, group: 'device' },
   { id: 'vault', icon: <ShieldCheck size={18} />, group: 'security' },
   { id: 'shortcuts', icon: <Keyboard size={18} />, group: 'system' },
   { id: 'settings', icon: <Settings size={18} />, group: 'system' },
   { id: 'about', icon: <Info size={18} />, group: 'system' },
 ]
 
-const GROUP_ORDER: NavGroup[] = ['main', 'productivity', 'files', 'media', 'security', 'system']
+/** Order of nav groups by usage frequency + task flow (daily work → tools → device → system). */
+const GROUP_ORDER: NavGroup[] = ['workspace', 'filesMedia', 'internet', 'tools', 'device', 'security', 'system']
+
+/** Persisted sidebar-group names → current groups so collapsed state survives the re-group; `tools`
+ *  no longer holds `resources`, which moved to `device`. The first group (workspace) can never be
+ *  collapsed at render time, so any stale value is inert. */
+const GROUP_MIGRATIONS: Record<string, NavGroup | undefined> = {
+  main: undefined,
+  productivity: 'workspace',
+  workspace: 'workspace',
+  files: 'filesMedia',
+  media: 'filesMedia',
+  security: 'security',
+  system: 'system',
+  tools: 'tools',
+  device: 'device',
+}
+
+/** Reads + normalises the persisted `dh:sidebarGroups` map, migrating legacy group names to the
+ *  current IA. Malformed data degrades to "all expanded" and never throws. */
+function loadGroupCollapse(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem('dh:sidebarGroups')
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    if (!parsed || typeof parsed !== 'object') return {}
+    const out: Record<string, boolean> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      const next = GROUP_MIGRATIONS[key]
+      if (next && typeof value === 'boolean') out[next] = out[next] === true || value
+    }
+    return out
+  } catch { return {} }
+}
 const EXPANDED_W = 244
 const COLLAPSED_W = 64
 /** Below this width the sidebar auto-collapses to icons; below MOBILE it becomes a drawer. */
@@ -88,9 +123,9 @@ export function TitleBar({ onMenu }: { onMenu?: () => void }) {
         <Search size={13} className="shrink-0 group-hover:text-surface-700 transition-colors" /><span className="flex-1 text-start truncate">{t('palette.placeholder')}</span><Kbd keys={['Ctrl', 'K']} className="hidden sm:inline-flex" />
       </button>
       <div className="no-drag flex items-center self-stretch">
-        <button className="btn-icon rounded-none h-full w-11 hover:bg-surface-200" aria-label="Minimize" onClick={() => window.dh.window.minimize()}><Minus size={15} /></button>
-        <button className="btn-icon rounded-none h-full w-11 hover:bg-surface-200" aria-label="Maximize" onClick={() => window.dh.window.maximize()}>{windowMaximized ? <Copy size={12} className="rotate-180" /> : <Square size={12} />}</button>
-        <button className="btn-icon rounded-none h-full w-11 hover:!bg-rose-500 hover:!text-white" aria-label={t('common.close')} onClick={() => window.dh.window.close()}><X size={16} /></button>
+        <Tooltip label={t('common.minimize')}><button className="btn-icon rounded-none h-full w-11 hover:bg-surface-200" aria-label={t('common.minimize')} onClick={() => window.dh.window.minimize()}><Minus size={15} /></button></Tooltip>
+        <Tooltip label={windowMaximized ? t('common.restore') : t('common.maximize')}><button className="btn-icon rounded-none h-full w-11 hover:bg-surface-200" aria-label={windowMaximized ? t('common.restore') : t('common.maximize')} onClick={() => window.dh.window.maximize()}>{windowMaximized ? <Copy size={12} className="rotate-180" /> : <Square size={12} />}</button></Tooltip>
+        <Tooltip label={t('common.close')}><button className="btn-icon rounded-none h-full w-11 hover:!bg-rose-500 hover:!text-white" aria-label={t('common.close')} onClick={() => window.dh.window.close()}><X size={16} /></button></Tooltip>
       </div>
     </div>
   )
@@ -108,7 +143,46 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
   const { t } = useTranslation()
   const { reduced } = useMotionPrefs()
   const drawerRef = useRef<HTMLElement>(null)
+  const navRef = useRef<HTMLElement>(null)
   const mobile = viewport === 'mobile'
+  const collapsed = mobile ? false : userCollapsed || viewport === 'narrow'
+  const isRtl = language === 'ar'
+  const darkNow = theme === 'dark' || (theme === 'system' && systemTheme === 'dark')
+  // Badge count per page; `about` uses a special dot when an update is pending.
+  const badgeOf = (id: PageId): number => (id === 'tasks' ? openTasks : id === 'downloads' ? activeDl : 0)
+  const dotOf = (id: PageId): boolean => id === 'about' && updateAvailable
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(loadGroupCollapse)
+  useEffect(() => { try { localStorage.setItem('dh:sidebarGroups', JSON.stringify(collapsedGroups)) } catch { /* ignore */ } }, [collapsedGroups])
+  const toggleGroup = (g: NavGroup) => setCollapsedGroups((p) => ({ ...p, [g]: !p[g] }))
+  const go = (id: PageId) => { navigate(id); if (mobile) onCloseDrawer() }
+  const CollapseIcon = collapsed ? (isRtl ? ChevronsLeft : ChevronsRight) : (isRtl ? ChevronsRight : ChevronsLeft)
+  const ThemeIcon = theme === 'system' ? Monitor : darkNow ? Sun : Moon
+
+  // Scroll affordance: reveal a fade at whichever edge the nav can still scroll
+  // toward. Applied as a mask so it works over the glass/blur sidebar background.
+  const [fade, setFade] = useState({ top: false, bottom: false })
+  const updateFade = useCallback(() => {
+    const el = navRef.current
+    if (!el) return
+    const scrollable = el.scrollHeight - el.clientHeight > 4
+    const top = scrollable && el.scrollTop > 2
+    const bottom = scrollable && el.scrollTop + el.clientHeight < el.scrollHeight - 2
+    setFade((p) => (p.top === top && p.bottom === bottom ? p : { top, bottom }))
+  }, [])
+  useEffect(() => {
+    const id = requestAnimationFrame(updateFade)
+    window.addEventListener('resize', updateFade)
+    return () => { cancelAnimationFrame(id); window.removeEventListener('resize', updateFade) }
+  }, [updateFade, collapsed])
+  // Re-measure when the nav's own content height changes (group toggles, page change, drawer).
+  useEffect(() => {
+    const id = requestAnimationFrame(updateFade)
+    return () => cancelAnimationFrame(id)
+  }, [updateFade, collapsed, collapsedGroups, page, mobile, drawerOpen])
+  const navMask = fade.top || fade.bottom
+    ? `linear-gradient(to bottom, ${fade.top ? 'transparent' : '#000'} 0, #000 28px, #000 calc(100% - 28px), ${fade.bottom ? 'transparent' : '#000'} 100%)`
+    : undefined
+
   useFocusTrap(drawerRef, mobile && drawerOpen)
   useEffect(() => {
     if (!mobile || !drawerOpen) return
@@ -116,20 +190,6 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [mobile, drawerOpen, onCloseDrawer])
-  const collapsed = mobile ? false : userCollapsed || viewport === 'narrow'
-  const isRtl = language === 'ar'
-  const darkNow = theme === 'dark' || (theme === 'system' && systemTheme === 'dark')
-  // Badge count per page; `about` uses a special dot when an update is pending.
-  const badgeOf = (id: PageId): number => (id === 'tasks' ? openTasks : id === 'downloads' ? activeDl : 0)
-  const dotOf = (id: PageId): boolean => id === 'about' && updateAvailable
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
-    try { const raw = localStorage.getItem('dh:sidebarGroups'); return raw ? (JSON.parse(raw) as Record<string, boolean>) : {} } catch { return {} }
-  })
-  useEffect(() => { try { localStorage.setItem('dh:sidebarGroups', JSON.stringify(collapsedGroups)) } catch { /* ignore */ } }, [collapsedGroups])
-  const toggleGroup = (g: NavGroup) => setCollapsedGroups((p) => ({ ...p, [g]: !p[g] }))
-  const go = (id: PageId) => { navigate(id); if (mobile) onCloseDrawer() }
-  const CollapseIcon = collapsed ? (isRtl ? ChevronsLeft : ChevronsRight) : (isRtl ? ChevronsRight : ChevronsLeft)
-  const ThemeIcon = theme === 'system' ? Monitor : darkNow ? Sun : Moon
 
   const body = (
     <aside ref={drawerRef} aria-label={t('side.menu')} role={mobile ? 'dialog' : undefined} aria-modal={mobile ? true : undefined} tabIndex={mobile ? -1 : undefined}
@@ -141,13 +201,14 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
         {!collapsed && <span className="text-sm font-semibold tracking-tight gradient-text truncate flex-1">DragonHub</span>}
         {mobile && <button className="btn-icon" aria-label={t('common.close')} onClick={onCloseDrawer}><X size={16} /></button>}
       </div>
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 min-h-0">
+      <nav ref={navRef} onScroll={updateFade} className="dh-nav flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 min-h-0"
+        style={navMask ? { maskImage: navMask, WebkitMaskImage: navMask } : undefined}>
         {GROUP_ORDER.map((g, gi) => {
           const items = NAV.filter((n) => n.group === g)
           const groupCollapsed = !collapsed && !!collapsedGroups[g] && !items.some((n) => n.id === page)
           return (
             <div key={g} className={cn(gi > 0 && 'mt-2')}>
-              {collapsed ? (gi > 0 && <div className="divider my-2 mx-auto w-6" />) : g !== 'main' && (
+              {collapsed ? (gi > 0 && <div className="divider my-2 mx-auto w-6" />) : gi > 0 && (
                 <button type="button" onClick={() => toggleGroup(g)} aria-expanded={!groupCollapsed}
                   className="group w-full flex items-center justify-between px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-surface-500 hover:text-surface-700 rounded-md">
                   <span className="truncate">{t(`side.${g}`)}</span>

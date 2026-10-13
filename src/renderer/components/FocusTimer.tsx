@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Play, Pause, RotateCcw, Timer } from 'lucide-react'
 import { Ring, Segmented } from './ui'

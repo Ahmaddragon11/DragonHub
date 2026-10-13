@@ -3,7 +3,7 @@ import { invoke } from '@/lib/api'
 import i18n from '@/i18n'
 import { DEFAULT_SETTINGS, APP_VERSION, type AppSettings, type Note, type Project, type Task, type DownloadItem } from '@shared/types'
 
-export type PageId = 'dashboard' | 'notes' | 'projects' | 'tasks' | 'files' | 'editor' | 'downloads' | 'network' | 'resources' | 'compress' | 'images' | 'video' | 'vault' | 'shortcuts' | 'settings' | 'about'
+export type PageId = 'dashboard' | 'notes' | 'projects' | 'tasks' | 'files' | 'editor' | 'downloads' | 'network' | 'resources' | 'taskManager' | 'screenshot' | 'compress' | 'images' | 'video' | 'vault' | 'shortcuts' | 'settings' | 'about'
 
 export interface ToastAction { label: string; run: () => void }
 export interface Toast { id: string; type: 'success' | 'error' | 'info' | 'warning'; text: string; action?: ToastAction; duration: number }
@@ -17,7 +17,7 @@ const loadRecents = (): RecentItem[] => {
   try { const r = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); return Array.isArray(r) ? r.slice(0, 20) : [] } catch { return [] }
 }
 
-export const PAGE_IDS: PageId[] = ['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about']
+export const PAGE_IDS: PageId[] = ['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'taskManager', 'screenshot', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about']
 export interface UpdateProgress {
   phase: 'checking' | 'downloading'
   receivedBytes?: number
@@ -84,10 +84,24 @@ function applyTheme(s: AppSettings, sys: 'dark' | 'light') {
   html.classList.toggle('dark', theme === 'dark')
   html.classList.toggle('light', theme === 'light')
   html.dataset.accent = s.accent
-  html.dataset.anim = s.animations
-  html.dataset.glass = s.glassEffect ? 'on' : 'off'
+  // Low-power mode forces effects off and flattens shadows/glow for battery+GPU savings.
+  const anim = s.lowPowerMode ? 'off' : s.animations
+  const glass = s.lowPowerMode ? false : s.glassEffect
+  html.dataset.anim = anim
+  html.dataset.glass = glass ? 'on' : 'off'
+  html.dataset.ambient = !s.lowPowerMode && s.ambientGlow ? 'on' : 'off'
+  html.classList.toggle('low-power', !!s.lowPowerMode)
   html.style.setProperty('--anim-speed', String(s.animationSpeed))
   html.style.setProperty('--font-scale', String(s.fontScale))
+  // Wallpaper (dh-file:// path) + its blur/dim. Falls back to the aurora when unset.
+  const hasBg = !!s.backgroundImage
+  html.classList.toggle('has-bg', hasBg)
+  try {
+    const bgUrl = hasBg ? `url("${window.dh.toFileUrl(s.backgroundImage)}")` : 'none'
+    html.style.setProperty('--bg-image', bgUrl)
+  } catch { html.style.setProperty('--bg-image', 'none') }
+  html.style.setProperty('--bg-blur', `${Math.round(s.backgroundBlur)}px`)
+  html.style.setProperty('--bg-dim', String(Math.round(s.backgroundDim) / 100))
   html.dir = s.language === 'ar' ? 'rtl' : 'ltr'
   html.lang = s.language
   document.body.classList.toggle('compact', s.compactMode)

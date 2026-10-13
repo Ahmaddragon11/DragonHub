@@ -114,6 +114,51 @@ input, textarea, [contenteditable], .selectable, .monaco-editor { user-select: t
 }
 html:not(.dark) .aurora { opacity: .7; }
 
+/* Wallpaper layer: sits behind .aurora, only mounted when a background image is set. */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: none;
+  background-image: var(--bg-image, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+html.has-bg .app-bg {
+  display: block;
+  filter: blur(var(--bg-blur, 0px));
+  /* Slight over-scale hides the blurred edge bleed that blur creates at the edges. */
+  transform: scale(1.03);
+}
+html.has-bg .app-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* --bg-dim is a 0..0.9 fraction; the surface tint keeps text readable over any photo. */
+  background: rgb(var(--surface-950) / var(--bg-dim, 0));
+}
+html.has-bg,
+html.has-bg body,
+html.has-bg .app-root {
+  background: transparent;
+}
+html.has-bg .workspace-main {
+  background:
+    linear-gradient(rgb(var(--surface-50) / 0.72), rgb(var(--surface-50) / 0.86)),
+    radial-gradient(ellipse 65% 40% at 50% -12%, rgb(var(--accent) / 0.05), transparent 85%);
+}
+
+/* Opt-in drifting accent glow (opt-in via settings.ambientGlow; forced off in low-power). */
+html[data-ambient='on'] .aurora {
+  animation: ambientDrift 26s var(--ease-in-out) infinite alternate;
+}
+@keyframes ambientDrift {
+  from { opacity: 0.75; transform: scale(1); }
+  to { opacity: 1; transform: scale(1.06); }
+}
+
 html[data-anim='off'] *, html[data-anim='off'] *::before, html[data-anim='off'] *::after { animation: none !important; transition: none !important; }
 html[data-anim='reduced'] .stagger > * { animation: none; }
 html[data-anim='off'] .splash-ring { animation: none; }
@@ -130,6 +175,16 @@ html[data-anim='off'] .card-interactive:hover, html[data-anim='reduced'] .card-i
   border: 1px solid var(--hairline);
 }
 html[data-glass='off'] .glass { background: rgb(var(--surface-100)); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* Low-power: battery/GPU saver. Flattens shadows, kills blur and drift. */
+html.low-power .aurora { opacity: 0.35; animation: none; }
+html.low-power .card,
+html.low-power .surface-raised { box-shadow: none; }
+html.low-power .glass {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgb(var(--surface-100));
+}
 
 /* Cards are solid by default (cheaper + more legible than stacked blur layers). */
 .card {

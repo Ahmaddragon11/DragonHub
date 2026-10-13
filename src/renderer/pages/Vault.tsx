@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, ShieldCheck, Lock, Unlock, Plus, Search, Copy, Eye, EyeOff, Star, Trash2, Pencil, KeyRound, Wand2, Download, Upload, Globe, X } from 'lucide-react'
@@ -212,7 +212,7 @@ export default function Vault() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1 stagger">
-            {filtered.length === 0 && <Empty icon={<Shield size={32} />} text={t('common.empty')} />}
+            {filtered.length === 0 && <Empty icon={<Shield size={32} />} text={q || typeF !== 'all' ? t('common.noResults') : t('common.empty')} hint={q || typeF !== 'all' ? undefined : t('vault.newItem')} />}
             {filtered.map((it) => (
               <button key={it.id} onClick={() => setSel(it)} className={cn('w-full text-start p-3 rounded-xl flex items-center gap-3 hover:bg-surface-200 transition', sel?.id === it.id && 'bg-surface-200 ring-1 ring-accent/40')}>
                 <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0', TYPE_COLOR[it.type])}>{it.title.slice(0, 2).toUpperCase()}</div>

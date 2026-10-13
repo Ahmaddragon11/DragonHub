@@ -5,7 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, ContextMenu, Modal, Field, Empty } from '@/components/ui'
 import { invoke, toFileUrl } from '@/lib/api'
-import { formatBytes, formatDate, cn, IMAGE_EXT, VIDEO_EXT, AUDIO_EXT, ARCHIVE_EXT, TEXT_EXT, extToLang } from '@/lib/utils'
+import { formatBytes, formatDate, cn, IMAGE_EXT, VIDEO_EXT, AUDIO_EXT, ARCHIVE_EXT, TEXT_EXT } from '@/lib/utils'
 import type { FileEntry, DriveInfo } from '@shared/types'
 
 /** Client-side name guard: mirrors main safePath + blocks traversal/reserved/ADS. */
@@ -15,7 +15,7 @@ function validName(n: string): boolean {
   // Block traversal sequences anywhere (a..b, ../, ..\, etc.).
   if (t.includes('..')) return false
   // Block / \ : * ? " < > | (colon also blocks ADS "name:stream").
-  if (!/^[^\\/:\*\?"<>\|]+$/.test(t)) return false
+  if (!/^[^\\/:*?"<>|]+$/.test(t)) return false
   // Windows reserved names incl. with extension (CON, CON.txt, NUL, COM1, ...).
   if (/^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..*)?$/i.test(t)) return false
   if (/[. ]$/.test(t)) return false
@@ -116,12 +116,14 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
         const dest = await invoke<string>('fs:join', path, info.base)
         // Same-path copy/move guard + pre-existence check with overwrite confirm.
         if (dest === src) continue
+        let overwrite = false
         try {
           if (await invoke<boolean>('fs:exists', dest)) {
             if (!(await invoke<boolean>('dialog:confirm', t('files.overwriteConfirm'), dest))) continue
+            overwrite = true
           }
         } catch { /* exists check best-effort — let main enforce */ }
-        try { await invoke(clipboardState.op === 'cut' ? 'fs:move' : 'fs:copy', src, dest) } catch (e: any) { toast(e.message, 'error') }
+        try { await invoke(clipboardState.op === 'cut' ? 'fs:move' : 'fs:copy', src, dest, overwrite) } catch (e: any) { toast(e.message, 'error') }
       } catch (e: any) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
     }
     if (clipboardState.op === 'cut') clipboardState = null
@@ -137,14 +139,16 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
     if (!renaming || !newName.trim()) return
     if (!validName(newName)) { toast(t('files.invalidName'), 'error'); return }
     const dest = await invoke<string>('fs:join', path, newName.trim())
+    let overwrite = false
     if (dest !== renaming.path) {
       try {
         if (await invoke<boolean>('fs:exists', dest)) {
           if (!(await invoke<boolean>('dialog:confirm', t('files.overwriteConfirm'), dest))) return
+          overwrite = true
         }
       } catch { /* best-effort */ }
     }
-    try { await invoke('fs:rename', renaming.path, dest); load(); toast(t('toast.updated')) } catch (e: any) { toast(e.message, 'error') }
+    try { await invoke('fs:rename', renaming.path, dest, overwrite); load(); toast(t('toast.updated')) } catch (e: any) { toast(e.message, 'error') }
     setRenaming(null)
   }
   const doCreate = async () => {

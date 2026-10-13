@@ -13,7 +13,6 @@ const controllers = new Map<string, Ctrl>()
 const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024 * 1024
 const MAX_REDIRECTS = 5
 const REQUEST_TIMEOUT_MS = 30 * 60 * 1000
-const MAX_THUMBNAIL_BYTES = 10 * 1024 * 1024
 let items: DownloadItem[] = sanitizeLoaded(dataCollections.get<DownloadItem[]>('downloads', []))
 // reset any transient states from previous session
 items = items.map((i) => (i.status === 'downloading' || i.status === 'queued' ? { ...i, status: 'paused', speed: 0, eta: 0 } : i))
@@ -72,6 +71,12 @@ function insideDirReal(child: string, parent: string): boolean {
   }
 }
 
+/** Case-aware path compare (Windows/macOS filesystems are case-insensitive). */
+function samePath(a: string, b: string): boolean {
+  if (process.platform === 'win32' || process.platform === 'darwin') return a.toLowerCase() === b.toLowerCase()
+  return a === b
+}
+
 /** Download targets always live under the configured download dir: renderer-supplied
  *  dirs are only honored when they match it (dirs are chosen via trusted dialogs). */
 function resolveTargetDir(optsDir: string | undefined): string {
@@ -79,8 +84,9 @@ function resolveTargetDir(optsDir: string | undefined): string {
   const base = s.downloadDir || path.join(app.getPath('downloads'), 'DragonHub')
   if (optsDir) {
     try {
-      const cand = path.resolve(optsDir)
-      if (cand === path.resolve(base)) return base
+      // samePath (not ===): a dialog may return the same directory spelled with a
+      // different drive-letter case, which would otherwise silently fall back.
+      if (samePath(path.resolve(optsDir), path.resolve(base))) return base
     } catch { /* fall through to base */ }
   }
   return base

@@ -24,11 +24,13 @@ const Video = React.lazy(() => import('@/pages/Video'))
 const Vault = React.lazy(() => import('@/pages/Vault'))
 const Network = React.lazy(() => import('@/pages/Network'))
 const Resources = React.lazy(() => import('@/pages/Resources'))
+const TaskManager = React.lazy(() => import('@/pages/TaskManager'))
+const Screenshot = React.lazy(() => import('@/pages/Screenshot'))
 const Shortcuts = React.lazy(() => import('@/pages/Shortcuts'))
 const Settings = React.lazy(() => import('@/pages/Settings'))
 const About = React.lazy(() => import('@/pages/About'))
 
-const PAGES: Record<string, React.ComponentType> = { dashboard: Dashboard, notes: Notes, projects: Projects, tasks: Tasks, files: Files, editor: Editor, downloads: Downloads, compress: Compress, images: Images, video: Video, vault: Vault, network: Network, resources: Resources, shortcuts: Shortcuts, settings: Settings, about: About }
+const PAGES: Record<string, React.ComponentType> = { dashboard: Dashboard, notes: Notes, projects: Projects, tasks: Tasks, files: Files, editor: Editor, downloads: Downloads, compress: Compress, images: Images, video: Video, vault: Vault, network: Network, resources: Resources, taskManager: TaskManager, screenshot: Screenshot, shortcuts: Shortcuts, settings: Settings, about: About }
 
 /** Fires a desktop notification + toast once per task when its reminder time arrives. */
 function useReminders() {
@@ -107,8 +109,9 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion={off ? 'always' : 'user'} transition={off ? { duration: 0 } : undefined}>
-      <div className="h-screen w-screen overflow-hidden bg-surface-50 text-surface-900 relative">
+      <div className="app-root h-screen w-screen overflow-hidden bg-surface-50 text-surface-900 relative">
         <a href="#main" className="sr-only-focusable fixed top-2 start-2 z-[300] btn-primary">{t('a11y.skip')}</a>
+        <div className="app-bg" aria-hidden />
         <div className="aurora fixed inset-0 pointer-events-none" />
         <AnimatePresence>{!ready && <Splash key="splash" />}</AnimatePresence>
         {ready && (

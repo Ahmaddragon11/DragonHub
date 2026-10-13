@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Gauge, Cpu, MemoryStick, HardDrive, MonitorCog, Snowflake, Play, Download, Search, Skull, PictureInPicture2, Bell } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
@@ -100,13 +100,13 @@ export default function Resources() {
       if (c.cpu >= 15 && !c.firedCpu) {
         c.firedCpu = true
         toast(t('res.alertFired', { what: 'CPU', v: cpuT }), 'warning')
-        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('DragonHub', { body: `CPU ≥ ${cpuT}%` }) } catch { /* best-effort */ }
+        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('DragonHub', { body: t('res.alertCpuBody', { v: cpuT }) }) } catch { /* best-effort */ }
       }
       if (c.cpu === 0) c.firedCpu = false
       if (c.mem >= 15 && !c.firedMem) {
         c.firedMem = true
         toast(t('res.alertFired', { what: 'RAM', v: memT }), 'warning')
-        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('DragonHub', { body: `RAM ≥ ${memT}%` }) } catch { /* best-effort */ }
+        try { if ('Notification' in window && Notification.permission === 'granted') new Notification('DragonHub', { body: t('res.alertRamBody', { v: memT }) }) } catch { /* best-effort */ }
       }
       if (c.mem === 0) c.firedMem = false
     })
@@ -338,10 +338,10 @@ export default function Resources() {
                   <thead>
                     <tr className="text-xs opacity-60">
                       <th className="text-start font-medium py-1.5 pe-3"><button onClick={() => toggleSort('name')}>{t('res.name')} {sortKey === 'name' ? (sortDir === 1 ? '▲' : '▼') : ''}</button></th>
-                      <th className="text-start font-medium py-1.5 pe-3"><button onClick={() => toggleSort('pid')}>{t('res.pid')} {sortKey === 'pid' ? (sortDir === 1 ? '▲' : '▼') : ''}</button></th>
-                      <th className="text-start font-medium py-1.5 pe-3"><button onClick={() => toggleSort('cpu')}>CPU% {sortKey === 'cpu' ? (sortDir === 1 ? '▲' : '▼') : ''}</button></th>
-                      <th className="text-start font-medium py-1.5 pe-3"><button onClick={() => toggleSort('mem')}>RAM {sortKey === 'mem' ? (sortDir === 1 ? '▲' : '▼') : ''}</button></th>
-                      {!compact && <th className="text-start font-medium py-1.5 pe-3">CPU Σ</th>}
+                      <th className="text-start font-medium py-1.5 pe-3"><button onClick={() => toggleSort('pid')}>{t('res.colPid')} {sortKey === 'pid' ? (sortDir === 1 ? '▲' : '▼') : ''}</button></th>
+                      <th className="text-start font-medium py-1.5 pe-3"><button onClick={() => toggleSort('cpu')}>{t('res.colCpu')} {sortKey === 'cpu' ? (sortDir === 1 ? '▲' : '▼') : ''}</button></th>
+                      <th className="text-start font-medium py-1.5 pe-3"><button onClick={() => toggleSort('mem')}>{t('res.colRam')} {sortKey === 'mem' ? (sortDir === 1 ? '▲' : '▼') : ''}</button></th>
+                      {!compact && <th className="text-start font-medium py-1.5 pe-3">{t('res.colCpuTotal')}</th>}
                       <th className="w-20" />
                     </tr>
                   </thead>

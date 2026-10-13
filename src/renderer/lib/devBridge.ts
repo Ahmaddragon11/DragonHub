@@ -58,6 +58,13 @@ const handlers: Record<string, Handler> = {
   'fs:list': () => [],
   'fs:drives': () => [],
   'clipboard:write': (s: string) => navigator.clipboard?.writeText(s).catch(() => {}),
+  'clipboard:writeImage': () => true,
+  // DEV stand-in: a tiny gradient PNG so the screenshot tool is usable in-browser.
+  'screen:sources': () => [{
+    id: 'screen:0', name: 'Dev Display', display_id: '0',
+    thumbnail: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6d28d9"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs><rect width="1280" height="720" fill="url(#g)"/><text x="50%" y="50%" fill="white" font-size="48" font-family="sans-serif" text-anchor="middle" dominant-baseline="middle">Dev Screen</text></svg>'),
+    width: 1280, height: 720,
+  }],
 }
 
 export function installDevBridge() {

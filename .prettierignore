@@ -1,0 +1,10 @@
+dist
+dist-electron
+release
+node_modules
+build
+*.ico
+*.png
+*.bmp
+*.webp
+package-lock.json

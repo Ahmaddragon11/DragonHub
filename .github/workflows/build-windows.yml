@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+  group: windows-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -55,19 +55,58 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
+      # `--omit=dev` above hides the dev/build toolchain (vite/esbuild/electron-builder),
+      # which is exactly where the advisories concentrate. Advisory only: failing the whole
+      # pipeline on build-time deps would block every release until Dependabot lands fixes.
+      - name: Audit dev/build toolchain (advisory)
+        run: npm audit --audit-level=critical || echo "::warning::dev-tree audit findings — tracked by Dependabot"
+
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # Catches the class of bug where a module imported by the Electron main process is
+      # externalised in vite.config.ts but declared as a devDependency: electron-builder
+      # does not bundle devDependencies, so it is MODULE_NOT_FOUND in every packaged build.
+      - name: Check runtime dependency declarations
+        run: npm run check:deps
+
+      # Non-blocking for now: the baseline has 13 error-level findings (mostly
+      # @typescript-eslint/no-unused-expressions) plus ~19 warnings from react-hooks rules.
+      # Warnings are tolerated outright; errors are reported but must not fail unrelated
+      # PRs while the baseline is being worked down. Flip to a hard failure at zero errors.
+      - name: Lint (advisory)
+        continue-on-error: true
+        run: npx eslint . --max-warnings 999
 
       - name: Build Windows installer and portable app
         run: npm run dist
 
       - name: Generate release notes
+        # Only for real releases. release-body.mjs throws when CHANGELOG.md has no
+        # `## v<current-version>` heading, so running this on pull_request/main turns an
+        # unrelated step red for any contributor PR without a changelog entry.
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
           GITHUB_REF_TYPE: ${{ github.ref_type }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
           APP_VERSION: ${{ steps.version.outputs.version }}
         run: node scripts/release-body.mjs > "release/$APP_VERSION/RELEASE-NOTES.md"
+
+      # The notes file is a required input for both release-manifest.mjs (it hashes it)
+      # and the `continuous` job (gh release edit --notes-file), so non-tag runs need a
+      # placeholder or those steps fail on a missing file.
+      - name: Write placeholder release notes
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          printf '# DragonHub %s\n\nAutomated continuous build. See CHANGELOG.md for details.\n' "$APP_VERSION" \
+            > "release/$APP_VERSION/RELEASE-NOTES.md"
 
       - name: Generate CycloneDX SBOM
         shell: bash
@@ -184,6 +223,7 @@ jobs:
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else
             gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --verify-tag \
               --title "DragonHub $RELEASE_VERSION" \
               --notes-file "$asset_dir/RELEASE-NOTES.md" \
               --latest

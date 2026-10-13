@@ -1,6 +1,7 @@
 import React from 'react'
-import { AlertTriangle, RotateCcw, Copy } from 'lucide-react'
+import { AlertTriangle, RotateCcw, Copy, LayoutDashboard } from 'lucide-react'
 import i18n from '@/i18n'
+import { useApp } from '@/store'
 
 interface Props {
   /** 'root' shows a full-window fallback; 'page' is contained inside the content area. */
@@ -33,7 +34,13 @@ export class ErrorBoundary extends React.Component<Props, State> {
     const e = this.state.error
     if (!e) return
     const text = `${e.name}: ${e.message}\n${e.stack ?? ''}`
-    try { void navigator.clipboard?.writeText(text) } catch { /* best effort */ }
+    try { void navigator.clipboard?.writeText(text).catch(() => {}) } catch { /* best effort */ }
+  }
+
+  /** Clears the error and sends the user somewhere they can keep working. */
+  private recover = () => {
+    this.setState({ error: null })
+    useApp.getState().navigate('dashboard')
   }
 
   render() {
@@ -47,9 +54,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <div className="mx-auto mb-4 grid place-items-center h-12 w-12 rounded-2xl bg-rose-500/12 text-rose-500"><AlertTriangle size={22} /></div>
           <h2 className="text-base font-semibold">{t('errors.title')}</h2>
           <p className="mt-1 text-sm text-surface-600">{t('errors.desc')}</p>
-          <pre className="mt-4 max-h-28 overflow-auto rounded-lg bg-surface-200/70 p-3 text-start text-[11px] font-mono text-surface-700 selectable">{error.message}</pre>
-          <div className="mt-5 flex justify-center gap-2">
-            <button className="btn-soft" onClick={this.copy}><Copy size={14} />{t('errors.copy')}</button>
+          <p className="label mt-4 text-start">{t('errors.details')}</p>
+          <pre className="max-h-28 overflow-auto rounded-lg bg-surface-200/70 p-3 text-start text-[11px] font-mono text-surface-700 selectable">{error.message}</pre>
+          <div className="mt-5 flex justify-center gap-2 flex-wrap">
+            <button className="btn-ghost" onClick={this.copy}><Copy size={14} />{t('errors.copy')}</button>
+            {!root && <button className="btn-soft" onClick={this.recover}><LayoutDashboard size={14} />{t('errors.goHome')}</button>}
             <button className="btn-primary" onClick={() => (root ? window.location.reload() : this.setState({ error: null }))}><RotateCcw size={14} />{t('common.retry')}</button>
           </div>
         </div>

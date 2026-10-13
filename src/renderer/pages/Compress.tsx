@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Archive, FilePlus, FolderPlus, X, Lock, Package, FolderOpen, ShieldCheck, Loader2, FileArchive, Folder, File } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
@@ -40,13 +40,13 @@ export default function Compress() {
     if (!p || consumedPath.current === p) return
     consumedPath.current = p
     const ext = p.split('.').pop()?.toLowerCase() || ''
-    if (ARCHIVE_EXT.has(ext)) { setArchive(p); setTab('extract'); invoke<{ dir: string; name: string }>('fs:pathInfo', p).then((i) => setDest(`${i.dir}${window.dh.platform === 'win32' ? '\\' : '/'}${i.name}`)) }
-    else { setInputs([p]); setTab('compress'); invoke<{ dir: string; name: string }>('fs:pathInfo', p).then((i) => { setOutDir(i.dir); setOutName(i.name) }) }
+    if (ARCHIVE_EXT.has(ext)) { setArchive(p); setTab('extract'); invoke<{ dir: string; name: string }>('fs:pathInfo', p).then((i) => setDest(`${i.dir}${window.dh.platform === 'win32' ? '\\' : '/'}${i.name}`)).catch(() => {}) }
+    else { setInputs([p]); setTab('compress'); invoke<{ dir: string; name: string }>('fs:pathInfo', p).then((i) => { setOutDir(i.dir); setOutName(i.name) }).catch(() => {}) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageParams])
 
-  const addFiles = async () => { const ps = await invoke<string[]>('dialog:openFile', { multi: true }); if (ps.length) { setInputs((s) => Array.from(new Set([...s, ...ps]))); if (!outDir) invoke<{ dir: string; name: string }>('fs:pathInfo', ps[0]).then((i) => { setOutDir(i.dir); if (outName === 'archive') setOutName(i.name) }) } }
-  const addFolder = async () => { const p = await invoke<string | null>('dialog:openFolder'); if (p) { setInputs((s) => Array.from(new Set([...s, p]))); if (!outDir) invoke<{ dir: string; base: string }>('fs:pathInfo', p).then((i) => { setOutDir(i.dir); setOutName(i.base) }) } }
+  const addFiles = async () => { const ps = await invoke<string[]>('dialog:openFile', { multi: true }); if (ps.length) { setInputs((s) => Array.from(new Set([...s, ...ps]))); if (!outDir) invoke<{ dir: string; name: string }>('fs:pathInfo', ps[0]).then((i) => { setOutDir(i.dir); if (outName === 'archive') setOutName(i.name) }).catch(() => {}) } }
+  const addFolder = async () => { const p = await invoke<string | null>('dialog:openFolder'); if (p) { setInputs((s) => Array.from(new Set([...s, p]))); if (!outDir) invoke<{ dir: string; base: string }>('fs:pathInfo', p).then((i) => { setOutDir(i.dir); setOutName(i.base) }).catch(() => {}) } }
   const fmtInfo = FORMATS.find((x) => x.f === format)!
 
   const doCompress = async () => {
@@ -59,7 +59,7 @@ export default function Compress() {
       toast(`${t('compress.done')}: ${stripPath(res)}`)
     } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false); setJob(null) }
   }
-  const pickArchive = async () => { const ps = await invoke<string[]>('dialog:openFile', { filters: [{ name: 'Archives', extensions: [...ARCHIVE_EXT] }] }); if (ps[0]) { setArchive(ps[0]); setEntries(null); setTestResult(null); const i = await invoke<{ dir: string; name: string }>('fs:pathInfo', ps[0]); setDest(`${i.dir}${window.dh.platform === 'win32' ? '\\' : '/'}${i.name}`) } }
+  const pickArchive = async () => { try { const ps = await invoke<string[]>('dialog:openFile', { filters: [{ name: 'Archives', extensions: [...ARCHIVE_EXT] }] }); if (ps[0]) { setArchive(ps[0]); setEntries(null); setTestResult(null); const i = await invoke<{ dir: string; name: string }>('fs:pathInfo', ps[0]); setDest(`${i.dir}${window.dh.platform === 'win32' ? '\\' : '/'}${i.name}`) } } catch (e: any) { toast(e?.message || String(e), 'error') } }
   const doExtract = async () => {
     if (!archive || !dest) return
     setBusy(true); setJob({ id: 'x', percent: 0, done: false })
@@ -71,7 +71,7 @@ export default function Compress() {
 
   return (
     <div className="page-enter h-full flex flex-col">
-      <PageHeader icon={<Archive size={22} />} title={t('compress.title')} subtitle="7-Zip engine • ZIP / 7z / TAR / GZIP / BZIP2 / XZ • AES-256">
+      <PageHeader icon={<Archive size={22} />} title={t('compress.title')} subtitle={t('compress.engine')}>
         <div className="flex rounded-lg bg-surface-200 p-0.5">{(['compress', 'extract', 'browse'] as const).map((k) => <button key={k} onClick={() => setTab(k)} className={cn('px-3 py-1.5 rounded-md text-xs transition-colors', tab === k && 'bg-accent text-accent-fg')}>{t(`compress.${k}Tab`)}</button>)}</div>
       </PageHeader>
       {job && !job.done && <div className="card p-4 mb-4 shrink-0 animate-slide-up"><div className="flex items-center gap-3 mb-2 text-sm"><Loader2 size={16} className="animate-spin text-accent" /><span className="flex-1 truncate">{job.message || t('common.processing')}</span><span className="font-mono text-xs">{Math.round(job.percent)}%</span></div><Progress value={job.percent} /></div>}
@@ -117,7 +117,7 @@ export default function Compress() {
         <div className="card flex-1 min-h-0 flex flex-col overflow-hidden">
           <div className="flex items-center gap-3 p-3 border-b border-surface-300/60 text-xs flex-wrap"><button className="btn-soft shrink-0" onClick={pickArchive}><FileArchive size={15} />{t('common.open')}</button><span className="font-mono truncate flex-1 min-w-0" dir="ltr">{archive}</span>{entries && <span className="text-surface-500">{t('compress.entries', { count: entries.length })} • {formatBytes(totalSize)} → {formatBytes(totalPacked)} ({t('compress.ratio')} {totalSize ? Math.round((totalPacked / totalSize) * 100) : 0}%)</span>}{archive && !entries && <button className="btn-primary shrink-0" onClick={doList} disabled={busy}>{t('compress.browseTab')}</button>}</div>
           <div className="flex-1 overflow-auto">
-            {entries ? <table className="w-full text-sm"><thead className="sticky top-0 bg-surface-100/95 text-[11px] uppercase text-surface-600"><tr><th className="text-start px-3 py-2">{t('common.name')}</th><th className="text-end px-3 py-2 w-28">{t('common.size')}</th><th className="text-end px-3 py-2 w-28">Packed</th><th className="text-start px-3 py-2 w-44">{t('common.modified')}</th></tr></thead>
+            {entries ? <table className="w-full text-sm"><thead className="sticky top-0 bg-surface-100/95 text-[11px] uppercase text-surface-600"><tr><th className="text-start px-3 py-2">{t('common.name')}</th><th className="text-end px-3 py-2 w-28">{t('common.size')}</th><th className="text-end px-3 py-2 w-28">{t('compress.packed')}</th><th className="text-start px-3 py-2 w-44">{t('common.modified')}</th></tr></thead>
               <tbody>{entries.map((e, i) => <tr key={i} className="hover:bg-surface-200/60"><td className="px-3 py-1.5 font-mono text-xs" dir="ltr"><span className="flex items-center gap-2">{e.isDirectory ? <Folder size={14} className="text-amber-400 shrink-0" /> : <File size={14} className="text-surface-500 shrink-0" />}<span className="min-w-0 break-all">{e.name}</span></span></td><td className="px-3 py-1.5 text-end text-xs font-mono whitespace-nowrap">{e.isDirectory ? '—' : formatBytes(e.size)}</td><td className="px-3 py-1.5 text-end text-xs font-mono whitespace-nowrap">{e.isDirectory ? '—' : formatBytes(e.packed)}</td><td className="px-3 py-1.5 text-xs text-surface-500 whitespace-nowrap">{e.modified?.slice(0, 19).replace('T', ' ')}</td></tr>)}</tbody></table>
               : <p className="text-center text-sm text-surface-500 p-10">{t('compress.archiveFile')}</p>}
           </div>

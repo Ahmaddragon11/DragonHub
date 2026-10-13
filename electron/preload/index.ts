@@ -11,8 +11,9 @@ const INVOKE_ALLOW = new Set([
   'app:checkForUpdates', 'app:cancelUpdateDownload', 'app:installUpdate',
   'app:systemTheme', 'app:openUserData', 'app:setLoginItem', 'app:keepAwake', 'app:quit',
   'app:lastSeenVersion', 'app:markVersionSeen',
+  'screen:sources',
   'window:minimize', 'window:maximize', 'window:close', 'window:fullscreen', 'window:isMaximized', 'window:show',
-  'clipboard:write', 'clipboard:read',
+  'clipboard:write', 'clipboard:read', 'clipboard:writeImage',
   'settings:get', 'settings:set', 'settings:reset',
   'data:get', 'data:set', 'data:exportAll', 'data:importAll',
   'dialog:openFile', 'dialog:openFolder', 'dialog:save', 'dialog:confirm',
@@ -41,6 +42,9 @@ const CARD_INVOKE_ALLOW = new Set([
   'res:snapshot', 'res:processes', 'res:history', 'res:config:get', 'res:config:set', 'res:killProcess',
   'res:card:get', 'res:card:set', 'res:card:show', 'res:card:hide', 'res:card:toggle', 'res:card:isOpen',
   'window:minimize', 'window:maximize', 'window:close', 'window:show',
+  // app:quit is accepted from the card because main's winOnly() guard allows
+  // the card webContents (electron/main/index.ts) — the guard is unchanged.
+  'app:quit',
 ])
 
 const isCard = (() => {
@@ -71,28 +75,48 @@ function on(channel: string, cb: (payload: unknown) => void): () => void {
   return () => ipcRenderer.removeListener(channel, listener)
 }
 
-const mainWindowApi = {
+// Window controls that exist on BOTH surfaces. Single source of truth so a
+// control can never drift out of the card API (the removed `as typeof
+// mainWindowApi` cast silently hid that drift: the card had no `quit`, so the
+// card's Quit button threw `quit is not a function`).
+const sharedWindowApi = {
   minimize: () => invoke('window:minimize'),
   maximize: () => invoke('window:maximize'),
   close: () => invoke('window:close'),
-  fullscreen: () => invoke('window:fullscreen'),
-  isMaximized: () => invoke<boolean>('window:isMaximized'),
   show: () => invoke('window:show'),
   quit: () => invoke('app:quit'),
 }
 
-// Card exposes only minimize/maximize/close/show (all via validated invoke()).
-const cardWindowApi = {
-  minimize: () => invoke('window:minimize'),
-  maximize: () => invoke('window:maximize'),
-  close: () => invoke('window:close'),
-  show: () => invoke('window:show'),
+/** Full window surface both surfaces must satisfy. */
+type WindowApi = typeof sharedWindowApi & {
+  fullscreen: () => Promise<unknown>
+  isMaximized: () => Promise<boolean>
 }
+
+const mainWindowApi: WindowApi = {
+  ...sharedWindowApi,
+  fullscreen: () => invoke('window:fullscreen'),
+  isMaximized: () => invoke<boolean>('window:isMaximized'),
+}
+
+// Card exposes the shared controls; the two main-only controls are declared
+// (so the type checks) but refuse in-process — CARD_INVOKE_ALLOW rejects those
+// channels anyway, this just fails closed with a clear error instead of leaving
+// a property undefined.
+const cardWindowApi: WindowApi = {
+  ...sharedWindowApi,
+  fullscreen: () => Promise.reject(new Error('window:fullscreen is unavailable in the card window')),
+  isMaximized: () => Promise.resolve(false),
+}
+
+// No cast: both surfaces are declared as WindowApi, so the renderer type is
+// the real surface and a member missing from either side is a compile error.
+const windowApi: WindowApi = isCard ? cardWindowApi : mainWindowApi
 
 const api = {
   invoke,
   on,
-  window: (isCard ? cardWindowApi : mainWindowApi) as typeof mainWindowApi,
+  window: windowApi,
   platform: process.platform,
   toFileUrl: (p: string) => 'dh-file://local/' + encodeURI(p.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F'),
 }

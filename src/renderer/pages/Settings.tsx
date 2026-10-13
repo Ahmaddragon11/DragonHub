@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Settings as SettingsIcon, Palette, Globe, Download, Folder, Code, Shield, Database, Eye, FolderOpen, RotateCcw, Upload, Save, Search } from 'lucide-react'
+import { Settings as SettingsIcon, Palette, Globe, Download, Folder, Code, Shield, Database, Eye, FolderOpen, RotateCcw, Upload, Save, Search, BatteryLow } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Toggle, Field, Slider } from '@/components/ui'
-import { invoke } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { invoke, toFileUrl, errorMessage } from '@/lib/api'
+import { cn, IMAGE_EXT } from '@/lib/utils'
 import { NAV } from '@/components/Shell'
 import type { AccentColor, AppSettings } from '@shared/types'
 
@@ -24,6 +25,7 @@ function Section({ id, icon, title, children }: { id: string; icon: React.ReactN
 // Section metadata for the index + search (order matches the render below).
 const SECTIONS: { id: string; icon: React.ReactNode; titleKey: string; keywords: string }[] = [
   { id: 'appearance', icon: <Palette size={16} />, titleKey: 'settings.appearance', keywords: 'theme accent color animations motion glass font scale language compact appearance dark light' },
+  { id: 'performance', icon: <BatteryLow size={16} />, titleKey: 'settings.performance', keywords: 'low power battery gpu saver performance animations ambient glow' },
   { id: 'general', icon: <Globe size={16} />, titleKey: 'settings.general', keywords: 'start page tray startup shortcuts updates language general' },
   { id: 'downloads', icon: <Download size={16} />, titleKey: 'settings.downloads', keywords: 'download folder parallel segments connections' },
   { id: 'filesSec', icon: <Folder size={16} />, titleKey: 'settings.filesSec', keywords: 'confirm delete recycle bin hidden files files' },
@@ -48,7 +50,7 @@ function DSlider({ value, min, max, step, onCommit }: { value: number; min: numb
 
 export default function Settings() {
   const { t } = useTranslation()
-  const { settings: s, setSettings, resetSettings, reloadCollections, toast } = useApp()
+  const { settings: s, setSettings, resetSettings, reloadCollections, toast } = useApp(useShallow((st) => ({ settings: st.settings, setSettings: st.setSettings, resetSettings: st.resetSettings, reloadCollections: st.reloadCollections, toast: st.toast })))
   const set = (p: Partial<AppSettings>) => setSettings(p)
   const [q, setQ] = useState('')
   const [active, setActive] = useState('appearance')
@@ -67,7 +69,8 @@ export default function Settings() {
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const onScroll = () => {
+    let raf = 0
+    const measure = () => {
       const nodes = Array.from(el.querySelectorAll<HTMLElement>('[data-section]'))
       let best = nodes[0]?.dataset.section ?? 'appearance'
       for (const n of nodes) {
@@ -75,10 +78,22 @@ export default function Settings() {
       }
       setActive(best)
     }
+    // rAF-throttled: scroll events fire far faster than frames, and each
+    // measure() walks every section doing layout reads.
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; measure() }) }
     el.addEventListener('scroll', onScroll, { passive: true })
-    onScroll()
-    return () => el.removeEventListener('scroll', onScroll)
+    measure()
+    return () => { el.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf) }
   }, [query])
+
+  const chooseBackground = async () => {
+    try {
+      const ps = await invoke<string[]>('dialog:openFile', { filters: [{ name: 'Images', extensions: [...IMAGE_EXT] }] })
+      if (ps[0]) set({ backgroundImage: ps[0] })
+    } catch (e) {
+      toast(errorMessage(e, t('toast.error')), 'error')
+    }
+  }
 
   const jump = (id: string) => {
     const el = document.getElementById(`settings-${id}`)
@@ -127,6 +142,25 @@ export default function Settings() {
             <Field label={`${t('settings.fontScale')}: ${Math.round(s.fontScale * 100)}%`}><DSlider value={s.fontScale} min={0.8} max={1.4} step={0.05} onCommit={(fontScale) => set({ fontScale })} /></Field>
             <Toggle on={s.compactMode} onChange={(compactMode) => set({ compactMode })} label={t('settings.compact')} />
             <Toggle on={s.glassEffect} onChange={(glassEffect) => set({ glassEffect })} label={t('settings.glass')} />
+            <Field label={t('settings.backgroundImage')} hint={t('settings.backgroundImageHint')}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button className="btn-soft" onClick={chooseBackground}><FolderOpen size={14} /> {t('settings.chooseImage')}</button>
+                {s.backgroundImage && (
+                  <>
+                    <img src={toFileUrl(s.backgroundImage)} alt="" className="w-12 h-12 rounded-lg object-cover ring-1 ring-inset ring-[rgb(var(--surface-300))]" />
+                    <button className="btn-ghost text-sm" onClick={() => set({ backgroundImage: '' })}>{t('settings.clearImage')}</button>
+                  </>
+                )}
+              </div>
+            </Field>
+            <Field label={`${t('settings.backgroundBlur')}: ${s.backgroundBlur}px`}><DSlider value={s.backgroundBlur} min={0} max={30} step={1} onCommit={(backgroundBlur) => set({ backgroundBlur })} /></Field>
+            <Field label={`${t('settings.backgroundDim')}: ${Math.round(s.backgroundDim)}%`}><DSlider value={s.backgroundDim} min={0} max={90} step={1} onCommit={(backgroundDim) => set({ backgroundDim })} /></Field>
+            <Toggle on={s.ambientGlow} onChange={(ambientGlow) => set({ ambientGlow })} label={t('settings.ambientGlow')} description={t('settings.ambientGlowDesc')} />
+          </Section>}
+
+          {match('performance') && <Section id="performance" icon={<BatteryLow size={16} />} title={t('settings.performance')}>
+            <Toggle on={s.lowPowerMode} onChange={(lowPowerMode) => set({ lowPowerMode })} label={t('settings.lowPower')} description={t('settings.lowPowerDesc')} />
+            <p className="text-xs opacity-60 leading-relaxed">{t('settings.performanceHint')}</p>
           </Section>}
 
           {match('general') && <Section id="general" icon={<Globe size={16} />} title={t('settings.general')}>

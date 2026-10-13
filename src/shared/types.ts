@@ -1,6 +1,6 @@
 // Shared type contracts between main process and renderer
 
-export const APP_VERSION = '1.4.7'
+export const APP_VERSION = '1.4.8'
 export const DEVELOPER = 'AHMADDRAGON'
 export const TELEGRAM_URL = 'https://t.me/ahmaddragon'
 
@@ -17,6 +17,12 @@ export interface AppSettings {
   fontScale: number // 0.85 - 1.3
   compactMode: boolean
   glassEffect: boolean
+  /** Absolute path to a wallpaper image (empty = none). Served via the dh-file:// protocol. */
+  backgroundImage: string
+  backgroundBlur: number // 0 - 30 px
+  backgroundDim: number // 0 - 90 (% darkening overlay on the wallpaper)
+  ambientGlow: boolean // subtle drifting accent glow (opt-in, off in low-power)
+  lowPowerMode: boolean // battery/GPU saver: forces animations + glass off, flattens effects
   sidebarCollapsed: boolean
   startPage: string
   downloadDir: string
@@ -49,6 +55,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fontScale: 1,
   compactMode: false,
   glassEffect: true,
+  backgroundImage: '',
+  backgroundBlur: 8,
+  backgroundDim: 35,
+  ambientGlow: false,
+  lowPowerMode: false,
   sidebarCollapsed: false,
   startPage: 'dashboard',
   downloadDir: '',
@@ -297,6 +308,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.8',
+    date: '2026-10-10',
+    changes: [
+      { type: 'fixed', text: 'Compression page no longer leaks unhandled promise rejections — IPC failures show an error toast instead of failing silently' },
+      { type: 'fixed', text: 'Downloader directory matching is case-aware on Windows/macOS (dialog paths no longer fall back to the default folder)' },
+      { type: 'fixed', text: 'Vault shows “No results” instead of “Nothing here yet” while a search or type filter is active' },
+      { type: 'changed', text: 'Window controls have tooltips and localized labels; compression, video, resources and network tables and alerts are fully translated (verified Arabic/English key parity)' },
+      { type: 'changed', text: 'Resource alert desktop notifications are localized' },
+    ],
+  },
+  {
     version: '1.4.7',
     date: '2026-10-10',
     changes: [
@@ -515,6 +537,15 @@ export interface ResProcess {
   path: string | null
 }
 
+/** One sample in the resource monitor's in-memory ring buffer. */
+export interface ResHistoryPoint {
+  cpu: number
+  mem: number
+  downBps: number
+  upBps: number
+  at: number
+}
+
 export interface ResLive {
   cpuPercent: number
   cores: ResCore[]
@@ -532,6 +563,18 @@ export interface ResLive {
   sources: Record<string, ResSourceStatus>
   osUptimeSec: number
   at: number
+}
+
+// ---------- Screen capture (desktopCapturer) ----------
+export interface ScreenSource {
+  id: string
+  name: string
+  display_id: string
+  /** PNG data URL of the captured screen at (near) native resolution. */
+  thumbnail: string
+  /** Decoded pixel size of the thumbnail (may differ from the display when scaled). */
+  width: number
+  height: number
 }
 
 export interface ResConfig {

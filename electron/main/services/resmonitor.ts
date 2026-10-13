@@ -12,6 +12,7 @@ import {
   type ResConfig,
   type ResCore,
   type ResProcess,
+  type ResHistoryPoint,
   type ResDiskDrive,
   type ResGpu,
   type ResSourceStatus,
@@ -23,8 +24,6 @@ const execFileP = promisify(execFile)
 const RES_CONFIG_KEY = 'resConfig'
 const HISTORY_CAP = 300 // 300 samples @2s = 10 minutes of live sparkline data
 const MB = 1024 ** 2
-
-export type ResHistoryPoint = { cpu: number; mem: number; downBps: number; upBps: number; at: number }
 
 type NetSpeeds = { downBps: number; upBps: number }
 let netSpeedsProvider: () => NetSpeeds = () => ({ downBps: 0, upBps: 0 })
