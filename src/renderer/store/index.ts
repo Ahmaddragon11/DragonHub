@@ -302,12 +302,14 @@ export const useApp = create<AppState>((set, get) => ({
     let last = 0
     try { last = Number(localStorage.getItem(key) || 0) || 0 } catch { /* ignore */ }
     if (Date.now() - last < 86400000) return
-    try { localStorage.setItem(key, String(Date.now())) } catch { /* ignore */ }
     try {
       const r = await invoke<{ status: string; version?: string }>('app:checkForUpdates')
       // The call owns the download lifecycle, so clear the streamed progress it
       // produced — otherwise the update card would stay stuck on "downloading".
       set({ updateProgress: null })
+      // Only record the throttle timestamp once the check actually completed, so
+      // a transient failure does not lock out retries for the next 24h.
+      try { localStorage.setItem(key, String(Date.now())) } catch { /* ignore */ }
       if (r.status === 'available' && r.version && r.version !== APP_VERSION) {
         // A silent check downloads the installer too, so it is ready to install.
         set({ updateAvailableVersion: r.version, updateReady: true })

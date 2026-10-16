@@ -290,30 +290,18 @@ jobs:
             assets+=("$f")
           done
 
-          title="DragonHub Continuous Build ($RELEASE_VERSION)"
+          # Delete and recreate each run so the rolling build is always a clean
+          # prerelease. A continuous release that is not flagged as a prerelease
+          # takes over the repo's "Latest release" spot, and its `continuous` tag
+          # is not a real version — which breaks the in-app update check.
           if gh release view continuous >/dev/null 2>&1; then
-            gh release edit continuous \
-              --prerelease \
-              --title "$title" \
-              --notes-file "$asset_dir/RELEASE-NOTES.md"
-            gh release upload continuous "${assets[@]}" --clobber
-            # Remove stale assets from older versions so the page stays tidy.
-            old_names=$(gh release view continuous --json assets --jq '.assets[].name')
-            for old in $old_names; do
-              keep=false
-              for n in "${names[@]}"; do
-                if [[ "$old" == "$n" ]]; then keep=true; break; fi
-              done
-              if [[ "$keep" == false ]]; then
-                gh release delete-asset continuous "$old" --yes
-              fi
-            done
-          else
-            gh release create continuous "${assets[@]}" \
-              --prerelease \
-              --title "$title" \
-              --notes-file "$asset_dir/RELEASE-NOTES.md"
+            gh release delete continuous --yes --cleanup-tag
           fi
+          gh release create continuous "${assets[@]}" \
+            --prerelease \
+            --latest=false \
+            --title "DragonHub Continuous Build ($RELEASE_VERSION)" \
+            --notes-file "$asset_dir/RELEASE-NOTES.md"
 
           {
             echo "## Published continuous build $RELEASE_VERSION"

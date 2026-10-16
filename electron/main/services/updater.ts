@@ -5,7 +5,10 @@ import path from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
-const RELEASE_API = 'https://api.github.com/repos/Ahmaddragon11/DragonHub/releases/latest'
+const RELEASES_API = 'https://api.github.com/repos/Ahmaddragon11/DragonHub/releases?per_page=100'
+// Only plain `vX.Y.Z` tags are real releases. Rolling/preview tags such as
+// `continuous` or `build-N` must never be offered as an update.
+const STABLE_TAG = /^v?\d+\.\d+\.\d+$/
 const GITHUB_ASSET_HOSTS = new Set(['github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'])
 const RELEASE_DOWNLOAD_PATH_PREFIX = '/Ahmaddragon11/DragonHub/releases/download/'
 const CHECKSUMS_ASSET_NAME = 'SHA256SUMS.txt'
@@ -38,6 +41,15 @@ interface LatestRelease {
   assets?: unknown
 }
 
+interface ReleaseListItem {
+  tag_name?: unknown
+  assets?: unknown
+  draft?: unknown
+  prerelease?: unknown
+}
+
+type VersionTuple = [number, number, number]
+
 type UpdateCheckResult =
   | { status: 'unsupported' | 'up-to-date' | 'cancelled' }
   | { status: 'available'; version: string }
@@ -45,7 +57,7 @@ type UpdateCheckResult =
 let pendingInstaller: { path: string; version: string } | null = null
 let activeDownload: AbortController | null = null
 
-function parseVersion(version: string): [number, number, number] | null {
+function parseVersion(version: string): VersionTuple | null {
   const match = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(version)
   if (!match) return null
   const major = Number(match[1])
@@ -53,6 +65,14 @@ function parseVersion(version: string): [number, number, number] | null {
   const patch = Number(match[3])
   if (![major, minor, patch].every(Number.isSafeInteger)) return null
   return [major, minor, patch]
+}
+
+/** 1 if a > b, -1 if a < b, 0 if equal. */
+function compareVersions(a: VersionTuple, b: VersionTuple): number {
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] > b[i] ? 1 : -1
+  }
+  return 0
 }
 
 function isNewerVersion(candidate: string, current: string): boolean {
@@ -65,15 +85,30 @@ function isNewerVersion(candidate: string, current: string): boolean {
   return false
 }
 
+/** Pick the newest published, non-prerelease release whose tag is a plain
+ *  `vX.Y.Z`. Relying on `/releases/latest` is unsafe here: a rolling
+ *  `continuous` release that is not flagged as a prerelease would win and its
+ *  non-semver tag would make the update check fail. */
 async function getLatestRelease(signal: AbortSignal): Promise<LatestRelease> {
-  const response = await fetch(RELEASE_API, {
+  const response = await fetch(RELEASES_API, {
     headers: { accept: 'application/vnd.github+json', 'user-agent': 'DragonHub-Updater' },
     signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
   })
   if (!response.ok) throw new Error(`Could not check for updates (GitHub returned ${response.status})`)
-  const release: unknown = await response.json()
-  if (!release || typeof release !== 'object') throw new Error('GitHub returned an invalid release')
-  return release as LatestRelease
+  const list: unknown = await response.json()
+  if (!Array.isArray(list)) throw new Error('GitHub returned an invalid release list')
+
+  let best: { rank: VersionTuple; release: LatestRelease } | null = null
+  for (const entry of list as ReleaseListItem[]) {
+    if (!entry || typeof entry !== 'object') continue
+    if (entry.draft === true || entry.prerelease === true) continue
+    if (typeof entry.tag_name !== 'string' || !STABLE_TAG.test(entry.tag_name.trim())) continue
+    const rank = parseVersion(entry.tag_name.trim())
+    if (!rank) continue
+    if (!best || compareVersions(rank, best.rank) > 0) best = { rank, release: entry }
+  }
+  if (!best) throw new Error('No published release was found')
+  return best.release
 }
 
 function isTrustedReleaseDownloadUrl(url: URL): boolean {

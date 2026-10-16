@@ -318,6 +318,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       { type: 'added', text: 'Animated update card with a rotating gradient border, live download speed and time remaining (ETA)' },
       { type: 'changed', text: 'Redesigned dashboard and welcome screen with live clock, daily progress ring and a layered hero' },
       { type: 'changed', text: 'Task Manager rebuilt with a sticky summary bar, sortable columns, grouping and a performance dashboard' },
+      { type: 'fixed', text: 'Update check reliably finds the newest stable release again (the rolling preview release no longer shadows it)' },
       { type: 'fixed', text: 'Deep backend hardening pass across downloads, files, archive, media, network, settings and vault services' },
       { type: 'security', text: 'Broader audit fixes: stricter IPC/preload allow-lists, bounded external-URL opening and hardened overlay channels' },
     ],
