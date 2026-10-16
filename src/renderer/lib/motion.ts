@@ -39,13 +39,18 @@ export function useMotionPrefs() {
   return { off, reduced, full: !reduced, k }
 }
 
-/** Route transition: subtle lift + fade; exit is shorter than enter. */
+/**
+ * Route transition: the incoming page lifts in while the outgoing page fades
+ * away underneath (crossfade, not a wait-then-swap). Both layers always end up
+ * at opacity 1 when animations are unavailable, so a stalled or throttled
+ * animation can never leave the workspace blank.
+ */
 export const pageVariants = (reduced: boolean, k: number): Variants => reduced
   ? { initial: { opacity: 1 }, enter: { opacity: 1, transition: { duration: 0 } }, exit: { opacity: 1, transition: { duration: 0 } } }
   : {
-      initial: { opacity: 0, y: 10, scale: 0.995 },
-      enter: { opacity: 1, y: 0, scale: 1, transition: { duration: dur.md * k, ease: ease.out } },
-      exit: { opacity: 0, y: -4, transition: { duration: dur.xs * k, ease: ease.in } },
+      initial: { opacity: 0, y: 18, scale: 0.988 },
+      enter: { opacity: 1, y: 0, scale: 1, transition: { duration: dur.lg * k, ease: ease.out } },
+      exit: { opacity: 0, y: -10, scale: 0.994, transition: { duration: dur.sm * k, ease: ease.in } },
     }
 
 /** Dashboard sections enter in reading order; never stagger individual list rows. */

@@ -6,6 +6,7 @@ import { useApp } from '@/store'
 import { deleteWithUndo } from '@/lib/undo'
 import { PageHeader, Empty, Modal, TagInput, ColorPicker, Progress, Field } from '@/components/ui'
 import { usePersistedView } from '@/components/usePersistedView'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { uid, COLORS, cn, relTime } from '@/lib/utils'
 import { invoke } from '@/lib/api'
 import type { Project, ProjectStatus } from '@shared/types'
@@ -102,7 +103,7 @@ export default function Projects() {
           <button onClick={() => setView('board')} className={cn('p-1.5 rounded-md', view === 'board' && 'bg-accent text-accent-fg')} title={t('projects.board')} aria-label={t('projects.board')} aria-pressed={view === 'board'}><LayoutGrid size={15} /></button>
           <button onClick={() => setView('list')} className={cn('p-1.5 rounded-md', view === 'list' && 'bg-accent text-accent-fg')} title={t('projects.listView')} aria-label={t('projects.listView')} aria-pressed={view === 'list'}><List size={15} /></button>
         </div>
-        <button className="btn-primary" onClick={() => setEdit(blank())}><Plus size={16} />{t('projects.newProject')}</button>
+        <GlowButton tone="emerald" className="btn-primary fly-host" onClick={() => setEdit(blank())}><FlyIcon><Plus size={16} /></FlyIcon> {t('projects.newProject')}<FlySpark /></GlowButton>
       </PageHeader>
       <div className="relative mb-4 max-w-md"><Search size={14} className="absolute start-3 top-2.5 text-surface-500" /><input data-search className="input ps-9 py-1.5 text-xs" aria-label={t('common.search')} placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {projects.length === 0 ? <Empty icon={<Lightbulb size={40} />} text={t('projects.noProjects')} action={<button className="btn-primary" onClick={() => setEdit(blank())}><Plus size={16} />{t('projects.newProject')}</button>} /> :

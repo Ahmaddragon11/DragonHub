@@ -11,6 +11,15 @@
   undo) with multi-monitor and per-monitor DPI support.
 - **Animated update card** with a rotating gradient border plus live download
   speed and time remaining (ETA).
+- **Vault recovery**: forgot your password? Restore an encrypted backup or erase
+  the vault and start over (typed confirmation), backed by a real locked-state
+  restore path in the main process.
+- **Per-feature animated gradient rings** across the dashboard tiles, page headers
+  and contact buttons, each feature with its own hue.
+- **Icon flight micro-interactions**: button and sidebar glyphs lift on hover and
+  fly away when pressed.
+- **Layered background detail**: a masked micro-grid plus slowly drifting accent
+  pools, following the ambient-glow and low-power settings.
 
 ### Changed
 - Contacting the developer on Telegram now asks for confirmation before opening
@@ -18,10 +27,16 @@
 - Redesigned dashboard and welcome screen (live clock, daily progress ring and a
   layered hero), and a rebuilt Task Manager (sticky summary bar, sortable and
   groupable process table, performance dashboard).
+- Section switching is a crossfade now - the incoming page mounts immediately, so
+  a stalled animation can never leave the workspace blank.
+- Media option lists use a new icon-based select control with aligned fields,
+  alongside smoother route transitions and a richer text selection.
 
 ### Fixed
 - Deep hardening pass across the downloads, files, archive, media, network,
   settings and vault services.
+- Select fields no longer show a repeated chevron glyph in dark mode (the theme
+  background shorthand was resetting the arrow, tiling it across the field).
 
 ### Security
 - Stricter IPC/preload channel allow-lists, bounded external-URL opening, and

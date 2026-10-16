@@ -8,6 +8,8 @@ import core from './sections/core'
 import updatecard from './sections/updatecard'
 import capture from './sections/capture'
 import home from './sections/home'
+import vaultx from './sections/vaultx'
+import media from './sections/media'
 
 /** Deep clone so merging never mutates the imported base dictionaries. */
 function clone<T>(v: T): T {
@@ -39,12 +41,16 @@ merge(enRes, core.en)
 merge(enRes, home.en)
 merge(enRes, updatecard.en)
 merge(enRes, capture.en)
+merge(enRes, vaultx.en)
+merge(enRes, media.en)
 const arRes = merge(clone(ar) as Record<string, unknown>, ui.ar)
 merge(arRes, tools.ar)
 merge(arRes, core.ar)
 merge(arRes, home.ar)
 merge(arRes, updatecard.ar)
 merge(arRes, capture.ar)
+merge(arRes, vaultx.ar)
+merge(arRes, media.ar)
 
 i18n.use(initReactI18next).init({
   resources: { en: { translation: enRes }, ar: { translation: arRes } },

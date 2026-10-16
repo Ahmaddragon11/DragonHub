@@ -4,6 +4,7 @@ import { AppWindow, Camera, CheckCircle2, Copy, Crop, Image as ImageIcon, Loader
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Empty, Field, Segmented, Skeleton } from '@/components/ui'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { invoke, errorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { CaptureDisplay, CaptureResult, ScreenSource } from '@shared/types'
@@ -266,10 +267,11 @@ export default function Screenshot() {
             <Segmented value={delay} options={DELAYS.map((d) => ({ value: d, label: d }))} onChange={setDelay} label={t('capture.delayLabel')} size="sm" />
           </Field>
 
-          <button className="btn-primary w-full !py-2.5" onClick={startCapture} disabled={locked || !canCapture}>
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <Crop size={16} />}
+          <GlowButton tone="violet" block className="btn-primary w-full !py-2.5 fly-host" onClick={startCapture} disabled={locked || !canCapture}>
+            <FlyIcon>{busy ? <Loader2 size={16} className="animate-spin" /> : <Crop size={16} />}</FlyIcon>
             {busy ? t('capture.starting') : mode === 'region' ? t('capture.modeRegion') : t('capture.start')}
-          </button>
+            <FlySpark />
+          </GlowButton>
 
           <div className="divider" />
 

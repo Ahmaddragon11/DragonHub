@@ -10,6 +10,7 @@ import {
 import { useApp, type RecentKind } from '@/store'
 import { Progress, Kbd, Ring } from '@/components/ui'
 import FocusTimer from '@/components/FocusTimer'
+import { GlowButton, FlyIcon, glowSelf, type GlowTone } from '@/components/Glow'
 import { invoke } from '@/lib/api'
 import { cn, formatBytes, formatDuration, relTime } from '@/lib/utils'
 import { isDueToday, isOverdue, moveTask } from '@/lib/tasks'
@@ -174,13 +175,13 @@ export default function Dashboard() {
     { label: t('dashboard.projectsCount'), value: allProjects.length, icon: <Lightbulb size={17} />, page: 'projects' as const },
     { label: t('dashboard.vaultCount'), value: vaultCount ?? '—', icon: <ShieldCheck size={17} />, page: 'vault' as const, locked: vaultCount === null },
   ]
-  const quick = [
-    { l: t('dashboard.newNote'), i: <StickyNote size={16} />, go: () => navigate('notes', { create: true }), k: 'Ctrl+N' },
-    { l: t('dashboard.newTask'), i: <CheckSquare size={16} />, go: () => navigate('tasks', { create: true }) },
-    { l: t('dashboard.newProject'), i: <Lightbulb size={16} />, go: () => navigate('projects', { create: true }) },
-    { l: t('dashboard.newDownload'), i: <Download size={16} />, go: () => navigate('downloads', { focus: true }) },
-    { l: t('dashboard.openEditor'), i: <Code2 size={16} />, go: () => navigate('editor') },
-    { l: t('dashboard.openVault'), i: <ShieldCheck size={16} />, go: () => navigate('vault') },
+  const quick: { l: string; i: React.ReactNode; go: () => void; k?: string; tone: GlowTone }[] = [
+    { l: t('dashboard.newNote'), i: <StickyNote size={16} />, go: () => navigate('notes', { create: true }), k: 'Ctrl+N', tone: 'amber' },
+    { l: t('dashboard.newTask'), i: <CheckSquare size={16} />, go: () => navigate('tasks', { create: true }), tone: 'accent' },
+    { l: t('dashboard.newProject'), i: <Lightbulb size={16} />, go: () => navigate('projects', { create: true }), tone: 'emerald' },
+    { l: t('dashboard.newDownload'), i: <Download size={16} />, go: () => navigate('downloads', { focus: true }), tone: 'cyan' },
+    { l: t('dashboard.openEditor'), i: <Code2 size={16} />, go: () => navigate('editor'), tone: 'violet' },
+    { l: t('dashboard.openVault'), i: <ShieldCheck size={16} />, go: () => navigate('vault'), tone: 'amber' },
   ]
 
   const memPct = sys ? ((sys.totalMem - sys.freeMem) / sys.totalMem) * 100 : 0
@@ -201,7 +202,7 @@ export default function Dashboard() {
             {agenda.length === 0 && doneToday === 0 ? t('dashboard.dayClear') : t('dashboard.daySummary', { open: agenda.length, done: doneToday })}
           </p>
           <div className="flex flex-wrap items-center gap-2.5 mt-5">
-            <button onClick={() => navigate('notes', { create: true })} className="btn-primary"><Plus size={15} />{t('dashboard.newNote')}</button>
+            <GlowButton tone="accent" onClick={() => navigate('notes', { create: true })} className="btn-primary"><Plus size={15} />{t('dashboard.newNote')}</GlowButton>
             <button onClick={() => useApp.getState().setPalette(true)} className="btn-outline text-surface-600">
               <Command size={14} />{t('dashboard.quickFind')}<Kbd keys={['Ctrl', 'K']} className="hidden sm:inline-flex" />
             </button>
@@ -244,8 +245,8 @@ export default function Dashboard() {
         <h2 className="label mb-3 px-1">{t('dashboard.quickActions')}</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5">
           {quick.map((q) => (
-            <button key={q.l} onClick={q.go} className="card card-interactive dashboard-action flex items-center gap-3 px-3 py-3 text-[13px] font-medium text-surface-700 hover:text-surface-950 group text-start min-w-0">
-              <span className="grid place-items-center h-9 w-9 shrink-0 rounded-xl bg-accent/10 text-accent group-hover:bg-accent group-hover:text-accent-fg transition-colors duration-200">{q.i}</span>
+            <button key={q.l} onClick={q.go} {...glowSelf(q.tone, cn('card card-interactive dashboard-action flex items-center gap-3 px-3 py-3 text-[13px] font-medium text-surface-700 hover:text-surface-950 group text-start min-w-0 fly-host'), { paused: true })}>
+              <span className="grid place-items-center h-9 w-9 shrink-0 rounded-xl bg-accent/10 text-accent group-hover:bg-accent group-hover:text-accent-fg transition-colors duration-200"><FlyIcon>{q.i}</FlyIcon></span>
               <span className="truncate flex-1">{q.l}</span>
               {q.k && <Kbd keys={q.k} className="hidden xl:inline-flex opacity-0 group-hover:opacity-100 transition-opacity" />}
             </button>

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, ShieldCheck, Lock, Unlock, Plus, Search, Copy, Eye, EyeOff, Star, Trash2, Pencil, KeyRound, Wand2, Download, Upload, Globe, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
-import { PageHeader, Modal, Field, Toggle, Slider, TagInput, Empty } from '@/components/ui'
+import { PageHeader, Modal, Field, Toggle, Slider, TagInput, Empty, useFocusTrap } from '@/components/ui'
+import { GlowButton, FlyIcon } from '@/components/Glow'
 import { invoke, on, errorMessage } from '@/lib/api'
 import { uid, cn, relTime } from '@/lib/utils'
 import type { VaultItem, VaultItemType, VaultMeta } from '@shared/types'
@@ -92,10 +93,16 @@ export default function Vault() {
   const [chOpen, setChOpen] = useState(false); const [oldPw, setOldPw] = useState(''); const [newPw, setNewPw] = useState('')
   const [showSecret, setShowSecret] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [resetText, setResetText] = useState('')
+  const [recoveryBusy, setRecoveryBusy] = useState<'reset' | 'restore' | null>(null)
 
   // Never leave plaintext secrets in state longer than needed.
   const closeEdit = () => { setEdit(null); setShowSecret(false) }
   const closeChangePw = () => { setChOpen(false); setOldPw(''); setNewPw(''); setErr('') }
+  const closeHelp = () => { if (recoveryBusy) return; setHelpOpen(false); setResetText('') }
+  const helpRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(helpRef, helpOpen, closeHelp)
 
   const refresh = async () => {
     try {
@@ -156,22 +163,53 @@ export default function Vault() {
     if (newPw.length < 8) return setErr(t('vault.tooShort'))
     try { await invoke('vault:changePassword', oldPw, newPw); setChOpen(false); setOldPw(''); setNewPw(''); toast(t('toast.updated')) } catch (e) { setErr(errorMessage(e)) }
   }
-  const doImport = async () => {
+  const doImport = async (): Promise<boolean> => {
     try {
-      if (!(await invoke<boolean>('dialog:confirm', t('vault.importBackup'), t('common.irreversible')))) return
+      if (!(await invoke<boolean>('dialog:confirm', t('vault.importBackup'), t('common.irreversible')))) return false
       // Safety backup before destructive import.
       const backup = await invoke<string | null>('vault:export')
-      if (!backup) return
+      if (!backup) return false
       await invoke('vault:import')
       await refresh()
       toast(t('common.done'))
-    } catch (e) { toast(errorMessage(e), 'error') }
+      return true
+    } catch (e) { toast(errorMessage(e), 'error'); return false }
+  }
+  // Recovery path: works while the vault is still locked (doImport needs an
+  // unlocked vault, so it cannot be used from the locked screen).
+  const restoreBackup = async () => {
+    setRecoveryBusy('restore')
+    try {
+      if (!(await invoke<boolean>('dialog:confirm', t('vaultx.restoreConfirmTitle'), t('vaultx.restoreConfirmBody')))) return
+      const ok = await invoke<boolean | null>('vault:restore')
+      if (!ok) return
+      await refresh()
+      setHelpOpen(false); setResetText('')
+      toast(t('vaultx.restoreSuccess'), 'success')
+    } catch (e) {
+      toast(errorMessage(e), 'error')
+    } finally { setRecoveryBusy(null) }
+  }
+  const doReset = async () => {
+    setRecoveryBusy('reset')
+    try {
+      await invoke('vault:reset')
+      closeEdit()
+      setMeta(null); setUnlocked(false); setItems([]); setSel(null); setReveal({})
+      setPw(''); setPw2(''); setErr('')
+      setHelpOpen(false); setResetText('')
+      toast(t('vaultx.resetSuccess'), 'success')
+    } catch {
+      toast(t('vaultx.resetError'), 'error')
+    } finally { setRecoveryBusy(null) }
   }
   const newItem = (type: VaultItemType = 'password'): VaultItem => ({ id: uid(), type, title: '', secret: '', tags: [], fields: [], favorite: false, createdAt: Date.now(), updatedAt: Date.now() })
 
   const filtered = useMemo(() => items.filter((i) => (typeF === 'all' || i.type === typeF) && (!q || [i.title, i.username, i.url, ...i.tags].join(' ').toLowerCase().includes(q.toLowerCase())))
     .sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt), [items, q, typeF])
   const types = t('vault.types', { returnObjects: true }) as Record<string, string>
+  const resetWord = t('vaultx.resetConfirmWord')
+  const resetReady = resetText.trim().toLowerCase() === resetWord.trim().toLowerCase()
 
   if (metaLoading) return <div className="h-full flex items-center justify-center page-enter"><Lock size={28} className="opacity-40 animate-pulse" /></div>
 
@@ -191,9 +229,34 @@ export default function Vault() {
             {err && <div className="text-sm text-red-400">{err}</div>}
             <button type="submit" className="btn-primary w-full">{isSetup ? <><ShieldCheck size={16} /> {t('vault.create')}</> : <><Unlock size={16} /> {t('vault.unlock')}</>}</button>
           </form>
-          {!isSetup && <button className="btn-ghost text-xs mt-3" onClick={doImport}><Upload size={12} /> {t('vault.importBackup')}</button>}
+          {!isSetup && <button className="btn-ghost text-xs mt-3" onClick={restoreBackup} disabled={recoveryBusy !== null}><Upload size={12} /> {t('vault.importBackup')}</button>}
+          {!isSetup && <button type="button" className="btn-ghost text-xs mt-3 ms-2" onClick={() => { setResetText(''); setHelpOpen(true) }}>{t('vaultx.forgot')}</button>}
           <div className="text-[11px] opacity-40 mt-4">{t('vault.security')}</div>
         </motion.div>
+        {helpOpen && (
+          <div ref={helpRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={t('vaultx.a11y.help')}
+            className="fixed inset-0 z-[90] flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto outline-none bg-black/45 backdrop-blur-[2px]"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) closeHelp() }}>
+            <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="surface-raised my-auto w-[min(96vw,480px)] p-5 space-y-4 text-start">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-base font-semibold">{t('vaultx.helpTitle')}</h3>
+                <button className="btn-icon -me-1.5 -mt-0.5" aria-label={t('vaultx.close')} onClick={closeHelp} disabled={recoveryBusy !== null}><X size={17} /></button>
+              </div>
+              <p className="text-sm opacity-70">{t('vaultx.helpIntro')}</p>
+              <ul className="text-sm opacity-70 space-y-1 list-disc ps-5">
+                <li>{t('vaultx.helpPoint1')}</li>
+                <li>{t('vaultx.helpPoint2')}</li>
+              </ul>
+              <button className="btn-soft w-full" onClick={restoreBackup} disabled={recoveryBusy !== null}><Upload size={14} /> {t('vaultx.restoreBackup')}</button>
+              <div className="border-t border-surface-300 pt-4 space-y-3">
+                <h4 className="text-sm font-semibold text-rose-500">{t('vaultx.resetTitle')}</h4>
+                <p className="text-xs opacity-60">{t('vaultx.resetBody')}</p>
+                <input className="input" value={resetText} onChange={(e) => setResetText(e.target.value)} aria-label={t('vaultx.resetTitle')} placeholder={t('vaultx.resetTypePrompt', { word: resetWord })} autoComplete="off" spellCheck={false} disabled={recoveryBusy !== null} />
+                <button className="btn-danger w-full" onClick={doReset} disabled={recoveryBusy !== null || !resetReady}>{recoveryBusy === 'reset' ? t('vaultx.resetBusy') : t('vaultx.resetConfirm')}</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </div>
     )
   }
@@ -206,7 +269,7 @@ export default function Vault() {
         <button className="btn" title={t('vault.exportBackup')} onClick={async () => { try { const r = await invoke('vault:export'); if (r) toast(t('common.done')) } catch (e) { toast(errorMessage(e), 'error') } }}><Download size={14} /></button>
         <button className="btn" title={t('vault.importBackup')} onClick={doImport}><Upload size={14} /></button>
         <button className="btn" onClick={lock}><Lock size={14} /> {t('vault.lock')}</button>
-        <button className="btn-primary" onClick={() => setEdit(newItem())}><Plus size={16} /> {t('vault.newItem')}</button>
+        <GlowButton tone="amber" className="btn-primary fly-host" onClick={() => setEdit(newItem())}><FlyIcon><Plus size={16} /></FlyIcon> {t('vault.newItem')}</GlowButton>
       </PageHeader>
       <div className="flex flex-1 min-h-0">
         <aside className="w-80 shrink-0 border-e border-surface-300 flex flex-col">
@@ -228,7 +291,7 @@ export default function Vault() {
           </div>
         </aside>
         <main className="flex-1 overflow-y-auto p-6">
-          <AnimatePresence mode="wait">
+          <AnimatePresence>
             {sel ? (
               <motion.div key={sel.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="max-w-2xl mx-auto space-y-4">
                 <div className="flex items-center gap-4">

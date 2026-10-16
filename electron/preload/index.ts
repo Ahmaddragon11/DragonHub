@@ -25,7 +25,7 @@ const INVOKE_ALLOW = new Set([
   'dl:mediaInfo', 'dl:mediaDownload',
   'vault:meta', 'vault:isUnlocked', 'vault:init', 'vault:unlock', 'vault:lock', 'vault:touch',
   'vault:list', 'vault:upsert', 'vault:remove', 'vault:changePassword', 'vault:generate',
-  'vault:strength', 'vault:export', 'vault:import',
+  'vault:strength', 'vault:export', 'vault:import', 'vault:reset', 'vault:restore',
   'zip:compress', 'zip:compressJob', 'zip:extract', 'zip:list', 'zip:test',
   'img:info', 'img:process', 'img:thumb',
   'video:info', 'video:process', 'video:thumb', 'video:cancel',

@@ -4,14 +4,19 @@ import { Clapperboard, FolderOpen, Play, Camera, Square, Zap, Music, Film, Maxim
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle, Slider, Empty } from '@/components/ui'
+import Select from '@/components/Select'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { invoke, on, toFileUrl, errorMessage } from '@/lib/api'
 import { formatBytes, formatDuration, uid, cn, VIDEO_EXT, AUDIO_EXT } from '@/lib/utils'
 import type { MediaInfo, VideoOp, JobProgress } from '@shared/types'
 
 type Fmt = NonNullable<VideoOp['format']>
+type VCodec = NonNullable<VideoOp['videoCodec']>
+type ACodec = NonNullable<VideoOp['audioCodec']>
+type Preset = NonNullable<VideoOp['preset']>
 const VFMT: Fmt[] = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'gif']
 const AFMT: Fmt[] = ['mp3', 'aac', 'wav', 'flac', 'ogg']
-const PRESETS: VideoOp['preset'][] = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
+const PRESETS: Preset[] = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
 
 export default function Video() {
   const { t } = useTranslation()
@@ -25,8 +30,8 @@ export default function Video() {
   const [start, setStart] = useState(0); const [end, setEnd] = useState(0)
   const [w, setW] = useState(''); const [h, setH] = useState('')
   const [format, setFormat] = useState<Fmt>('mp4')
-  const [vcodec, setVcodec] = useState<VideoOp['videoCodec']>('libx264'); const [acodec, setAcodec] = useState<VideoOp['audioCodec']>('aac')
-  const [crf, setCrf] = useState(23); const [preset, setPreset] = useState<VideoOp['preset']>('medium')
+  const [vcodec, setVcodec] = useState<VCodec>('libx264'); const [acodec, setAcodec] = useState<ACodec>('aac')
+  const [crf, setCrf] = useState(23); const [preset, setPreset] = useState<Preset>('medium')
   const [fps, setFps] = useState(''); const [speed, setSpeed] = useState(1); const [volume, setVolume] = useState(1)
   const [rotate, setRotate] = useState<0 | 90 | 180 | 270>(0); const [mute, setMute] = useState(false); const [extract, setExtract] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
@@ -118,7 +123,7 @@ export default function Video() {
   return (
     <div className="flex flex-col h-full page-enter">
       <PageHeader title={t('video.title')} icon={<Clapperboard />}>
-        <button className="btn-primary" onClick={openFile}><FolderOpen size={16} /> {t('video.open')}</button>
+        <GlowButton tone="rose" className="btn-primary fly-host" onClick={openFile}><FlyIcon><FolderOpen size={16} /></FlyIcon> {t('video.open')}<FlySpark /></GlowButton>
       </PageHeader>
       <div className="flex flex-1 min-h-0 gap-4 p-4">
         <div className="flex-1 flex flex-col gap-3 min-h-0">
@@ -160,29 +165,29 @@ export default function Video() {
             <section>
               <h3 className="label mb-2">{t('video.resize')}</h3>
               <div className="grid grid-cols-2 gap-2">
-                <input className="input" placeholder="W" value={w} onChange={(e) => setW(e.target.value.replace(/\D/g, ''))} />
-                <input className="input" placeholder="H" value={h} onChange={(e) => setH(e.target.value.replace(/\D/g, ''))} />
+                <Field label={t('images.width')}><input className="input" value={w} onChange={(e) => setW(e.target.value.replace(/\D/g, ''))} /></Field>
+                <Field label={t('images.height')}><input className="input" value={h} onChange={(e) => setH(e.target.value.replace(/\D/g, ''))} /></Field>
               </div>
               <div className="flex gap-1 mt-2">{[['2160', '4K'], ['1080', '1080p'], ['720', '720p'], ['480', '480p']].map(([v, l]) => <button key={v} className="btn-ghost text-xs" onClick={() => { setH(v); setW('') }}>{l}</button>)}</div>
             </section>
           )}
           <div className="divider" />
           <Field label={t('video.format')}>
-            <select className="select" value={format} onChange={(e) => setFormat(e.target.value as Fmt)}>
+            <Select value={format} onChange={(v) => setFormat(v as Fmt)}>
               {!isAudio && <optgroup label={t('video.groupVideo')}>{VFMT.map((f) => <option key={f}>{f}</option>)}</optgroup>}
               <optgroup label={t('video.groupAudio')}>{AFMT.map((f) => <option key={f}>{f}</option>)}</optgroup>
-            </select>
+            </Select>
           </Field>
           {!isAudio && !AFMT.includes(format) && format !== 'gif' && (
             <>
-              <Field label={t('video.codec')}><select className="select" value={vcodec} onChange={(e) => setVcodec(e.target.value as any)}>{['libx264', 'libx265', 'libvpx-vp9', 'copy'].map((c) => <option key={c}>{c}</option>)}</select></Field>
+              <Field label={t('video.codec')}><Select value={vcodec} onChange={(v) => setVcodec(v as VCodec)} options={['libx264', 'libx265', 'libvpx-vp9', 'copy'].map((c) => ({ value: c, label: c }))} /></Field>
               <Field label={t('video.crf')}><Slider value={crf} min={0} max={51} step={1} onChange={setCrf} /></Field>
-              <Field label={t('video.preset')}><select className="select" value={preset} onChange={(e) => setPreset(e.target.value as any)}>{PRESETS.map((p) => <option key={p}>{p}</option>)}</select></Field>
+              <Field label={t('video.preset')}><Select value={preset} onChange={(v) => setPreset(v as Preset)} options={PRESETS.map((p) => ({ value: p, label: p }))} /></Field>
               <Field label={t('video.fps')}><input className="input" value={fps} onChange={(e) => setFps(e.target.value.replace(/\D/g, ''))} placeholder="—" /></Field>
               <Field label={t('video.rotate')}><div className="flex gap-1">{([0, 90, 180, 270] as const).map((r) => <button key={r} className={cn('btn flex-1 text-xs', rotate === r && 'bg-accent/20 text-accent')} onClick={() => setRotate(r)}>{r}°</button>)}</div></Field>
             </>
           )}
-          <Field label={t('video.audioCodec')}><select className="select" value={acodec} disabled={mute} onChange={(e) => setAcodec(e.target.value as any)}>{['aac', 'libmp3lame', 'libopus', 'copy'].map((c) => <option key={c}>{c}</option>)}</select></Field>
+          <Field label={t('video.audioCodec')}><Select value={acodec} disabled={mute} onChange={(v) => setAcodec(v as ACodec)} options={['aac', 'libmp3lame', 'libopus', 'copy'].map((c) => ({ value: c, label: c }))} /></Field>
           <Field label={t('video.speed')}><Slider value={speed} min={0.25} max={4} step={0.25} onChange={setSpeed} suffix="x" /></Field>
           <Field label={t('video.volume')}><Slider value={volume} min={0} max={3} step={0.1} onChange={setVolume} suffix="x" /></Field>
           {!isAudio && <><Toggle on={mute} onChange={setMute} label={t('video.mute')} /><Toggle on={extract} onChange={(v) => { setExtract(v); if (v) setFormat('mp3') }} label={t('video.extractAudio')} /></>}
@@ -190,7 +195,7 @@ export default function Video() {
           {progress && !progress.done && <div><Progress value={progress.percent} /><div className="text-xs opacity-60 mt-1 truncate">{Math.round(progress.percent)}% {progress.message}</div></div>}
           <div className="flex gap-2">
             {jobId ? <button className="btn-danger flex-1" onClick={cancel}><Square size={14} /> {t('video.cancel')}</button>
-              : <button className="btn-primary flex-1" disabled={!src} onClick={run}><Play size={14} /> {t('video.process')}</button>}
+              : <GlowButton tone="rose" block className="btn-primary fly-host" disabled={!src} onClick={run}><FlyIcon><Play size={14} /></FlyIcon> {t('video.process')}<FlySpark /></GlowButton>}
             {!isAudio && <button className="btn-soft" disabled={!src || !!jobId} onClick={capture} title={t('video.thumbnail')}><Camera size={14} /></button>}
           </div>
         </div>

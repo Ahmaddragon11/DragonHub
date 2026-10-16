@@ -43,6 +43,8 @@ const RATE_LIMITS: Record<string, { n: number; ms: number }> = {
   'vault:unlock': { n: 20, ms: 60000 },
   'vault:init': { n: 10, ms: 60000 },
   'vault:changePassword': { n: 10, ms: 60000 },
+  'vault:reset': { n: 3, ms: 60000 },
+  'vault:restore': { n: 3, ms: 60000 },
   'res:killProcess': { n: 10, ms: 60000 },
   'net:appBlocked': { n: 20, ms: 60000 },
   'net:speedTest': { n: 5, ms: 60000 },
@@ -407,6 +409,14 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
     await vault.importEncrypted(r.filePaths[0])
     return true
   })
+  // Recovery path: install a backup while the vault is still locked.
+  h('vault:restore', async () => {
+    const r = await dialog.showOpenDialog(getWin()!, { properties: ['openFile'], filters: [{ name: 'DragonHub Vault', extensions: ['dhvault'] }] })
+    if (r.canceled || !r.filePaths[0]) return null
+    await vault.restoreEncrypted(r.filePaths[0])
+    return true
+  })
+  h('vault:reset', () => vault.reset())
 
   // ---------- Archive ----------
   h('zip:compress', (inputs: string[], output: string, opts: CompressOptions) => archive.compress(getWin(), randomUUID(), inputs, output, opts))

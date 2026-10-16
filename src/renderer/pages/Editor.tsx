@@ -6,6 +6,7 @@ import { Code2, FolderOpen, Plus, Save, X, WrapText, Map as MapIcon, Search } fr
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Empty } from '@/components/ui'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { invoke, errorMessage } from '@/lib/api'
 import { cn, extToLang, stripPath, uid } from '@/lib/utils'
 
@@ -276,7 +277,7 @@ export default function Editor() {
       <PageHeader icon={<Code2 size={22} />} title={t('editor.title')} subtitle={tab?.path}>
         <button className="btn-soft" onClick={newTab}><Plus size={15} />{t('editor.newFile')}</button>
         <button className="btn-soft" onClick={openDialog}><FolderOpen size={15} />{t('editor.openFile')}</button>
-        <button className="btn-primary" onClick={() => save()} disabled={!tab}><Save size={15} />{t('editor.save')}</button>
+        <GlowButton tone="violet" className="btn-primary fly-host" onClick={() => save()} disabled={!tab}><FlyIcon><Save size={15} /></FlyIcon> {t('editor.save')}<FlySpark /></GlowButton>
       </PageHeader>
       <div className="card flex-1 min-h-0 flex flex-col overflow-hidden">
         <div className="flex items-center border-b border-surface-300/60 overflow-x-auto overflow-y-hidden shrink-0">

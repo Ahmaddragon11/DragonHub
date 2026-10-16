@@ -4,6 +4,7 @@ import { Archive, FilePlus, FolderPlus, X, Lock, Package, FolderOpen, ShieldChec
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle } from '@/components/ui'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { invoke, on, errorMessage } from '@/lib/api'
 import { formatBytes, stripPath, uid, cn, ARCHIVE_EXT } from '@/lib/utils'
 import type { ArchiveFormat, ArchiveEntry, JobProgress } from '@shared/types'
@@ -95,7 +96,7 @@ export default function Compress() {
             <div className="divider" />
             <Field label={t('compress.outputName')}><div className="flex items-center gap-1"><input className="input flex-1 min-w-0" value={outName} onChange={(e) => setOutName(e.target.value)} /><span className="text-xs font-mono text-surface-500 shrink-0">.{fmtInfo.ext}</span></div></Field>
             <Field label={t('compress.destination')}><div className="flex gap-1"><input className="input flex-1 min-w-0 font-mono text-xs" dir="ltr" value={outDir} onChange={(e) => setOutDir(e.target.value)} /><button className="btn-soft shrink-0" onClick={async () => { const d = await invoke<string | null>('dialog:openFolder'); if (d) setOutDir(d) }}><FolderOpen size={15} /></button></div></Field>
-            <button className="btn-primary w-full py-3" onClick={doCompress} disabled={busy || !inputs.length || !outDir || !outName}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}{t('compress.compressBtn')}</button>
+            <GlowButton tone="orange" block className="btn-primary w-full py-3 fly-host" onClick={doCompress} disabled={busy || !inputs.length || !outDir || !outName}><FlyIcon>{busy ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}</FlyIcon>{t('compress.compressBtn')}<FlySpark /></GlowButton>
           </aside>
         </div>
       )}
@@ -106,7 +107,7 @@ export default function Compress() {
           <Field label={t('compress.destination')}><div className="flex gap-2"><input className="input flex-1 min-w-0 font-mono text-xs" dir="ltr" value={dest} onChange={(e) => setDest(e.target.value)} /><button className="btn-soft shrink-0" onClick={async () => { const d = await invoke<string | null>('dialog:openFolder'); if (d) setDest(d) }}><FolderOpen size={15} /></button></div></Field>
           <Field label={`${t('compress.password')} (${t('common.optional')})`}><input type="password" className="input" value={xpw} onChange={(e) => setXpw(e.target.value)} /></Field>
           <div className="flex gap-2 flex-wrap">
-            <button className="btn-primary flex-1 py-3" onClick={doExtract} disabled={busy || !archive || !dest}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}{t('compress.extractBtn')}</button>
+            <GlowButton tone="orange" block wrapperClassName="flex-1" className="btn-primary flex-1 py-3 fly-host" onClick={doExtract} disabled={busy || !archive || !dest}><FlyIcon>{busy ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}</FlyIcon>{t('compress.extractBtn')}<FlySpark /></GlowButton>
             <button className="btn-soft" onClick={doList} disabled={busy || !archive}><FolderOpen size={15} />{t('compress.browseTab')}</button>
             <button className={cn('btn-soft', testResult === true && 'text-emerald-500', testResult === false && 'text-rose-500')} onClick={doTest} disabled={busy || !archive}><ShieldCheck size={15} />{t('compress.test')}</button>
           </div>
@@ -115,7 +116,7 @@ export default function Compress() {
 
       {tab === 'browse' && (
         <div className="card flex-1 min-h-0 flex flex-col overflow-hidden">
-          <div className="flex items-center gap-3 p-3 border-b border-surface-300/60 text-xs flex-wrap"><button className="btn-soft shrink-0" onClick={pickArchive}><FileArchive size={15} />{t('common.open')}</button><span className="font-mono truncate flex-1 min-w-0" dir="ltr">{archive}</span>{entries && <span className="text-surface-500">{t('compress.entries', { count: entries.length })} • {formatBytes(totalSize)} → {formatBytes(totalPacked)} ({t('compress.ratio')} {totalSize ? Math.round((totalPacked / totalSize) * 100) : 0}%)</span>}{archive && !entries && <button className="btn-primary shrink-0" onClick={doList} disabled={busy}>{t('compress.browseTab')}</button>}</div>
+          <div className="flex items-center gap-3 p-3 border-b border-surface-300/60 text-xs flex-wrap"><button className="btn-soft shrink-0" onClick={pickArchive}><FileArchive size={15} />{t('common.open')}</button><span className="font-mono truncate flex-1 min-w-0" dir="ltr">{archive}</span>{entries && <span className="text-surface-500">{t('compress.entries', { count: entries.length })} • {formatBytes(totalSize)} → {formatBytes(totalPacked)} ({t('compress.ratio')} {totalSize ? Math.round((totalPacked / totalSize) * 100) : 0}%)</span>}            {archive && !entries && <GlowButton tone="orange" className="btn-primary shrink-0" onClick={doList} disabled={busy}>{t('compress.browseTab')}</GlowButton>}</div>
           <div className="flex-1 overflow-auto">
             {entries ? <table className="w-full text-sm"><thead className="sticky top-0 bg-surface-100/95 text-[11px] uppercase text-surface-600"><tr><th className="text-start px-3 py-2">{t('common.name')}</th><th className="text-end px-3 py-2 w-28">{t('common.size')}</th><th className="text-end px-3 py-2 w-28">{t('compress.packed')}</th><th className="text-start px-3 py-2 w-44">{t('common.modified')}</th></tr></thead>
               <tbody>{entries.map((e, i) => <tr key={i} className="hover:bg-surface-200/60"><td className="px-3 py-1.5 font-mono text-xs" dir="ltr"><span className="flex items-center gap-2">{e.isDirectory ? <Folder size={14} className="text-amber-400 shrink-0" /> : <File size={14} className="text-surface-500 shrink-0" />}<span className="min-w-0 break-all">{e.name}</span></span></td><td className="px-3 py-1.5 text-end text-xs font-mono whitespace-nowrap">{e.isDirectory ? '—' : formatBytes(e.size)}</td><td className="px-3 py-1.5 text-end text-xs font-mono whitespace-nowrap">{e.isDirectory ? '—' : formatBytes(e.packed)}</td><td className="px-3 py-1.5 text-xs text-surface-500 whitespace-nowrap">{e.modified?.slice(0, 19).replace('T', ' ')}</td></tr>)}</tbody></table>

@@ -278,10 +278,44 @@ html.dark .input { background: rgb(var(--surface-50) / 0.6); }
 .input:hover { border-color: rgb(var(--surface-400)); }
 .input:focus, .input:focus-within { border-color: rgb(var(--accent)); box-shadow: 0 0 0 3px rgb(var(--accent) / 0.18); }
 .input[aria-invalid='true'] { border-color: rgb(244 63 94); box-shadow: 0 0 0 3px rgb(244 63 94 / 0.15); }
-.select { @apply input appearance-none cursor-pointer; padding-inline-end: 2rem; background-repeat: no-repeat; background-position: left .75rem center; background-size: 14px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
-[dir='ltr'] .select { background-position: right .75rem center; }
-html.dark .select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+/* Select: native control with a single hairline chevron.
+   `@apply input` also expands `html.dark .input { background: … }` — a shorthand
+   at specificity (0,2,1) that resets background-repeat to `repeat`, tiling the
+   chevron across the field in dark mode. So every background longhand is
+   re-declared here AND in the dark/direction rules (same or higher specificity,
+   later in source) and the shorthand is never used for this class again. */
+.select {
+  @apply input appearance-none cursor-pointer;
+  padding-inline-end: 2.25rem;
+  background-color: rgb(var(--surface-100));
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+  background-position: right .7rem center;
+  background-origin: border-box;
+  background-clip: border-box;
+}
+html.dark .select {
+  background-color: rgb(var(--surface-50) / 0.6);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+  background-position: right .7rem center;
+}
+[dir='rtl'] .select,
+html[dir='rtl'] .select,
+html.dark[dir='rtl'] .select {
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+  background-position: left .7rem center;
+}
+.select:disabled { opacity: .55; cursor: default; }
 .select option { background: rgb(var(--surface-100)); color: rgb(var(--surface-900)); }
+.select optgroup { background: rgb(var(--surface-100)); color: rgb(var(--surface-600)); font-weight: 600; }
+/* Icon-based variant (components/Select.tsx paints its own caret element).
+   Declared at dark-rule specificity so the theme arrow can never come back. */
+html[dir] .select-arrowless,
+html.dark .select-arrowless { background-image: none; }
 .label { @apply text-[11px] font-semibold uppercase tracking-[0.06em] text-surface-500; }
 .badge { @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium leading-4; }
 .kbd {
@@ -488,3 +522,263 @@ html[data-glass='on'] .update-card::after {
 html.low-power .update-card::before,
 html[data-anim='off'] .update-card::before,
 html[data-anim='reduced'] .update-card::before { animation: none; }
+
+/* ==========================================================================
+   Ambient detail layer — a masked micro-grid plus two soft colour pools that
+   sit behind every page. Static by default (near-zero cost); the pools drift
+   only while ambient glow is enabled. Purely decorative, never interactive.
+   ========================================================================== */
+.bg-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(58rem 30rem at 12% -8%, rgb(var(--accent) / 0.10), transparent 62%),
+    radial-gradient(46rem 26rem at 96% 2%, rgb(var(--accent-soft) / 0.08), transparent 64%),
+    linear-gradient(rgb(var(--surface-400) / 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--surface-400) / 0.055) 1px, transparent 1px);
+  background-size: auto, auto, 44px 44px, 44px 44px;
+  background-position: center, center, -1px -1px, -1px -1px;
+  -webkit-mask-image: radial-gradient(ellipse 110% 85% at 50% 0%, #000 18%, transparent 82%);
+  mask-image: radial-gradient(ellipse 110% 85% at 50% 0%, #000 18%, transparent 82%);
+}
+.bg-detail::before,
+.bg-detail::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.55;
+  will-change: transform;
+}
+.bg-detail::before {
+  width: 40rem;
+  height: 40rem;
+  inset-inline-start: -14rem;
+  inset-block-start: -18rem;
+  background: rgb(var(--accent) / 0.12);
+}
+.bg-detail::after {
+  width: 34rem;
+  height: 34rem;
+  inset-inline-end: -12rem;
+  inset-block-start: 6rem;
+  background: rgb(var(--accent-soft) / 0.10);
+}
+html[data-ambient='on'] .bg-detail::before { animation: bgOrbA 36s var(--ease-in-out) infinite alternate; }
+html[data-ambient='on'] .bg-detail::after { animation: bgOrbB 44s var(--ease-in-out) infinite alternate; }
+@keyframes bgOrbA {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(7rem, 4rem, 0) scale(1.14); }
+}
+@keyframes bgOrbB {
+  from { transform: translate3d(0, 0, 0) scale(1.06); }
+  to { transform: translate3d(-6rem, 5rem, 0) scale(1); }
+}
+html.low-power .bg-detail,
+html[data-anim='off'] .bg-detail { background-image: radial-gradient(58rem 30rem at 12% -8%, rgb(var(--accent) / 0.07), transparent 62%); }
+html.low-power .bg-detail::before,
+html.low-power .bg-detail::after,
+html[data-anim='off'] .bg-detail::before,
+html[data-anim='off'] .bg-detail::after { display: none; }
+
+/* ==========================================================================
+   Glow system — a rotating conic-gradient hairline ring that can wrap any
+   button, chip or card. Pick the tone with data-tone; the ring colours come
+   from --glow-a/--glow-b/--glow-c so new tones are a one-liner.
+     <span class="glow" data-tone="telegram"><button class="btn">…</button></span>
+     <div class="glow glow-card glow-surface" data-tone="accent">…</div>
+   ========================================================================== */
+.glow {
+  position: relative;
+  display: inline-flex;
+  padding: 1.5px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  isolation: isolate;
+  vertical-align: middle;
+  --glow-speed: 7s;
+  --glow-a: rgb(var(--accent-soft));
+  --glow-b: rgb(var(--accent));
+  --glow-c: rgb(var(--accent-soft));
+}
+.glow::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 220%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%) rotate(0deg);
+  background: conic-gradient(from 0deg, var(--glow-a), var(--glow-b), var(--glow-c), var(--glow-a));
+  animation: glowSpin var(--glow-speed) linear infinite;
+  z-index: 0;
+}
+.glow > * {
+  position: relative;
+  z-index: 1;
+  border-radius: calc(var(--r-md) - 1.5px);
+}
+.glow > *:focus-visible { outline-offset: -3px; }
+.glow:hover::before { animation-duration: 2.4s; }
+.glow:hover { box-shadow: 0 0 34px -14px rgb(var(--accent) / 0.55); }
+@keyframes glowSpin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Layout helpers: full-width wrapper, and an opaque surface behind transparent
+   children (ghost buttons / plain divs) so only the hairline ring shows. */
+.glow-block { display: flex; width: 100%; }
+.glow-block > * { flex: 1 1 auto; width: 100%; }
+.glow-surface { background: rgb(var(--surface-100)); }
+.glow-surface > * { background: rgb(var(--surface-100) / 0.98); }
+html[data-glass='on'] .glow-surface > * {
+  background: rgb(var(--surface-100) / 0.84);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+/* Card variant: rounded-2xl ring for whole cards. */
+.glow-card { display: block; border-radius: var(--r-2xl); }
+.glow-card > * { border-radius: calc(var(--r-2xl) - 1.5px); }
+.glow-sm { border-radius: var(--r-xs); }
+.glow-sm > * { border-radius: calc(var(--r-xs) - 1.5px); }
+
+/* Self variant: the element *is* the surface (ring drawn with ::before/::after,
+   same trick as .update-card). Use it for cards that lift on hover — a wrapper
+   would clip their transform. Requires the element to be the card itself:
+     <div class="card card-interactive glow-self" data-glow-tone="blue">…
+   */
+.glow-self {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  --glow-speed: 8s;
+  --glow-a: rgb(var(--accent-soft));
+  --glow-b: rgb(var(--accent));
+  --glow-c: rgb(var(--accent-soft));
+}
+.glow-self::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 220%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%) rotate(0deg);
+  background: conic-gradient(from 0deg, var(--glow-a), var(--glow-b), var(--glow-c), var(--glow-a));
+  animation: glowSpin var(--glow-speed) linear infinite;
+  z-index: 0;
+}
+.glow-self::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  border-radius: calc(var(--r-xl) - 1.5px);
+  background: rgb(var(--surface-100) / 0.98);
+  z-index: 1;
+}
+html[data-glass='on'] .glow-self::after {
+  background: rgb(var(--surface-100) / 0.86);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+.glow-self > * { position: relative; z-index: 2; }
+.glow-self:hover::before { animation-duration: 2.6s; }
+.glow-self:hover { box-shadow: var(--shadow-2), var(--inner-hi), 0 0 30px -16px var(--glow-b); }
+
+/* Dense grids: keep the ring static and spin it only on hover (cheap + calm). */
+.glow-paused::before { animation-play-state: paused; }
+.glow-paused:hover::before { animation-play-state: running; }
+
+/* Tone palette — one hue family per feature so rings read as identity.
+   Attribute-only so it composes with .glow, .glow-self or a bare div. */
+[data-glow-tone='mono'],
+[data-glow-tone='github']   { --glow-a: #f8fafc; --glow-b: #64748b; --glow-c: #cbd5e1; }
+[data-glow-tone='telegram'] { --glow-a: #7dd3fc; --glow-b: #0369a1; --glow-c: #38bdf8; }
+[data-glow-tone='violet']   { --glow-a: #c4b5fd; --glow-b: #7c3aed; --glow-c: #a78bfa; }
+[data-glow-tone='blue']     { --glow-a: #93c5fd; --glow-b: #2563eb; --glow-c: #60a5fa; }
+[data-glow-tone='cyan']     { --glow-a: #67e8f9; --glow-b: #0891b2; --glow-c: #22d3ee; }
+[data-glow-tone='emerald']  { --glow-a: #6ee7b7; --glow-b: #047857; --glow-c: #34d399; }
+[data-glow-tone='amber']    { --glow-a: #fcd34d; --glow-b: #b45309; --glow-c: #fbbf24; }
+[data-glow-tone='orange']   { --glow-a: #fdba74; --glow-b: #c2410c; --glow-c: #fb923c; }
+[data-glow-tone='rose']     { --glow-a: #fda4af; --glow-b: #be123c; --glow-c: #fb7185; }
+[data-glow-tone='red']      { --glow-a: #fca5a5; --glow-b: #b91c1c; --glow-c: #f87171; }
+html.dark [data-glow-tone='mono'],
+html.dark [data-glow-tone='github'] { --glow-a: #94a3b8; --glow-b: #475569; --glow-c: #e2e8f0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .glow::before, .glow-self::before { animation: none; }
+}
+html.low-power .glow::before,
+html.low-power .glow-self::before,
+html[data-anim='off'] .glow::before,
+html[data-anim='off'] .glow-self::before,
+html[data-anim='reduced'] .glow::before,
+html[data-anim='reduced'] .glow-self::before { animation: none; }
+
+/* ==========================================================================
+   Micro-interactions — small, springy icon motion on hover/press. Add
+   .fly-host to the clickable element and wrap the glyph in .fly-icon.
+   ========================================================================== */
+.fly-icon {
+  display: inline-flex;
+  will-change: transform;
+  transition: transform var(--dur-3) var(--ease-spring), opacity var(--dur-2) var(--ease-out);
+}
+.fly-host:hover .fly-icon { transform: translate(0, -2px) rotate(-7deg) scale(1.14); }
+.fly-host:active .fly-icon {
+  transform: translate(12px, -16px) rotate(-26deg) scale(1.3);
+  opacity: 0;
+  transition-duration: var(--dur-4);
+}
+[dir='rtl'] .fly-host:hover .fly-icon { transform: translate(0, -2px) rotate(7deg) scale(1.14); }
+[dir='rtl'] .fly-host:active .fly-icon {
+  transform: translate(-12px, -16px) rotate(26deg) scale(1.3);
+}
+.fly-host { position: relative; }
+/* Trailing spark: a soft accent dot that streaks out on press. */
+.fly-spark {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgb(var(--accent));
+  opacity: 0;
+  pointer-events: none;
+}
+.fly-host:active .fly-spark { animation: flySpark var(--dur-4) var(--ease-out); }
+@keyframes flySpark {
+  0% { opacity: 0.9; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(20px, -26px) scale(0.4); }
+}
+[dir='rtl'] .fly-host:active .fly-spark { animation-name: flySparkRtl; }
+@keyframes flySparkRtl {
+  0% { opacity: 0.9; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-20px, -26px) scale(0.4); }
+}
+html.low-power .fly-icon,
+html[data-anim='off'] .fly-icon,
+html[data-anim='reduced'] .fly-icon { transition: none; }
+html.low-power .fly-host:active .fly-icon,
+html[data-anim='off'] .fly-host:active .fly-icon,
+html[data-anim='reduced'] .fly-host:active .fly-icon { transform: none; opacity: 1; }
+html.low-power .fly-spark,
+html[data-anim='off'] .fly-spark,
+html[data-anim='reduced'] .fly-spark { display: none; }
+
+/* Hover-lift surface for buttons/cards that should feel physical. */
+.lift { transition: transform var(--dur-3) var(--ease-spring), box-shadow var(--dur-3) var(--ease-out); }
+.lift:hover { transform: translateY(-1.5px); }
+.lift:active { transform: translateY(0.5px) scale(0.995); }
+html.low-power .lift:hover,
+html[data-anim='off'] .lift:hover,
+html[data-anim='reduced'] .lift:hover { transform: none; }
+
+/* Richer text selection: accent wash + accent-tinted highlight text. */
+::selection { background: rgb(var(--accent) / 0.34); }

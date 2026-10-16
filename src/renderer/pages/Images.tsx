@@ -4,6 +4,8 @@ import { Image as ImageIcon, FolderOpen, RotateCw, FlipVertical, FlipHorizontal,
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle, Slider, Empty } from '@/components/ui'
+import Select from '@/components/Select'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { invoke, on, toFileUrl, errorMessage } from '@/lib/api'
 import { formatBytes, stripPath, uid, cn, IMAGE_EXT } from '@/lib/utils'
 import type { ImageOp, JobProgress } from '@shared/types'
@@ -109,7 +111,7 @@ export default function Images() {
           <button className={cn('btn-ghost text-sm', tab === 'edit' && 'bg-surface-300')} onClick={() => setTab('edit')}>{t('images.open')}</button>
           <button className={cn('btn-ghost text-sm', tab === 'batch' && 'bg-surface-300')} onClick={() => setTab('batch')}><Layers size={14} /> {t('images.batch')}</button>
         </div>
-        {tab === 'edit' && <button className="btn-primary" onClick={openFile}><FolderOpen size={16} /> {t('images.open')}</button>}
+        {tab === 'edit' && <GlowButton tone="emerald" className="btn-primary fly-host" onClick={openFile}><FlyIcon><FolderOpen size={16} /></FlyIcon> {t('images.open')}<FlySpark /></GlowButton>}
       </PageHeader>
 
       {tab === 'edit' ? (
@@ -132,7 +134,7 @@ export default function Images() {
                 <Field label={t('images.width')}><input className="input" value={w} onChange={(e) => setW(e.target.value.replace(/\D/g, ''))} /></Field>
                 <Field label={t('images.height')}><input className="input" value={h} onChange={(e) => setH(e.target.value.replace(/\D/g, ''))} /></Field>
               </div>
-              <Field label={t('images.fit')}><select className="select" value={fit} onChange={(e) => setFit(e.target.value as any)}>{['inside', 'cover', 'contain', 'fill', 'outside'].map((f) => <option key={f}>{f}</option>)}</select></Field>
+              <Field label={t('images.fit')}><Select value={fit} onChange={(v) => setFit(v as 'cover' | 'contain' | 'fill' | 'inside' | 'outside')} options={['inside', 'cover', 'contain', 'fill', 'outside'].map((f) => ({ value: f, label: f }))} /></Field>
             </section>
             <div className="divider" />
             <section className="flex gap-2">
@@ -152,13 +154,13 @@ export default function Images() {
             </section>
             <div className="divider" />
             <section className="space-y-3">
-              <Field label={t('images.format')}><select className="select" value={format} onChange={(e) => setFormat(e.target.value as Fmt)}>{FORMATS.map((f) => <option key={f}>{f}</option>)}</select></Field>
+              <Field label={t('images.format')}><Select value={format} onChange={(v) => setFormat(v as Fmt)} options={FORMATS.map((f) => ({ value: f, label: f }))} /></Field>
               <Field label={t('images.quality')}><Slider value={quality} min={1} max={100} step={1} onChange={setQuality} suffix="%" /></Field>
               <Field label={t('images.watermark')}><input className="input" value={wm} onChange={(e) => setWm(e.target.value)} placeholder="© AHMADDRAGON" /></Field>
               <Toggle on={strip} onChange={setStrip} label={t('images.removeMetadata')} />
             </section>
             {progress && !progress.done && <Progress value={progress.percent} />}
-            <button className="btn-primary w-full" disabled={!src || busy} onClick={exportImg}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} {t('images.exportBtn')}</button>
+            <GlowButton tone="emerald" block className="btn-primary w-full fly-host" disabled={!src || busy} onClick={exportImg}><FlyIcon>{busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}</FlyIcon> {t('images.exportBtn')}<FlySpark /></GlowButton>
           </div>
         </div>
       ) : (
@@ -182,11 +184,11 @@ export default function Images() {
             )}
           </div>
           <div className="card p-4 space-y-3">
-            <Field label={t('images.format')}><select className="select" value={bFmt} onChange={(e) => setBFmt(e.target.value as Fmt)}>{FORMATS.map((f) => <option key={f}>{f}</option>)}</select></Field>
+            <Field label={t('images.format')}><Select value={bFmt} onChange={(v) => setBFmt(v as Fmt)} options={FORMATS.map((f) => ({ value: f, label: f }))} /></Field>
             <Field label={t('images.quality')}><Slider value={bQ} min={1} max={100} step={1} onChange={setBQ} suffix="%" /></Field>
             <Field label={t('images.width') + ' (' + t('net.limit') + ')'}><input className="input" value={bW} onChange={(e) => setBW(e.target.value.replace(/\D/g, ''))} placeholder="—" /></Field>
             {busy && <Progress value={(bDone / Math.max(1, batch.length)) * 100} />}
-            <button className="btn-primary w-full" disabled={!batch.length || busy} onClick={convertAll}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} {t('images.convertAll')}</button>
+            <GlowButton tone="emerald" block className="btn-primary w-full fly-host" disabled={!batch.length || busy} onClick={convertAll}><FlyIcon>{busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}</FlyIcon> {t('images.convertAll')}<FlySpark /></GlowButton>
             {busy && <button className="btn-ghost w-full" onClick={() => { batchCancel.current = true }}>{t('common.cancelAction')}</button>}
           </div>
         </div>

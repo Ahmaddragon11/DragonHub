@@ -188,6 +188,12 @@ export function lock() { wipe() }
 
 export function touch(autoLockMin: number) { if (key) scheduleAutoLock(autoLockMin) }
 
+/** Erase the whole vault directory and in-memory key/cache: back to first-run. */
+export async function reset(): Promise<void> {
+  wipe()
+  await fsp.rm(vaultDir(), { recursive: true, force: true })
+}
+
 async function loadDataAs(k: Buffer): Promise<VaultItem[]> {
   const st = await fsp.stat(dataPath()).catch(() => null)
   if (!st) return []
@@ -358,11 +364,8 @@ export async function exportEncrypted(dest: string) {
 
 const MAX_BACKUP_BYTES = 64 * 1024 * 1024
 
-export async function importEncrypted(src: string) {
-  // Import replaces the live vault: require an unlocked state so the user
-  // proves ownership first, and NEVER touch live files before the new bundle
-  // fully validates (parse + shape + base64 decode).
-  if (!key || !cache) throw new Error('Vault must be unlocked to import')
+/** Parse + validate a backup bundle. Never touches live vault files. */
+async function readBundle(src: string): Promise<{ meta: VaultMeta; data: Buffer }> {
   const st = await fsp.stat(src).catch(() => null)
   if (!st || !st.isFile() || st.size > MAX_BACKUP_BYTES) throw new Error('Invalid vault backup file')
   let bundle: any
@@ -387,6 +390,11 @@ export async function importEncrypted(src: string) {
     throw new Error('Invalid vault backup file')
   }
   if (dataBuf.length > MAX_BACKUP_BYTES) throw new Error('Invalid vault backup file')
+  return { meta: bundle.meta as VaultMeta, data: dataBuf }
+}
+
+/** Install a validated bundle over the live vault, atomically, leaving it locked. */
+async function commitBundle(bundle: { meta: VaultMeta; data: Buffer }) {
   // Back up the live vault before overwriting so a bad import is recoverable.
   await fsp.mkdir(vaultDir(), { recursive: true })
   const liveMeta = await fsp.readFile(metaPath(), 'utf8').catch(() => null)
@@ -397,11 +405,30 @@ export async function importEncrypted(src: string) {
   const tmpM = tmpPath(metaPath())
   const tmpD = tmpPath(dataPath())
   await fsp.writeFile(tmpM, JSON.stringify(bundle.meta), 'utf8')
-  await fsp.writeFile(tmpD, dataBuf)
+  await fsp.writeFile(tmpD, bundle.data)
   await fsp.rename(tmpM, metaPath())
   await fsp.rename(tmpD, dataPath())
   // New bundle belongs to a different password: drop the old key (locked).
   wipe()
+}
+
+export async function importEncrypted(src: string) {
+  // Import replaces the live vault: require an unlocked state so the user
+  // proves ownership first, and NEVER touch live files before the new bundle
+  // fully validates (parse + shape + base64 decode).
+  if (!key || !cache) throw new Error('Vault must be unlocked to import')
+  await commitBundle(await readBundle(src))
+}
+
+/**
+ * Recovery path for the locked screen: install a backup bundle while the vault
+ * is locked, so a user who forgot the current password can return to an older
+ * backup whose password they still know. Safe to allow locked because the
+ * bundle is encrypted with its own password, the live files are copied to
+ * `*.pre-import.bak` first, and the vault ends up locked either way.
+ */
+export async function restoreEncrypted(src: string) {
+  await commitBundle(await readBundle(src))
 }
 
 export function generatePassword(opts: { length: number; upper: boolean; lower: boolean; digits: boolean; symbols: boolean; excludeAmbiguous: boolean }) {

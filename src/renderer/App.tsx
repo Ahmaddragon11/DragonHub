@@ -114,6 +114,7 @@ export default function App() {
         <a href="#main" className="sr-only-focusable fixed top-2 start-2 z-[300] btn-primary">{t('a11y.skip')}</a>
         <div className="app-bg" aria-hidden />
         <div className="aurora fixed inset-0 pointer-events-none" />
+        <div className="bg-detail" aria-hidden />
         <AnimatePresence>{!ready && <Splash key="splash" />}</AnimatePresence>
         {ready && (
           <div className="relative flex flex-col h-full">
@@ -121,7 +122,10 @@ export default function App() {
             <div className="flex flex-1 min-h-0">
               <Sidebar viewport={viewport} drawerOpen={drawer} onCloseDrawer={() => setDrawer(false)} />
               <main id="main" className="workspace-main flex-1 min-w-0 min-h-0 relative" tabIndex={-1}>
-                <AnimatePresence mode="wait" initial={false}>
+                {/* Crossfade, never wait-then-swap: the incoming page mounts
+                    immediately and paints over the outgoing one, so a stalled
+                    exit animation can never leave the workspace blank. */}
+                <AnimatePresence initial={false}>
                   <motion.div key={page} className="absolute inset-0 overflow-y-auto px-3 pb-3 pt-1 sm:px-5 sm:pb-5 lg:px-6" variants={v} initial="initial" animate="enter" exit="exit">
                     <div className="min-h-full h-full max-w-[1600px] mx-auto">
                       <ErrorBoundary scope="page" resetKey={page}>

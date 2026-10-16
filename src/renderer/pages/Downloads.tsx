@@ -4,6 +4,7 @@ import { Download, Link, Play, Pause, X, Trash2, FolderOpen, ExternalLink, Rotat
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Empty, Progress } from '@/components/ui'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { invoke, on, errorMessage } from '@/lib/api'
 import { formatBytes, formatDuration, cn } from '@/lib/utils'
 import type { DownloadItem } from '@shared/types'
@@ -128,7 +129,7 @@ export default function Downloads() {
         <div className="flex gap-2 flex-wrap">
           <div className="relative flex-1 min-w-0"><Link size={15} className="absolute start-3 top-3 text-surface-500" /><input ref={urlRef} dir="ltr" className="input ps-9 py-2.5" aria-label={t('downloads.addUrl')} placeholder={t('downloads.addUrl')} value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
           {kind === 'media' && <button className="btn-soft shrink-0" onClick={fetchInfo} disabled={!valid || busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Youtube size={15} />}{t('downloads.fetchInfo')}</button>}
-          <button className="btn-primary px-6 shrink-0" onClick={add} disabled={!valid || busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}{t('downloads.add')}</button>
+          <GlowButton tone="cyan" className="btn-primary px-6 shrink-0 fly-host" onClick={add} disabled={!valid || busy}><FlyIcon>{busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}</FlyIcon>{t('downloads.add')}<FlySpark /></GlowButton>
         </div>
         <div className="flex items-center gap-4 mt-3 flex-wrap text-sm">
           <div className="flex rounded-lg bg-surface-200 p-0.5"><button onClick={() => setKind('direct')} className={cn('px-3 py-1 rounded-md text-xs transition-colors', kind === 'direct' && 'bg-accent text-accent-fg')}>{t('downloads.direct')}</button><button onClick={() => setKind('media')} className={cn('px-3 py-1 rounded-md text-xs transition-colors', kind === 'media' && 'bg-accent text-accent-fg')}>{t('downloads.media')}</button></div>

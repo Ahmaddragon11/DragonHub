@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { motion } from 'framer-motion'
 import { Info, Send, Github, Heart, Sparkles, Bug, Wrench, ShieldCheck, Cpu, Search, ChevronDown, ChevronUp, History } from 'lucide-react'
 import { PageHeader } from '@/components/ui'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { Logo } from '@/components/Shell'
 import { UpdateCard } from '@/components/UpdateCard'
 import { invoke } from '@/lib/api'
@@ -55,14 +56,14 @@ export default function About() {
             <p className="relative text-sm opacity-70 mt-4 max-w-xl mx-auto leading-relaxed">{t('about.desc')}</p>
             <div className="relative mt-6 flex flex-wrap items-center justify-center gap-3">
               <div className="text-sm"><span className="opacity-50">{t('about.developer')}:</span> <span className="font-bold text-accent">{DEVELOPER}</span></div>
-              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="btn-primary"
+              <GlowButton tone="telegram" className="btn-primary fly-host"
                 onClick={() => openExternalWithConfirm(TELEGRAM_URL, t('about.confirmTelegram'), t('about.confirmTelegramDetail', { url: TELEGRAM_URL }))}>
-                <Send size={16} /> {t('about.contact')} <span className="opacity-70 text-xs" dir="ltr">t.me/ahmaddragon</span>
-              </motion.button>
-              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="btn-ghost"
+                <FlyIcon><Send size={16} /></FlyIcon> {t('about.contact')} <span className="opacity-70 text-xs" dir="ltr">t.me/ahmaddragon</span><FlySpark />
+              </GlowButton>
+              <GlowButton tone="github" surface className="btn-ghost fly-host"
                 onClick={() => openExternalWithConfirm(GITHUB_URL, t('about.confirmGithub'), t('about.confirmGithubDetail', { url: GITHUB_URL }))}>
-                <Github size={16} /> {t('about.github')} <span className="opacity-70 text-xs" dir="ltr">github.com/Ahmaddragon11/DragonHub</span>
-              </motion.button>
+                <FlyIcon><Github size={16} /></FlyIcon> {t('about.github')} <span className="opacity-70 text-xs" dir="ltr">github.com/Ahmaddragon11/DragonHub</span><FlySpark />
+              </GlowButton>
             </div>
             <div className="relative text-xs opacity-50 mt-4 flex items-center justify-center gap-1">{t('about.techStack')} <Heart size={11} className="text-rose-400 fill-rose-400" /></div>
           </motion.div>

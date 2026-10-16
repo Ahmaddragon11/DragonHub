@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { deleteWithUndo } from '@/lib/undo'
 import { PageHeader, Empty, TagInput, ColorPicker } from '@/components/ui'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { uid, COLORS, cn, relTime, stripPath } from '@/lib/utils'
 import { renderMarkdown } from '@/lib/markdown'
 import { invoke, errorMessage } from '@/lib/api'
@@ -119,7 +120,7 @@ export default function Notes() {
         <select className="select w-auto text-xs" value={sort} onChange={(e) => setSort(e.target.value as any)} aria-label={t('common.sortBy')}>
           <option value="updated">{t('notes.sortUpdated')}</option><option value="created">{t('notes.sortCreated')}</option><option value="title">{t('notes.sortTitle')}</option>
         </select>
-        <button className="btn-primary" onClick={create}><Plus size={16} />{t('notes.newNote')}</button>
+        <GlowButton tone="amber" className="btn-primary fly-host" onClick={create}><FlyIcon><Plus size={16} /></FlyIcon> {t('notes.newNote')}<FlySpark /></GlowButton>
       </PageHeader>
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
         <aside className="card flex flex-col min-h-0 overflow-hidden">

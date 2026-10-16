@@ -321,6 +321,13 @@ export const CHANGELOG: ChangelogEntry[] = [
       { type: 'fixed', text: 'Update check reliably finds the newest stable release again (the rolling preview release no longer shadows it)' },
       { type: 'fixed', text: 'Deep backend hardening pass across downloads, files, archive, media, network, settings and vault services' },
       { type: 'security', text: 'Broader audit fixes: stricter IPC/preload allow-lists, bounded external-URL opening and hardened overlay channels' },
+      { type: 'added', text: 'Vault recovery: forgot your password? Restore an encrypted backup or erase the vault and start over (typed confirmation), with a real locked-state restore path in the main process' },
+      { type: 'added', text: 'Per-feature animated gradient rings across the dashboard tiles, page headers and contact buttons, each with its own hue' },
+      { type: 'added', text: 'Icon flight micro-interactions: button and sidebar glyphs lift on hover and fly away when pressed' },
+      { type: 'added', text: 'Layered background detail (masked micro-grid plus slowly drifting accent pools) that follows the ambient-glow and low-power settings' },
+      { type: 'changed', text: 'Section switching is a crossfade now - the incoming page mounts immediately, so a stalled animation can never leave the workspace blank' },
+      { type: 'changed', text: 'Media option lists use a new icon-based select control with aligned fields; smoother route transitions and richer text selection' },
+      { type: 'fixed', text: 'Select fields no longer show a repeated chevron glyph in dark mode (the theme background shorthand was resetting the arrow, tiling it across the field)' },
     ],
   },
   {

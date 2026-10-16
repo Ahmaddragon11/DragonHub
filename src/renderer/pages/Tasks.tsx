@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { CheckSquare, Plus, Trash2, Check, X, Calendar, LayoutGrid, List, AlertCircle, Search, Repeat, Flag, Hash, Sparkles, ListChecks } from 'lucide-react'
 import { useApp } from '@/store'
 import { PageHeader, Empty, Modal, TagInput, Field, Segmented, Tooltip } from '@/components/ui'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { uid, cn, relTime } from '@/lib/utils'
 import { moveTask, parseQuickAdd, isOverdue, PRIORITIES } from '@/lib/tasks'
 import { deleteWithUndo } from '@/lib/undo'
@@ -173,7 +174,7 @@ export default function Tasks() {
     <div className="h-full flex flex-col">
       <PageHeader icon={<CheckSquare />} title={t('tasks.title')} subtitle={`${t('tasks.openCount', { count: openCount })}${overdue ? ` · ${t('tasks.overdueCount', { count: overdue })}` : ''}`}>
         <Segmented value={view} onChange={setView} label={t('common.view')} options={[{ value: 'kanban', label: '', icon: <LayoutGrid size={14} />, title: t('tasks.kanban') }, { value: 'list', label: '', icon: <List size={14} />, title: t('tasks.listView') }]} />
-        <button className="btn-primary" onClick={() => setEdit(blank())}><Plus size={16} />{t('tasks.newTask')}</button>
+        <GlowButton tone="accent" className="btn-primary fly-host" onClick={() => setEdit(blank())}><FlyIcon><Plus size={16} /></FlyIcon> {t('tasks.newTask')}<FlySpark /></GlowButton>
       </PageHeader>
 
       {/* Smart quick-add: natural-language parsing with live token preview */}

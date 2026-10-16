@@ -13,6 +13,7 @@ import { invoke } from '@/lib/api'
 import { fuzzyMatch, highlightParts } from '@/lib/fuzzy'
 import { spring, useMotionPrefs, dialogVariants } from '@/lib/motion'
 import { Kbd, Tooltip, useFocusTrap } from '@/components/ui'
+import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { APP_VERSION, DEVELOPER, GITHUB_URL, TELEGRAM_URL } from '@shared/types'
 
 /** Ask the user to confirm, then open an external link in the default browser. */
@@ -236,7 +237,7 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
                       const meta = [badge > 0 ? t('common.items', { count: badge }) : '', dot ? t('about.updateAvailableBadge', { version: updateVersion ?? '' }) : ''].filter(Boolean).join(isRtl ? '، ' : ', ')
                       const btn = (
                         <button key={n.id} onClick={() => go(n.id)} aria-current={active ? 'page' : undefined} aria-label={collapsed ? (meta ? `${t(`nav.${n.id}`)} — ${meta}` : t(`nav.${n.id}`)) : undefined}
-                          className={cn('relative w-full flex items-center gap-2.5 rounded-[10px] h-9 text-[13px] group transition-colors duration-150',
+                          className={cn('relative w-full flex items-center gap-2.5 rounded-[10px] h-9 text-[13px] group transition-colors duration-150 fly-host',
                             collapsed ? 'justify-center px-0' : 'px-2.5',
                             active ? 'text-surface-950 font-medium' : 'text-surface-600 hover:text-surface-900 hover:bg-surface-200/70')}>
                           {active && (
@@ -245,7 +246,7 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
                               <span className="absolute start-0 top-2 bottom-2 w-[3px] rounded-full bg-accent" />
                             </motion.span>
                           )}
-                          <span className={cn('relative z-10 shrink-0 transition-colors', active ? 'text-accent' : 'text-surface-500 group-hover:text-surface-800')}>{n.icon}</span>
+                          <span className={cn('relative z-10 shrink-0 transition-colors', active ? 'text-accent' : 'text-surface-500 group-hover:text-surface-800')}><FlyIcon>{n.icon}</FlyIcon></span>
                           {!collapsed && <span className="relative z-10 truncate flex-1 text-start">{t(`nav.${n.id}`)}</span>}
                           {badge > 0 && (collapsed
                             ? <span aria-hidden className="absolute top-1 end-1.5 z-10 h-2 w-2 rounded-full bg-accent ring-2 ring-surface-100" />
@@ -273,12 +274,12 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
           <button className="btn-icon" aria-label={t('palette.lang')} onClick={() => setSettings({ language: language === 'ar' ? 'en' : 'ar' })}><Languages size={16} /></button>
         </Tooltip>
         <Tooltip label={t('about.contact')} side={collapsed ? (isRtl ? 'left' : 'right') : 'top'}>
-          <button className="btn-icon hover:!text-sky-500" aria-label={t('about.contact')}
-            onClick={() => confirmOpenExternal(TELEGRAM_URL, t('about.confirmTelegram'), t('about.confirmTelegramDetail', { url: TELEGRAM_URL }))}><Send size={15} /></button>
+          <GlowButton tone="telegram" surface className="btn-icon hover:!text-sky-500 fly-host" aria-label={t('about.contact')}
+            onClick={() => confirmOpenExternal(TELEGRAM_URL, t('about.confirmTelegram'), t('about.confirmTelegramDetail', { url: TELEGRAM_URL }))}><FlyIcon><Send size={15} /></FlyIcon><FlySpark /></GlowButton>
         </Tooltip>
         <Tooltip label={t('about.github')} side={collapsed ? (isRtl ? 'left' : 'right') : 'top'}>
-          <button className="btn-icon hover:!text-accent" aria-label={t('about.github')}
-            onClick={() => confirmOpenExternal(GITHUB_URL, t('about.confirmGithub'), t('about.confirmGithubDetail', { url: GITHUB_URL }))}><Github size={15} /></button>
+          <GlowButton tone="github" surface className="btn-icon hover:!text-accent fly-host" aria-label={t('about.github')}
+            onClick={() => confirmOpenExternal(GITHUB_URL, t('about.confirmGithub'), t('about.confirmGithubDetail', { url: GITHUB_URL }))}><FlyIcon><Github size={15} /></FlyIcon><FlySpark /></GlowButton>
         </Tooltip>
         {!mobile && (
           <Tooltip label={collapsed ? t('side.expand') : t('side.collapse')} shortcut="Ctrl+B" side={collapsed ? (isRtl ? 'left' : 'right') : 'top'}>
