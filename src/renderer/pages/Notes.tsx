@@ -7,7 +7,7 @@ import { deleteWithUndo } from '@/lib/undo'
 import { PageHeader, Empty, TagInput, ColorPicker } from '@/components/ui'
 import { uid, COLORS, cn, relTime, stripPath } from '@/lib/utils'
 import { renderMarkdown } from '@/lib/markdown'
-import { invoke } from '@/lib/api'
+import { invoke, errorMessage } from '@/lib/api'
 import type { Note } from '@shared/types'
 
 export default function Notes() {
@@ -41,6 +41,11 @@ export default function Notes() {
   }, [pageParams, notes])
 
   const update = (id: string, patch: Partial<Note>) => { saveNotes(useApp.getState().notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: Date.now() } : n))); setSavedAt(Date.now()) }
+  useEffect(() => {
+    if (!savedAt) return
+    const i = setTimeout(() => setSavedAt(null), 1200)
+    return () => clearTimeout(i)
+  }, [savedAt])
   const remove = async (id: string) => {
     if (await deleteWithUndo('notes', id, t('notes.noteDeleted')) && sel === id) setSel(null)
   }
@@ -97,7 +102,7 @@ export default function Notes() {
       toast(t('common.blockedUrl'), 'error')
       return
     }
-    invoke('app:openExternal', url).catch((e: unknown) => toast(e instanceof Error ? e.message : t('toast.error'), 'error'))
+    invoke('app:openExternal', url).catch((e: unknown) => toast(errorMessage(e, t('toast.error')), 'error'))
   }
   const handleExtNav = (e: React.MouseEvent) => {
     const a = (e.target as HTMLElement).closest?.('a[data-ext]') as HTMLAnchorElement | null
@@ -188,7 +193,7 @@ export default function Notes() {
                 {mode !== 'edit' && <div className={cn('h-full overflow-auto p-4 prose-dh selectable', mode === 'split' && 'border-s border-surface-300/60')} dangerouslySetInnerHTML={{ __html: mdHtml }} onClick={handleExtNav} onAuxClick={handleExtNav} />}
               </div>
               <footer className="flex items-center gap-4 px-4 py-1.5 border-t border-surface-300/60 text-[11px] text-surface-500 flex-wrap">
-                <span>{t('notes.wordCount', { count: words })}</span><span>{t('notes.chars', { count: cur.content.length })}</span><span className="ms-auto flex items-center gap-1.5" aria-live="polite"><span className={cn('h-1.5 w-1.5 rounded-full transition-colors duration-500', savedAt && Date.now() - savedAt < 1200 ? 'bg-amber-500' : 'bg-emerald-500')} />{t('notes.savedLocally')} · {relTime(cur.updatedAt, settings.language)}</span>
+                <span>{t('notes.wordCount', { count: words })}</span><span>{t('notes.chars', { count: cur.content.length })}</span><span className="ms-auto flex items-center gap-1.5" aria-live="polite"><span className={cn('h-1.5 w-1.5 rounded-full transition-colors duration-500', savedAt ? 'bg-amber-500' : 'bg-emerald-500')} />{t('notes.savedLocally')} · {relTime(cur.updatedAt, settings.language)}</span>
               </footer>
             </>
           )}

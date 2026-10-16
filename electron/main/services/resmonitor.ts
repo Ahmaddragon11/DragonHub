@@ -59,8 +59,10 @@ export function getResConfig(): ResConfig {
 }
 
 export function setResConfig(patch: Partial<ResConfig>): ResConfig {
-  const next = { ...getResConfig(), ...(patch && typeof patch === 'object' ? patch : {}) }
-  try { dataCollections.set(RES_CONFIG_KEY, next) } catch { /* in-memory only */ }
+  const merged = { ...getResConfig(), ...(patch && typeof patch === 'object' ? patch : {}) }
+  try { dataCollections.set(RES_CONFIG_KEY, merged) } catch { /* in-memory only */ }
+  // Re-read through the sanitizer so a raw patch can never drive the live timer.
+  const next = getResConfig()
   // Apply interval change on the next tick.
   if (timer !== null) {
     clearInterval(timer)
@@ -355,6 +357,7 @@ function toResProcesses(topN: number): ResProcess[] {
 
 // ---------- snapshot / history / engine ----------
 let timer: ReturnType<typeof setInterval> | null = null
+let bootTimeout: ReturnType<typeof setTimeout> | null = null
 let getWinFn: () => BrowserWindow | null = () => null
 let getCardFn: () => BrowserWindow | null = () => null
 let inFlight = false
@@ -482,11 +485,12 @@ export function startResMonitor(
   // a few seconds so app startup isn't competing for disk/CPU. The Resources
   // page falls back to a local CPU sample until the first tick lands.
   const bootTimer = timer
-  setTimeout(() => { if (timer === bootTimer && timer !== null) void tick() }, 4000)
+  bootTimeout = setTimeout(() => { if (timer === bootTimer && timer !== null) void tick() }, 4000)
 }
 
 export function stopResMonitor(): void {
   if (timer !== null) { clearInterval(timer); timer = null }
+  if (bootTimeout !== null) { clearTimeout(bootTimeout); bootTimeout = null }
 }
 
 export function getResSnapshot(): ResLive {

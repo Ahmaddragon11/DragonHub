@@ -222,7 +222,19 @@ export async function rename(from: string, to: string, opts?: { overwrite?: bool
     ;(e as NodeJS.ErrnoException).code = 'EEXIST'
     throw e
   }
-  await fsp.rename(s, d)
+  try {
+    await fsp.rename(s, d)
+  } catch (firstErr) {
+    // Cross-device rename: same copy+verify+remove fallback move() uses.
+    if ((firstErr as NodeJS.ErrnoException)?.code !== 'EXDEV') throw firstErr
+    await copy(s, d, opts)
+    try {
+      await fsp.stat(d)
+    } catch {
+      throw firstErr
+    }
+    await fsp.rm(s, { recursive: true, force: true })
+  }
 }
 
 /** Into-itself check that respects case-insensitive filesystems + symlinked prefixes. */

@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import dns from 'node:dns/promises'
 import net from 'node:net'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { BrowserWindow, app } from 'electron'
 import type { DownloadItem } from '../../../src/shared/types'
 import { dataCollections, settingsStore } from './settings'
@@ -279,7 +279,10 @@ function pump(win: BrowserWindow | null) {
   const slots = Math.max(1, s.maxParallelDownloads) - active
   if (slots <= 0) return
   const queued = items.filter((i) => i.status === 'queued').slice(0, slots)
-  for (const q of queued) void run(win, q)
+  for (const q of queued) {
+    if (q.kind === 'media') void runMedia(win, q)
+    else void run(win, q)
+  }
 }
 
 async function run(win: BrowserWindow | null, item: DownloadItem) {
@@ -376,6 +379,9 @@ async function run(win: BrowserWindow | null, item: DownloadItem) {
       if (!c?.paused) { try { await fsp.rm(partPath(), { force: true }) } catch { /* */ } }
     } else {
       update({ status: 'error', error: e?.message || String(e), speed: 0, eta: 0 })
+      // Never leave a partial .dhpart behind on failure (only ever inside the
+      // download dir — poisoned savePaths were already reset above).
+      try { await fsp.rm(partPath(), { force: true }) } catch { /* */ }
     }
   } finally {
     controllers.delete(item.id)
@@ -507,27 +513,64 @@ export function clearFinished() {
 
 // ---------- Media downloader (yt-dlp) ----------
 let ytdlpPath: string | null = null
+const mediaJobOpts = new Map<string, { format?: string; audioOnly?: boolean }>()
+const YTDLP_MIN_BYTES = 1024 * 1024
+const YTDLP_RELEASE_BASE = 'https://github.com/yt-dlp/yt-dlp/releases/download/'
+const YTDLP_CHECKSUM_ASSET = 'SHA2-256SUMS'
+
+function sha256File(p: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const h = createHash('sha256')
+    const s = fs.createReadStream(p)
+    s.on('data', (d) => h.update(d))
+    s.on('error', reject)
+    s.on('end', () => resolve(h.digest('hex')))
+  })
+}
+
+/** Fetch the SHA2-256SUMS published for a specific yt-dlp release and return
+ *  the expected SHA-256 for the given asset. Fails closed when the manifest is
+ *  missing or does not cover the asset. */
+async function expectedYtDlpSha256(version: string, assetName: string): Promise<string> {
+  const url = `${YTDLP_RELEASE_BASE}${encodeURIComponent(version)}/${YTDLP_CHECKSUM_ASSET}`
+  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(20_000), headers: { 'user-agent': 'DragonHub' } })
+  if (!res.ok) throw new Error(`Could not fetch the yt-dlp checksums (HTTP ${res.status})`)
+  const text = await res.text()
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^([0-9a-f]{64})[ \t]+\*?(.+)$/i.exec(line.trim())
+    if (m && path.basename(m[2].trim()) === assetName) return m[1].toLowerCase()
+  }
+  throw new Error('The published yt-dlp checksums do not cover the binary — refusing to execute')
+}
+
 async function ensureYtDlp(win: BrowserWindow | null): Promise<string> {
   const YTDlpWrap = (await import('yt-dlp-wrap')).default
   const binDir = path.join(app.getPath('userData'), 'bin')
   await fsp.mkdir(binDir, { recursive: true })
-  const bin = path.join(binDir, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
+  const assetName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
+  const bin = path.join(binDir, assetName)
   const existing = await fsp.lstat(bin).catch(() => null)
   // Refuse pre-planted junk: only a real non-empty file is executed, else re-download.
-  // NOTE: downloadFromGithub() performs NO checksum/signature verification —
-  // the fetched binary is executed as-is. The 1MB minimum below is only a
-  // junk/placeholder filter, NOT an authenticity check. On failure, refuse to
-  // execute rather than running a truncated payload.
-  const MIN_YTDLP_BYTES = 1024 * 1024
-  if (!existing || !existing.isFile() || existing.size < MIN_YTDLP_BYTES) {
+  if (!existing || !existing.isFile() || existing.size < YTDLP_MIN_BYTES) {
     if (existing) await fsp.rm(bin, { force: true }).catch(() => {})
     win?.webContents.send('downloads:ytdlp-status', { status: 'installing' })
-    await YTDlpWrap.downloadFromGithub(bin)
+    // Pin the exact release we download and verify against ITS published
+    // SHA2-256SUMS so a swapped/truncated binary is never executed.
+    const releases = await YTDlpWrap.getGithubReleases(1, 1)
+    const version = Array.isArray(releases) ? releases[0]?.tag_name : undefined
+    if (typeof version !== 'string' || !version) throw new Error('Could not resolve a yt-dlp release to install')
+    const expected = await expectedYtDlpSha256(version, assetName)
+    await YTDlpWrap.downloadFromGithub(bin, version)
     // Post-download gate: refuse to execute truncated/placeholder payloads.
     const fresh = await fsp.lstat(bin).catch(() => null)
-    if (!fresh || !fresh.isFile() || fresh.size < MIN_YTDLP_BYTES) {
+    if (!fresh || !fresh.isFile() || fresh.size < YTDLP_MIN_BYTES) {
       await fsp.rm(bin, { force: true }).catch(() => {})
       throw new Error('yt-dlp download failed verification (size < 1MB) — refusing to execute')
+    }
+    const actual = await sha256File(bin)
+    if (actual !== expected) {
+      await fsp.rm(bin, { force: true }).catch(() => {})
+      throw new Error('yt-dlp download failed its SHA-256 integrity check — refusing to execute')
     }
     win?.webContents.send('downloads:ytdlp-status', { status: 'ready' })
   }
@@ -536,7 +579,7 @@ async function ensureYtDlp(win: BrowserWindow | null): Promise<string> {
 }
 
 export async function mediaInfo(win: BrowserWindow | null, url: string) {
-  validateUrl(url)
+  await validateRemoteUrl(url)
   const YTDlpWrap = (await import('yt-dlp-wrap')).default
   const bin = ytdlpPath || (await ensureYtDlp(win))
   const y = new YTDlpWrap(bin)
@@ -571,11 +614,8 @@ export async function mediaInfo(win: BrowserWindow | null, url: string) {
 }
 
 export async function mediaDownload(win: BrowserWindow | null, url: string, opts: { format?: string; audioOnly?: boolean; dir?: string }) {
-  validateUrl(url)
-  const YTDlpWrap = (await import('yt-dlp-wrap')).default
-  const bin = ytdlpPath || (await ensureYtDlp(win))
-  const dir = resolveTargetDir(opts.dir)
-  await fsp.mkdir(dir, { recursive: true })
+  if (items.length >= 100) throw new Error('Download queue is full (max 100) — finish, cancel or remove existing downloads first')
+  const cleanUrl = await validateRemoteUrl(url)
   if (opts.format !== undefined) {
     // Format selector allowlist: named presets (best / bestaudio /
     // bestvideo+bestaudio) or a tight safe pattern (lowercase alnum + _ + - /
@@ -587,40 +627,61 @@ export async function mediaDownload(win: BrowserWindow | null, url: string, opts
       throw new Error('Invalid format selector (allowed: best, bestaudio, bestvideo+bestaudio, or [a-z0-9_+/-] <64 chars)')
     }
   }
+  // Resolve the binary up-front so install failures still surface to the caller.
+  if (ytdlpPath === null) await ensureYtDlp(win)
+  const dir = resolveTargetDir(opts.dir)
+  await fsp.mkdir(dir, { recursive: true })
   const item: DownloadItem = {
-    id: randomUUID(), url, filename: 'media', savePath: dir, size: 0, received: 0, speed: 0, eta: 0,
-    status: 'downloading', segments: 1, supportsRange: false, createdAt: Date.now(), kind: 'media',
+    id: randomUUID(), url: cleanUrl, filename: 'media', savePath: dir, size: 0, received: 0, speed: 0, eta: 0,
+    status: 'queued', segments: 1, supportsRange: false, createdAt: Date.now(), kind: 'media',
   }
+  mediaJobOpts.set(item.id, { format: opts.format, audioOnly: opts.audioOnly })
   items.unshift(item); persist(); emit(win, item)
-  const y = new YTDlpWrap(bin)
-  const args = [url, '-o', path.join(dir, '%(title).120s.%(ext)s'), '--no-playlist', '--newline', '-N', '8']
-  if (opts.audioOnly) args.push('-x', '--audio-format', 'mp3')
-  else if (opts.format) args.push('-f', opts.format)
-  else args.push('-f', 'bv*+ba/b', '--merge-output-format', 'mp4')
-  try {
-    const ffmpegPath = (await import('@ffmpeg-installer/ffmpeg')).path
-    args.push('--ffmpeg-location', ffmpegPath)
-  } catch { /* */ }
-  const ee = y.exec(args)
-  const ctrl = { abort: new AbortController(), paused: false }
-  controllers.set(item.id, ctrl)
-  ctrl.abort.signal.addEventListener('abort', () => { try { ee.ytDlpProcess?.kill() } catch { /* */ } })
-  ee.on('progress', (p: any) => {
-    item.received = p.percent ?? 0; item.size = 100
-    item.speed = parseSpeed(p.currentSpeed); item.eta = parseEta(p.eta)
-    emit(win, item)
-  })
-  ee.on('ytDlpEvent', (type: string, data: string) => {
-    if (type === 'download' && data.includes('Destination:')) {
-      item.filename = path.basename(data.split('Destination:')[1].trim()); emit(win, item)
-    }
-  })
-  ee.on('error', (e: any) => { item.status = ctrl.abort.signal.aborted ? 'cancelled' : 'error'; item.error = String(e?.message || e); controllers.delete(item.id); persist(); emit(win, item) })
-  ee.on('close', () => {
-    if (item.status === 'downloading') { item.status = 'completed'; item.received = 100; item.completedAt = Date.now() }
-    controllers.delete(item.id); persist(); emit(win, item)
-  })
+  pump(win)
   return item
+}
+
+async function runMedia(win: BrowserWindow | null, item: DownloadItem) {
+  // Mark active synchronously so a concurrent pump() cannot re-dispatch the item.
+  item.status = 'downloading'; emit(win, item)
+  const opts = mediaJobOpts.get(item.id) ?? {}
+  const dir = item.savePath
+  try {
+    const YTDlpWrap = (await import('yt-dlp-wrap')).default
+    const bin = ytdlpPath || (await ensureYtDlp(win))
+    const y = new YTDlpWrap(bin)
+    const args = [item.url, '-o', path.join(dir, '%(title).120s.%(ext)s'), '--no-playlist', '--newline', '-N', '8']
+    if (opts.audioOnly) args.push('-x', '--audio-format', 'mp3')
+    else if (opts.format) args.push('-f', opts.format)
+    else args.push('-f', 'bv*+ba/b', '--merge-output-format', 'mp4')
+    try {
+      const ffmpegPath = (await import('@ffmpeg-installer/ffmpeg')).path
+      args.push('--ffmpeg-location', ffmpegPath)
+    } catch { /* */ }
+    const ee = y.exec(args)
+    const ctrl = { abort: new AbortController(), paused: false }
+    controllers.set(item.id, ctrl)
+    ctrl.abort.signal.addEventListener('abort', () => { try { ee.ytDlpProcess?.kill() } catch { /* */ } })
+    ee.on('progress', (p: any) => {
+      item.received = p.percent ?? 0; item.size = 100
+      item.speed = parseSpeed(p.currentSpeed); item.eta = parseEta(p.eta)
+      emit(win, item)
+    })
+    ee.on('ytDlpEvent', (type: string, data: string) => {
+      if (type === 'download' && data.includes('Destination:')) {
+        item.filename = path.basename(data.split('Destination:')[1].trim()); emit(win, item)
+      }
+    })
+    ee.on('error', (e: any) => { item.status = ctrl.abort.signal.aborted ? 'cancelled' : 'error'; item.error = String(e?.message || e); controllers.delete(item.id); mediaJobOpts.delete(item.id); persist(); emit(win, item); pump(win) })
+    ee.on('close', () => {
+      if (ctrl.abort.signal.aborted) item.status = 'cancelled'
+      else if (item.status === 'downloading') { item.status = 'completed'; item.received = 100; item.completedAt = Date.now() }
+      controllers.delete(item.id); mediaJobOpts.delete(item.id); persist(); emit(win, item); pump(win)
+    })
+  } catch (e: any) {
+    item.status = 'error'; item.error = e?.message || String(e); controllers.delete(item.id); mediaJobOpts.delete(item.id)
+    persist(); emit(win, item); pump(win)
+  }
 }
 
 function parseSpeed(s?: string) {

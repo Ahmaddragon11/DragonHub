@@ -104,7 +104,7 @@ const MAX_DATA_BYTES = 50 * 1024 * 1024
 // (network plan/limits/history) whose corruption could spoof usage or the
 // firewall kill-switch. Only their dedicated validated handlers (net:setPlan,
 // net:setLimits, netmon rollover) may write them.
-export const GENERIC_SET_BLOCKED_KEYS = new Set(['netState', 'netPlan', 'netLimits', 'netAppBlocks'])
+export const GENERIC_SET_BLOCKED_KEYS = new Set(['netState', 'netPlan', 'netLimits', 'netAppBlocks', 'downloads', 'resConfig', 'resCardConfig'])
 const dataStore = new Store<Record<string, unknown>>({ name: 'dragonhub-data' })
 export const dataCollections = {
   get<T>(key: string, fallback: T): T {

@@ -4,7 +4,7 @@ import { Image as ImageIcon, FolderOpen, RotateCw, FlipVertical, FlipHorizontal,
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle, Slider, Empty } from '@/components/ui'
-import { invoke, on, toFileUrl } from '@/lib/api'
+import { invoke, on, toFileUrl, errorMessage } from '@/lib/api'
 import { formatBytes, stripPath, uid, cn, IMAGE_EXT } from '@/lib/utils'
 import type { ImageOp, JobProgress } from '@shared/types'
 
@@ -53,7 +53,7 @@ export default function Images() {
 
   const load = async (p: string) => {
     setSrc(p); setPreview(toFileUrl(p) + '?v=' + Date.now())
-    try { const i = await invoke('img:info', p); setInfo(i); setW(String(i.width ?? '')); setH(String(i.height ?? '')) } catch (e: any) { toast(String(e.message || e), 'error') }
+    try { const i = await invoke('img:info', p); setInfo(i); setW(String(i.width ?? '')); setH(String(i.height ?? '')) } catch (e) { toast(errorMessage(e), 'error') }
   }
   const openFile = async () => {
     const r = await invoke('dialog:openFile', { filters: [{ name: 'Images', extensions: [...IMAGE_EXT] }] })
@@ -74,7 +74,7 @@ export default function Images() {
     const out = await invoke('dialog:save', { defaultPath: `${pi.dir}${pi.sep}${pi.name}-edited.${ext}`, filters: [{ name: format.toUpperCase(), extensions: [ext] }] })
     if (!out) return
     setBusy(true); setProgress(null)
-    try { await invoke('img:process', 'img-' + uid(), buildOp(src, out)); toast(t('common.done'), 'success') } catch (e: any) { toast(String(e.message || e), 'error') } finally { setBusy(false) }
+    try { await invoke('img:process', 'img-' + uid(), buildOp(src, out)); toast(t('common.done'), 'success') } catch (e) { toast(errorMessage(e), 'error') } finally { setBusy(false) }
   }
   const addBatch = async () => {
     const r = await invoke('dialog:openFile', { multi: true, filters: [{ name: 'Images', extensions: [...IMAGE_EXT] }] })
@@ -92,7 +92,7 @@ export default function Images() {
       try {
         const pi = await invoke('fs:pathInfo', f)
         await invoke('img:process', 'img-b-' + uid(), { input: f, output: `${dir}${pi.sep}${pi.name}.${ext}`, format: bFmt, quality: bQ, resize: bW ? { width: +bW, fit: 'inside' } : undefined, removeMetadata: true } as ImageOp)
-      } catch (e: any) { if (!batchCancel.current) toast(`${stripPath(f)}: ${e.message || e}`, 'error') }
+      } catch (e) { if (!batchCancel.current) toast(`${stripPath(f)}: ${errorMessage(e)}`, 'error') }
       setBDone((d) => d + 1)
     }
     setBusy(false); toast(batchCancel.current ? t('common.cancelAction') : t('common.done'), batchCancel.current ? 'info' : 'success')
@@ -115,7 +115,7 @@ export default function Images() {
       {tab === 'edit' ? (
         <div className="flex flex-1 min-h-0 gap-4 p-4">
           <div className="flex-1 card flex items-center justify-center overflow-hidden relative bg-[radial-gradient(circle_at_center,rgba(255,255,255,.04),transparent)]">
-            {src ? <img src={preview} alt="" style={filterStyle} className="max-w-full max-h-full object-contain drop-shadow-2xl" /> : <Empty icon={<ImageIcon size={48} />} text={t('images.noImage')} action={<button className="btn-primary" onClick={openFile}>{t('images.open')}</button>} />}
+            {src ? <img src={preview} alt={stripPath(src)} style={filterStyle} className="max-w-full max-h-full object-contain drop-shadow-2xl" /> : <Empty icon={<ImageIcon size={48} />} text={t('images.noImage')} action={<button className="btn-primary" onClick={openFile}>{t('images.open')}</button>} />}
             {src && (
               <button className="btn-icon absolute top-3 end-3 glass" onClick={() => setFullscreen(true)} title={t('images.fullscreen')} aria-label={t('images.fullscreen')}><Maximize2 size={16} /></button>
             )}
@@ -137,8 +137,8 @@ export default function Images() {
             <div className="divider" />
             <section className="flex gap-2">
               <button className="btn flex-1" onClick={() => setRotate((r) => (r + 90) % 360)}><RotateCw size={14} /> {rotate}°</button>
-              <button className={cn('btn', flip && 'bg-accent/20 text-accent')} onClick={() => setFlip(!flip)}><FlipVertical size={14} /></button>
-              <button className={cn('btn', flop && 'bg-accent/20 text-accent')} onClick={() => setFlop(!flop)}><FlipHorizontal size={14} /></button>
+              <button className={cn('btn', flip && 'bg-accent/20 text-accent')} title={t('images.flip')} aria-label={t('images.flip')} onClick={() => setFlip(!flip)}><FlipVertical size={14} /></button>
+              <button className={cn('btn', flop && 'bg-accent/20 text-accent')} title={t('images.flop')} aria-label={t('images.flop')} onClick={() => setFlop(!flop)}><FlipHorizontal size={14} /></button>
             </section>
             <div className="divider" />
             <section className="space-y-3">
@@ -175,7 +175,7 @@ export default function Images() {
                   <div key={f} className="relative group rounded-xl overflow-hidden bg-surface-200 aspect-square">
                     <img src={toFileUrl(f)} className="w-full h-full object-cover" alt="" loading="lazy" decoding="async" />
                     <div className="absolute inset-x-0 bottom-0 p-1 text-[10px] truncate bg-black/50 text-white">{stripPath(f)}</div>
-                    <button className="absolute top-1 end-1 btn-icon bg-black/60 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => setBatch((b) => b.filter((x) => x !== f))}><X size={12} /></button>
+                    <button className="absolute top-1 end-1 btn-icon bg-black/60 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => setBatch((b) => b.filter((x) => x !== f))}><X size={12} /></button>
                   </div>
                 ))}
               </div>
@@ -184,7 +184,7 @@ export default function Images() {
           <div className="card p-4 space-y-3">
             <Field label={t('images.format')}><select className="select" value={bFmt} onChange={(e) => setBFmt(e.target.value as Fmt)}>{FORMATS.map((f) => <option key={f}>{f}</option>)}</select></Field>
             <Field label={t('images.quality')}><Slider value={bQ} min={1} max={100} step={1} onChange={setBQ} suffix="%" /></Field>
-            <Field label={t('images.width') + ' (max)'}><input className="input" value={bW} onChange={(e) => setBW(e.target.value.replace(/\D/g, ''))} placeholder="—" /></Field>
+            <Field label={t('images.width') + ' (' + t('net.limit') + ')'}><input className="input" value={bW} onChange={(e) => setBW(e.target.value.replace(/\D/g, ''))} placeholder="—" /></Field>
             {busy && <Progress value={(bDone / Math.max(1, batch.length)) * 100} />}
             <button className="btn-primary w-full" disabled={!batch.length || busy} onClick={convertAll}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} {t('images.convertAll')}</button>
             {busy && <button className="btn-ghost w-full" onClick={() => { batchCancel.current = true }}>{t('common.cancelAction')}</button>}
@@ -194,7 +194,7 @@ export default function Images() {
       {fullscreen && src && (
         <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={() => setFullscreen(false)} role="dialog" aria-modal="true" aria-label={t('images.fullscreen')}>
           <button className="btn-icon absolute top-4 end-4 bg-white/10 text-white hover:bg-white/20" onClick={() => setFullscreen(false)} title={t('images.exitFullscreen')} aria-label={t('images.exitFullscreen')} autoFocus><X size={18} /></button>
-          <img src={preview} alt="" style={filterStyle} className="max-w-full max-h-full object-contain" onClick={(e) => e.stopPropagation()} />
+          <img src={preview} alt={stripPath(src)} style={filterStyle} className="max-w-full max-h-full object-contain" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
     </div>

@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { deleteWithUndo } from '@/lib/undo'
 import { PageHeader, Empty, Modal, TagInput, ColorPicker, Progress, Field } from '@/components/ui'
+import { usePersistedView } from '@/components/usePersistedView'
 import { uid, COLORS, cn, relTime } from '@/lib/utils'
 import { invoke } from '@/lib/api'
 import type { Project, ProjectStatus } from '@shared/types'
@@ -37,7 +38,7 @@ export default function Projects() {
   const { t } = useTranslation()
   const { projects, saveProjects, tasks, pageParams, consumeParams, toast, settings, touchRecent } = useApp(useShallow((s) => ({ projects: s.projects, saveProjects: s.saveProjects, tasks: s.tasks, pageParams: s.pageParams, consumeParams: s.consumeParams, toast: s.toast, settings: s.settings, touchRecent: s.touchRecent })))
   const [edit, setEdit] = useState<Project | null>(null)
-  const [view, setView] = useState<'board' | 'list'>('board')
+  const [view, setView] = usePersistedView('dh:projectsView', ['board', 'list'] as const, 'board')
   const [q, setQ] = useState('')
   const [ms, setMs] = useState(''); const [linkL, setLinkL] = useState(''); const [linkU, setLinkU] = useState('')
 
@@ -167,7 +168,7 @@ export default function Projects() {
                   <div key={i} className="flex items-center gap-2 rounded-lg bg-surface-200/60 px-2 py-1.5 text-sm"><Link2 size={14} className="text-accent shrink-0" /><span className="flex-1 min-w-0 truncate">{l.label}</span>
                     <button className="btn-icon p-1 shrink-0" title={t('common.open')} aria-label={t('common.open')} onClick={() => invoke('app:openExternal', l.url)}><ExternalLink size={13} /></button><button className="shrink-0" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => setEdit({ ...edit, links: edit.links.filter((_, j) => j !== i) })}><X size={13} /></button></div>))}
                   <div className="flex gap-2 flex-wrap"><input className="input flex-1 min-w-[120px]" placeholder={t('common.name')} value={linkL} onChange={(e) => setLinkL(e.target.value)} /><input className="input flex-1 min-w-[120px]" placeholder="https://" value={linkU} onChange={(e) => setLinkU(e.target.value)} />
-                    <button className="btn-soft shrink-0" onClick={() => { if (/^https?:\/\//.test(linkU)) { setEdit({ ...edit, links: [...edit.links, { label: linkL || linkU, url: linkU }] }); setLinkL(''); setLinkU('') } }}><Plus size={14} /></button></div>
+                    <button className="btn-soft shrink-0" onClick={() => { if (/^https?:\/\//.test(linkU)) { setEdit({ ...edit, links: [...edit.links, { label: linkL || linkU, url: linkU }] }); setLinkL(''); setLinkU('') } else { toast(t('downloads.invalidUrl'), 'error') } }}><Plus size={14} /></button></div>
                 </div>
               </div>
               <Field label={t('projects.notes')}><textarea className="input min-h-[100px] font-mono text-xs" value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>

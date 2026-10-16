@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import {
   LayoutDashboard, StickyNote, Lightbulb, CheckSquare, FolderOpen, Code2, Download, Archive, Image, Clapperboard, ShieldCheck,
-  Keyboard, Settings, Info, Minus, Square, X, Copy, Search, ChevronsLeft, ChevronsRight, ChevronDown, Sun, Moon, Languages, Send, Wifi, Gauge,
+  Keyboard, Settings, Info, Minus, Square, X, Copy, Search, ChevronsLeft, ChevronsRight, ChevronDown, Sun, Moon, Languages, Send, Github, Wifi, Gauge,
   ArrowLeft, ArrowRight, Menu, CornerDownLeft, History, PanelLeft, Monitor, CircleHelp, FileText, Activity, Camera,
 } from 'lucide-react'
 import { useApp, type PageId, type RecentKind } from '@/store'
@@ -13,7 +13,14 @@ import { invoke } from '@/lib/api'
 import { fuzzyMatch, highlightParts } from '@/lib/fuzzy'
 import { spring, useMotionPrefs, dialogVariants } from '@/lib/motion'
 import { Kbd, Tooltip, useFocusTrap } from '@/components/ui'
-import { APP_VERSION, DEVELOPER } from '@shared/types'
+import { APP_VERSION, DEVELOPER, GITHUB_URL, TELEGRAM_URL } from '@shared/types'
+
+/** Ask the user to confirm, then open an external link in the default browser. */
+async function confirmOpenExternal(url: string, message: string, detail: string) {
+  try {
+    if (await invoke<boolean>('dialog:confirm', message, detail)) await invoke('app:openExternal', url)
+  } catch { /* user cancelled or the URL was blocked */ }
+}
 
 export type NavGroup = 'workspace' | 'filesMedia' | 'internet' | 'tools' | 'device' | 'security' | 'system'
 
@@ -133,12 +140,13 @@ export function TitleBar({ onMenu }: { onMenu?: () => void }) {
 
 /* ==================================================================== Sidebar */
 export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mobile' | 'narrow' | 'wide'; drawerOpen: boolean; onCloseDrawer: () => void }) {
-  const { page, navigate, setSettings, userCollapsed, theme, language, systemTheme, openTasks, activeDl, updateAvailable } = useApp(useShallow((s) => ({
+  const { page, navigate, setSettings, userCollapsed, theme, language, systemTheme, openTasks, activeDl, updateAvailable, updateVersion } = useApp(useShallow((s) => ({
     page: s.page, navigate: s.navigate, setSettings: s.setSettings, userCollapsed: s.settings.sidebarCollapsed,
     theme: s.settings.theme, language: s.settings.language, systemTheme: s.systemTheme,
     openTasks: s.tasks.reduce((n, x) => n + (x.status !== 'done' ? 1 : 0), 0),
     activeDl: s.downloads.reduce((n, d) => n + (d.status === 'downloading' || d.status === 'queued' ? 1 : 0), 0),
     updateAvailable: !!s.updateAvailableVersion,
+    updateVersion: s.updateAvailableVersion,
   })))
   const { t } = useTranslation()
   const { reduced } = useMotionPrefs()
@@ -223,8 +231,11 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
                       const active = page === n.id
                       const badge = badgeOf(n.id)
                       const dot = dotOf(n.id)
+                      // Screen-reader description of badges/dots; the visual marks themselves are
+                      // decorative (aria-hidden) so assistive tech announces a single, clear label.
+                      const meta = [badge > 0 ? t('common.items', { count: badge }) : '', dot ? t('about.updateAvailableBadge', { version: updateVersion ?? '' }) : ''].filter(Boolean).join(isRtl ? '، ' : ', ')
                       const btn = (
-                        <button key={n.id} onClick={() => go(n.id)} aria-current={active ? 'page' : undefined} aria-label={collapsed ? t(`nav.${n.id}`) : undefined}
+                        <button key={n.id} onClick={() => go(n.id)} aria-current={active ? 'page' : undefined} aria-label={collapsed ? (meta ? `${t(`nav.${n.id}`)} — ${meta}` : t(`nav.${n.id}`)) : undefined}
                           className={cn('relative w-full flex items-center gap-2.5 rounded-[10px] h-9 text-[13px] group transition-colors duration-150',
                             collapsed ? 'justify-center px-0' : 'px-2.5',
                             active ? 'text-surface-950 font-medium' : 'text-surface-600 hover:text-surface-900 hover:bg-surface-200/70')}>
@@ -237,11 +248,12 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
                           <span className={cn('relative z-10 shrink-0 transition-colors', active ? 'text-accent' : 'text-surface-500 group-hover:text-surface-800')}>{n.icon}</span>
                           {!collapsed && <span className="relative z-10 truncate flex-1 text-start">{t(`nav.${n.id}`)}</span>}
                           {badge > 0 && (collapsed
-                            ? <span className="absolute top-1 end-1.5 z-10 h-2 w-2 rounded-full bg-accent ring-2 ring-surface-100" aria-label={String(badge)} />
-                            : <motion.span key={badge} initial={reduced ? false : { scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring.snappy}
+                            ? <span aria-hidden className="absolute top-1 end-1.5 z-10 h-2 w-2 rounded-full bg-accent ring-2 ring-surface-100" />
+                            : <motion.span key={badge} aria-hidden initial={reduced ? false : { scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring.snappy}
                                 className="relative z-10 text-[10.5px] tabular-nums font-semibold rounded-md px-1.5 min-w-[20px] h-5 grid place-items-center bg-surface-200 text-surface-600 dark:bg-surface-400/40">{badge > 99 ? '99+' : badge}</motion.span>)}
-                          {dot && <motion.span key="dot" initial={reduced ? false : { scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring.snappy}
-                            className={cn('z-10 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-surface-100 dark:ring-surface-300', collapsed ? 'absolute top-1 end-1.5' : 'relative ms-auto')} aria-label={t('about.updateAvailableBadge', { version: useApp.getState().updateAvailableVersion ?? '' })} />}
+                          {dot && <motion.span key="dot" aria-hidden initial={reduced ? false : { scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={spring.snappy}
+                            className={cn('z-10 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-surface-100 dark:ring-surface-300', collapsed ? 'absolute top-1 end-1.5' : 'relative ms-auto')} />}
+                          {!collapsed && meta && <span className="sr-only">{meta}</span>}
                         </button>
                       )
                       return collapsed ? <Tooltip key={n.id} label={t(`nav.${n.id}`)} side={isRtl ? 'left' : 'right'}>{btn}</Tooltip> : btn
@@ -261,7 +273,12 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
           <button className="btn-icon" aria-label={t('palette.lang')} onClick={() => setSettings({ language: language === 'ar' ? 'en' : 'ar' })}><Languages size={16} /></button>
         </Tooltip>
         <Tooltip label={t('about.contact')} side={collapsed ? (isRtl ? 'left' : 'right') : 'top'}>
-          <button className="btn-icon hover:!text-sky-500" aria-label={t('about.contact')} onClick={() => invoke('app:openTelegram')}><Send size={15} /></button>
+          <button className="btn-icon hover:!text-sky-500" aria-label={t('about.contact')}
+            onClick={() => confirmOpenExternal(TELEGRAM_URL, t('about.confirmTelegram'), t('about.confirmTelegramDetail', { url: TELEGRAM_URL }))}><Send size={15} /></button>
+        </Tooltip>
+        <Tooltip label={t('about.github')} side={collapsed ? (isRtl ? 'left' : 'right') : 'top'}>
+          <button className="btn-icon hover:!text-accent" aria-label={t('about.github')}
+            onClick={() => confirmOpenExternal(GITHUB_URL, t('about.confirmGithub'), t('about.confirmGithubDetail', { url: GITHUB_URL }))}><Github size={15} /></button>
         </Tooltip>
         {!mobile && (
           <Tooltip label={collapsed ? t('side.expand') : t('side.collapse')} shortcut="Ctrl+B" side={collapsed ? (isRtl ? 'left' : 'right') : 'top'}>
@@ -354,8 +371,9 @@ export function CommandPalette() {
       { id: 'lang', label: t('palette.lang'), sub: s.language === 'ar' ? 'English' : 'العربية', icon: <Languages size={16} />, group: act, keywords: 'language arabic english', shortcut: 'Ctrl+Shift+L', run: () => s.setSettings({ language: s.language === 'ar' ? 'en' : 'ar' }) },
       { id: 'sidebar', label: t('palette.toggleSidebar'), icon: <PanelLeft size={16} />, group: act, keywords: 'sidebar collapse expand', shortcut: 'Ctrl+B', run: () => s.setSettings({ sidebarCollapsed: !s.sidebarCollapsed }) },
       { id: 'shortcuts', label: t('palette.showShortcuts'), icon: <CircleHelp size={16} />, group: act, keywords: 'keyboard help keys', shortcut: '?', run: () => s.setShortcuts(true) },
-      { id: 'back', label: t('common.back'), icon: <ArrowLeft size={16} />, group: act, keywords: 'previous history', shortcut: 'Alt+←', run: () => s.goBack() },
-      { id: 'tg', label: 'Telegram @ahmaddragon', icon: <Send size={16} />, group: act, keywords: 'contact support', run: () => invoke('app:openTelegram') },
+      { id: 'back', label: t('common.back'), icon: s.language === 'ar' ? <ArrowRight size={16} /> : <ArrowLeft size={16} />, group: act, keywords: 'previous history', shortcut: 'Alt+←', run: () => s.goBack() },
+      { id: 'tg', label: t('palette.contactTelegram'), icon: <Send size={16} />, group: act, keywords: 'contact support telegram', run: () => confirmOpenExternal(TELEGRAM_URL, t('about.confirmTelegram'), t('about.confirmTelegramDetail', { url: TELEGRAM_URL })) },
+    { id: 'gh', label: t('palette.contactGithub'), icon: <Github size={16} />, group: act, keywords: 'github repository source code repository', run: () => confirmOpenExternal(GITHUB_URL, t('about.confirmGithub'), t('about.confirmGithubDetail', { url: GITHUB_URL })) },
     ]
   }, [t, s.theme, s.language, s.sidebarCollapsed, s.navigate, s.setSettings, s.setShortcuts, s.goBack])
 
@@ -528,13 +546,8 @@ export function ShortcutsOverlay() {
   const { t } = useTranslation()
   const { reduced } = useMotionPrefs()
   const surface = useRef<HTMLDivElement>(null)
-  useFocusTrap(surface, open)
-  useEffect(() => {
-    if (!open) return
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setShortcuts(false) }
-    window.addEventListener('keydown', k)
-    return () => window.removeEventListener('keydown', k)
-  }, [open, setShortcuts])
+  // Shared primitive owns both the trap and Esc-to-close.
+  useFocusTrap(surface, open, () => setShortcuts(false))
   return (
     <AnimatePresence>
       {open && (
@@ -593,10 +606,15 @@ export function useGlobalShortcuts() {
       if (c && e.key === '/') { e.preventDefault(); st.setShortcuts(!st.shortcutsOpen); return }
       if (typing) return
       if (!c && !e.altKey && e.key === '?') { e.preventDefault(); st.setShortcuts(!st.shortcutsOpen); return }
-      // "/" focuses the page's primary search field (first [data-search] or search input).
+      // "/" focuses the page's primary search field. Pages opt in with the stable
+      // `data-search` attribute (on the input or a wrapper) — this replaces the
+      // fragile placeholder-text match (`input[placeholder*="…"]`) which broke
+      // under localization and placeholder changes. Falls back to a native search input.
       if (!c && !e.altKey && e.key === '/') {
         const main = document.querySelector('main')
-        const field = main?.querySelector<HTMLInputElement>('input[data-search], input[type=search], input[placeholder*="…"]')
+        const marker = main?.querySelector<HTMLElement>('[data-search]')
+        const field = (marker instanceof HTMLInputElement ? marker : marker?.querySelector<HTMLInputElement>('input'))
+          ?? main?.querySelector<HTMLInputElement>('input[type=search], [role=search] input')
         if (field) { e.preventDefault(); field.focus(); field.select() }
         return
       }

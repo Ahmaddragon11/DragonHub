@@ -4,7 +4,7 @@ import { Gauge, Cpu, MemoryStick, HardDrive, MonitorCog, Snowflake, Play, Downlo
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Field, Toggle, Slider, Empty, Progress, Ring } from '@/components/ui'
-import { invoke, on } from '@/lib/api'
+import { invoke, on, errorMessage } from '@/lib/api'
 import { formatBytes } from '@/lib/utils'
 import type { ResLive, ResProcess, ResConfig } from '@shared/types'
 
@@ -70,7 +70,7 @@ export default function Resources() {
         if (!alive) return
         setSnap(s); setCfg(c); setProcs(Array.isArray(p) ? p : [])
       })
-      .catch((e: unknown) => { if (alive) toast(e instanceof Error ? e.message : t('toast.error'), 'error') })
+      .catch((e: unknown) => { if (alive) toast(errorMessage(e, t('toast.error')), 'error') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,7 +131,7 @@ export default function Resources() {
       setCfg(next)
     } catch (e: unknown) {
       setCfg(prev)
-      toast(e instanceof Error ? e.message : t('toast.error'), 'error')
+      toast(errorMessage(e, t('toast.error')), 'error')
     }
   }
 
@@ -171,7 +171,7 @@ export default function Resources() {
       await invoke('res:killProcess', p.pid)
       toast(t('res.killDone'), 'success')
       invoke<ResProcess[]>('res:processes', cfg?.topN ?? 12).then((r) => { if (Array.isArray(r)) setProcs(r) }).catch(() => {})
-    } catch (e: unknown) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+    } catch (e: unknown) { toast(errorMessage(e, t('toast.error')), 'error') }
   }
 
   const exportReport = async (fmt: 'csv' | 'json') => {
@@ -183,14 +183,14 @@ export default function Resources() {
         : ['pid,name,cpuPercent,memoryMB,cpuCumulativeSec,path', ...filtered.map((p) => `${p.pid},"${p.displayName.replace(/"/g, '""')}",${p.cpuPercent},${p.memoryMB},${p.cpuCumulativeSec},"${(p.path || '').replace(/"/g, '""')}"`)].join('\n')
       await invoke('fs:writeText', fp, payload)
       toast(t('toast.saved'))
-    } catch (e: unknown) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+    } catch (e: unknown) { toast(errorMessage(e, t('toast.error')), 'error') }
   }
 
   const openCard = async () => {
     try {
       await invoke('res:card:show')
       toast(t('res.cardOpened'), 'info')
-    } catch (e: unknown) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+    } catch (e: unknown) { toast(errorMessage(e, t('toast.error')), 'error') }
   }
 
   const toggleSort = (k: SortKey) => {
@@ -202,7 +202,7 @@ export default function Resources() {
     setLoading(true)
     Promise.all([invoke<ResLive>('res:snapshot'), invoke<ResConfig>('res:config:get'), invoke<ResProcess[]>('res:processes', 12)])
       .then(([s, c, p]) => { setSnap(s); setCfg(c); setProcs(Array.isArray(p) ? p : []) })
-      .catch((e: unknown) => { toast(e instanceof Error ? e.message : t('toast.error'), 'error') })
+      .catch((e: unknown) => { toast(errorMessage(e, t('toast.error')), 'error') })
       .finally(() => { setLoading(false) })
   }
 

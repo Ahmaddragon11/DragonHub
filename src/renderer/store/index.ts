@@ -17,11 +17,21 @@ const loadRecents = (): RecentItem[] => {
   try { const r = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); return Array.isArray(r) ? r.slice(0, 20) : [] } catch { return [] }
 }
 
+/** Version whose floating update card the user dismissed (remembers per version). */
+const UPDATE_CARD_DISMISS_KEY = 'dh:updateCardDismissed'
+const loadUpdateCardDismissed = (): string | null => {
+  try { return localStorage.getItem(UPDATE_CARD_DISMISS_KEY) || null } catch { return null }
+}
+
 export const PAGE_IDS: PageId[] = ['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'taskManager', 'screenshot', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about']
 export interface UpdateProgress {
   phase: 'checking' | 'downloading'
   receivedBytes?: number
   totalBytes?: number
+  /** Smoothed transfer rate in bytes/second (emitted by the updater while streaming). */
+  speed?: number
+  /** Estimated seconds remaining, when the total size and rate are known. */
+  eta?: number
 }
 
 interface AppState {
@@ -40,6 +50,10 @@ interface AppState {
   recents: RecentItem[]
   updateProgress: UpdateProgress | null
   updateAvailableVersion: string | null
+  /** Whether the available version's installer has finished downloading (ready to install). */
+  updateReady: boolean
+  /** Version whose floating update card was dismissed, so it stays hidden for that version. */
+  updateCardDismissedVersion: string | null
   /** Version the user has already acknowledged (onboarding/whats-new gate). */
   lastSeenVersion: string | null
   /** Recent file locations opened in the file manager (palette indexing). */
@@ -58,6 +72,8 @@ interface AppState {
   dismissToast: (id: string) => void
   setUpdateProgress: (progress: UpdateProgress | null) => void
   setUpdateAvailableVersion: (version: string | null) => void
+  setUpdateReady: (ready: boolean) => void
+  dismissUpdateCard: (version: string | null) => void
   setPalette: (open: boolean) => void
   setShortcuts: (open: boolean) => void
   setOnboardingOpen: (open: boolean) => void
@@ -143,7 +159,8 @@ let initStarted = false
 export const useApp = create<AppState>((set, get) => ({
   ready: false, page: 'dashboard', pageParams: {}, settings: DEFAULT_SETTINGS, systemTheme: 'dark', toasts: [], paletteOpen: false, shortcutsOpen: false, windowMaximized: false,
   backStack: [], fwdStack: [], recents: typeof window !== 'undefined' ? loadRecents() : [], recentFiles: [],
-  updateProgress: null, updateAvailableVersion: null,
+  updateProgress: null, updateAvailableVersion: null, updateReady: false,
+  updateCardDismissedVersion: typeof window !== 'undefined' ? loadUpdateCardDismissed() : null,
   lastSeenVersion: null, onboardingOpen: false, whatsNewOpen: false,
   notes: [], projects: [], tasks: [], downloads: [],
 
@@ -288,14 +305,26 @@ export const useApp = create<AppState>((set, get) => ({
     try { localStorage.setItem(key, String(Date.now())) } catch { /* ignore */ }
     try {
       const r = await invoke<{ status: string; version?: string }>('app:checkForUpdates')
+      // The call owns the download lifecycle, so clear the streamed progress it
+      // produced — otherwise the update card would stay stuck on "downloading".
+      set({ updateProgress: null })
       if (r.status === 'available' && r.version && r.version !== APP_VERSION) {
-        set({ updateAvailableVersion: r.version })
+        // A silent check downloads the installer too, so it is ready to install.
+        set({ updateAvailableVersion: r.version, updateReady: true })
         get().toast(i18n.t('about.updateAvailableBadge', { version: r.version }), 'info', { action: { label: i18n.t('about.checkUpdate'), run: () => get().navigate('about') } })
       }
     } catch { /* silent: no toast on a background check */ }
   },
   setUpdateProgress: (updateProgress) => set({ updateProgress }),
   setUpdateAvailableVersion: (updateAvailableVersion) => set({ updateAvailableVersion }),
+  setUpdateReady: (updateReady) => set({ updateReady }),
+  dismissUpdateCard: (version) => {
+    set({ updateCardDismissedVersion: version })
+    try {
+      if (version) localStorage.setItem(UPDATE_CARD_DISMISS_KEY, version)
+      else localStorage.removeItem(UPDATE_CARD_DISMISS_KEY)
+    } catch { /* ignore quota / unavailable storage */ }
+  },
   saveNotes: (notes) => { if (!get().ready) return; set({ notes }); persist('notes', notes) },
   saveProjects: (projects) => { if (!get().ready) return; set({ projects }); persist('projects', projects) },
   saveTasks: (tasks) => { if (!get().ready) return; set({ tasks }); persist('tasks', tasks) },

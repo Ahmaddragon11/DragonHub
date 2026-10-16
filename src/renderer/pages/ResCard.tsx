@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import '@/i18n'
 import { invoke, on } from '@/lib/api'
 import { Ring } from '@/components/ui'
+import { ArrowDown, ArrowUp, Check, ChevronUp, Circle, HardDrive, Home, Lock, LockOpen, Maximize2, List, Minimize2, Power, X } from 'lucide-react'
 import type { ResLive, ResProcess, ResCardConfig } from '@shared/types'
 
 function formatSpeed(bps: number): string {
@@ -99,43 +100,43 @@ export default function ResCard() {
           <span className="text-[10px] opacity-60">{t('res.ram')}</span>
         </div>
         <div className="flex flex-col gap-1 text-[11px] font-mono min-w-[92px]" dir="ltr">
-          <span title={t('net.down')}>↓ {formatSpeed(snap?.netDownSpeedBps ?? 0)}</span>
-          <span title={t('net.up')}>↑ {formatSpeed(snap?.netUpSpeedBps ?? 0)}</span>
-          {!small && <span title={t('res.disk')}>⛁ {disk ? `${disk.letter} ${diskPct.toFixed(0)}%` : '—'}</span>}
+          <span className="flex items-center gap-1" title={t('net.down')}><ArrowDown size={11} />{formatSpeed(snap?.netDownSpeedBps ?? 0)}</span>
+          <span className="flex items-center gap-1" title={t('net.up')}><ArrowUp size={11} />{formatSpeed(snap?.netUpSpeedBps ?? 0)}</span>
+          {!small && <span className="flex items-center gap-1" title={t('res.disk')}><HardDrive size={11} />{disk ? `${disk.letter} ${diskPct.toFixed(0)}%` : '—'}</span>}
         </div>
       </div>
 
       {!small && cfg.showTopProcess && (
-        <div className="px-3 pb-2 pt-1 text-[11px] truncate opacity-70" title={top}>
-          ▲ {top || '…'}
+        <div className="flex items-center gap-1 px-3 pb-2 pt-1 text-[11px] truncate opacity-70" title={top}>
+          <ChevronUp size={11} className="shrink-0" />{top || '…'}
         </div>
       )}
 
       {menu && (
         <div data-menu className="fixed z-50 card p-1.5 min-w-[190px] max-w-[min(232px,calc(100vw-16px))] max-h-[calc(100vh-16px)] overflow-y-auto text-xs" style={{ left: Math.max(8, Math.min(menu.x, window.innerWidth - Math.min(232, window.innerWidth - 16) - 8)), top: Math.max(8, Math.min(menu.y, window.innerHeight - Math.min(340, window.innerHeight - 16) - 8)) }}>
-          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200" onClick={() => { void patch({ locked: !cfg.locked }); setMenu(null) }}>
-            {cfg.locked ? `🔓 ${t('resCard.unlock')}` : `🔒 ${t('resCard.lock')}`}
+          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200 flex items-center gap-2" onClick={() => { void patch({ locked: !cfg.locked }); setMenu(null) }}>
+            {cfg.locked ? <LockOpen size={13} /> : <Lock size={13} />}{cfg.locked ? t('resCard.unlock') : t('resCard.lock')}
           </button>
-          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200" onClick={() => { void patch({ size: small ? 'medium' : 'small' }); setMenu(null) }}>
-            {small ? `⤢ ${t('resCard.toMedium')}` : `⤡ ${t('resCard.toSmall')}`}
+          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200 flex items-center gap-2" onClick={() => { void patch({ size: small ? 'medium' : 'small' }); setMenu(null) }}>
+            {small ? <Maximize2 size={13} /> : <Minimize2 size={13} />}{small ? t('resCard.toMedium') : t('resCard.toSmall')}
           </button>
-          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200" onClick={() => { void patch({ showTopProcess: !cfg.showTopProcess }); setMenu(null) }}>
-            {cfg.showTopProcess ? `☰ ${t('resCard.hideTop')}` : `☰ ${t('resCard.showTop')}`}
+          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200 flex items-center gap-2" onClick={() => { void patch({ showTopProcess: !cfg.showTopProcess }); setMenu(null) }}>
+            <List size={13} />{cfg.showTopProcess ? t('resCard.hideTop') : t('resCard.showTop')}
           </button>
           {[0.6, 0.8, 0.95, 1].map((o) => (
-            <button key={o} className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200 font-mono" onClick={() => { void patch({ opacity: o }); setMenu(null) }}>
-              ◐ {t('common.preview')} {Math.round(o * 100)}% {cfg.opacity === o ? '✓' : ''}
+            <button key={o} className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200 flex items-center gap-2" onClick={() => { void patch({ opacity: o }); setMenu(null) }}>
+              <Circle size={13} />{t('common.preview')} {Math.round(o * 100)}%{cfg.opacity === o && <Check size={13} className="ms-auto" />}
             </button>
           ))}
           <div className="divider my-1" />
-          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200" onClick={() => { setMenu(null); window.dh.window.show() }}>
-            ⬢ {t('nav.dashboard')}
+          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200 flex items-center gap-2" onClick={() => { setMenu(null); window.dh.window.show() }}>
+            <Home size={13} />{t('nav.dashboard')}
           </button>
-          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200" onClick={() => { setMenu(null); void invoke('res:card:hide').catch(() => window.close()) }}>
-            {`✕ ${t('resCard.hideCard')}`}
+          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-surface-200 flex items-center gap-2" onClick={() => { setMenu(null); void invoke('res:card:hide').catch(() => window.close()) }}>
+            <X size={13} />{t('resCard.hideCard')}
           </button>
-          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500" onClick={() => { setMenu(null); window.dh.window.quit() }}>
-            {`⏻ ${t('resCard.quit')}`}
+          <button className="w-full text-start px-3 py-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500 flex items-center gap-2" onClick={() => { setMenu(null); window.dh.window.quit() }}>
+            <Power size={13} />{t('resCard.quit')}
           </button>
         </div>
       )}

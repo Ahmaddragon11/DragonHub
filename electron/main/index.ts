@@ -1,14 +1,15 @@
-import { app, BrowserWindow, shell, ipcMain, nativeTheme, Menu, Tray, protocol, net, session } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, nativeTheme, Menu, Tray, protocol, net, session, desktopCapturer, screen } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { registerAllHandlers } from './ipc'
+import { registerAllHandlers, externalUrlBlockReason } from './ipc'
 import { settingsStore, dataCollections } from './services/settings'
+import { cleanupPendingInstaller } from './services/updater'
 import { initGlobalShortcuts, refreshGlobalShortcuts, stopGlobalShortcuts } from './services/globalShortcuts'
 import * as netmon from './services/netmonitor'
 import * as netblock from './services/netblock'
 import * as resmon from './services/resmonitor'
-import { DEFAULT_NET_LIMITS } from '../../src/shared/types'
+import { DEFAULT_NET_LIMITS, type CaptureAction, type CaptureOverlayCommit, type CaptureOverlayInit, type CaptureResult } from '../../src/shared/types'
 
 // __dirname is provided natively (CJS output)
 process.env.APP_ROOT = path.join(__dirname, '../..')
@@ -174,7 +175,10 @@ function createWindow() {
 
   // Security: block navigation & new windows, open external links via shell only if http(s)
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    // Same localhost/metadata blocklist as the app:openExternal channel.
+    if (/^https?:\/\//i.test(url) && externalUrlBlockReason(url) === null) {
+      void shell.openExternal(url).catch(() => {})
+    }
     return { action: 'deny' }
   })
   win.webContents.on('will-navigate', (e, url) => {
@@ -233,13 +237,261 @@ function createTray() {
       { label: 'Settings', click: () => focusAnd('dh:trayAction', 'settings') },
       { label: 'Show/Hide monitor card', click: () => { cardControls.toggle() } },
       { type: 'separator' },
-      { label: 'Telegram: @ahmaddragon', click: () => shell.openExternal('https://t.me/ahmaddragon') },
+      { label: 'Telegram: @ahmaddragon', click: () => { void shell.openExternal('https://t.me/ahmaddragon').catch(() => {}) } },
       { type: 'separator' },
       { label: 'Quit', click: () => { isQuitting = true; app.quit() } },
     ])
     tray.setContextMenu(menu)
     tray.on('double-click', () => { win?.show(); win?.focus() })
   } catch { /* tray optional */ }
+}
+
+// ---------- Real screen capture (region overlay + display/window stills) ----------
+// A genuine snipping-tool flow: hide the app, freeze every display to a
+// full-resolution screenshot, show one frameless always-on-top overlay per
+// display, let the user draw/adjust a region, then crop the frozen image in
+// main. The overlay never receives huge data URLs in its URL — the frozen
+// screenshot is handed over via `capture:overlay:init` after it mounts.
+interface RegionOverlay {
+  win: BrowserWindow
+  display: Electron.Display
+  image: Electron.NativeImage
+  imageSize: { width: number; height: number }
+  imageDataUrl: string
+}
+
+type RegionOutcome = { dataUrl: string; action?: CaptureAction }
+
+let overlayEntries = new Map<number, RegionOverlay>() // webContents.id -> entry
+let regionOverlays: BrowserWindow[] = []
+let regionResolve: ((value: RegionOutcome | null) => void) | null = null
+let regionSettled = false
+let regionTimeout: ReturnType<typeof setTimeout> | null = null
+let captureActive = false
+let restoreMain = { visible: false, minimized: false, card: false }
+
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+function settleRegion(value: RegionOutcome | null) {
+  if (regionSettled) return
+  regionSettled = true
+  const resolve = regionResolve
+  regionResolve = null
+  if (resolve) resolve(value)
+}
+
+/** Destroys every overlay and always brings the app back (unless quitting). */
+function cleanupRegion() {
+  if (regionTimeout) { clearTimeout(regionTimeout); regionTimeout = null }
+  overlayEntries = new Map()
+  for (const o of regionOverlays) {
+    try { if (!o.isDestroyed()) o.destroy() } catch { /* ignore */ }
+  }
+  regionOverlays = []
+  if (!isQuitting) {
+    try {
+      if (restoreMain.visible && win && !win.isDestroyed()) {
+        win.show()
+        if (restoreMain.minimized) win.minimize()
+        else win.focus()
+      }
+    } catch { /* ignore */ }
+    try { if (restoreMain.card && cardWin && !cardWin.isDestroyed()) cardWin.show() } catch { /* ignore */ }
+  }
+  restoreMain = { visible: false, minimized: false, card: false }
+  captureActive = false
+  regionSettled = false
+  regionResolve = null
+}
+
+// Same navigation guards as the main/card windows: no new windows, no leaving
+// the app bundle (top-level + sub-frames + redirects).
+function guardContents(w: BrowserWindow) {
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  w.webContents.on('will-navigate', (e, url) => { if (url !== w.webContents.getURL()) e.preventDefault() })
+  ;(w.webContents as unknown as { on: (ev: string, cb: (e: Electron.Event, url: string) => void) => void }).on('will-frame-navigate', (e, url) => {
+    if (url !== w.webContents.getURL()) e.preventDefault()
+  })
+  w.webContents.on('will-redirect', (e, url) => { if (url !== w.webContents.getURL()) e.preventDefault() })
+}
+
+function overlayInitPayload(entry: RegionOverlay): CaptureOverlayInit {
+  return {
+    image: entry.imageDataUrl,
+    displayId: String(entry.display.id),
+    bounds: { x: entry.display.bounds.x, y: entry.display.bounds.y, width: entry.display.bounds.width, height: entry.display.bounds.height },
+    scaleFactor: entry.display.scaleFactor,
+    imageSize: { width: entry.imageSize.width, height: entry.imageSize.height },
+    lang: settingsStore.get().language,
+  }
+}
+
+async function buildRegionOverlays(): Promise<void> {
+  const displays = screen.getAllDisplays()
+  if (!displays.length) { settleRegion(null); return }
+  const physical = displays.map((d) => ({ w: Math.round(d.size.width * d.scaleFactor), h: Math.round(d.size.height * d.scaleFactor) }))
+  const thumbnailSize = {
+    width: Math.min(8192, Math.max(1, Math.max(...physical.map((p) => p.w)))),
+    height: Math.min(8192, Math.max(1, Math.max(...physical.map((p) => p.h)))),
+  }
+  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize })
+  const byDisplay = new Map<string, Electron.DesktopCapturerSource>()
+  for (const s of sources) if (s.display_id) byDisplay.set(String(s.display_id), s)
+
+  displays.forEach((d, i) => {
+    const src = byDisplay.get(String(d.id)) ?? (sources.length === displays.length ? sources[i] : undefined)
+    if (!src || src.thumbnail.isEmpty()) return
+    const entry: RegionOverlay = {
+      win: null as unknown as BrowserWindow,
+      display: d,
+      image: src.thumbnail,
+      imageSize: src.thumbnail.getSize(),
+      imageDataUrl: src.thumbnail.toDataURL(),
+    }
+    const ow = new BrowserWindow({
+      x: d.bounds.x,
+      y: d.bounds.y,
+      width: d.bounds.width,
+      height: d.bounds.height,
+      show: false,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      hasShadow: false,
+      acceptFirstMouse: true,
+      icon: runtimeIconPath(),
+      webPreferences: {
+        preload: path.join(MAIN_DIST, 'preload/index.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        devTools: !app.isPackaged,
+      },
+    })
+    entry.win = ow
+    guardContents(ow)
+    ow.setAlwaysOnTop(true, 'screen-saver')
+    ow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    const wcId = ow.webContents.id
+    overlayEntries.set(wcId, entry)
+    regionOverlays.push(ow)
+    ow.on('closed', () => { overlayEntries.delete(wcId) })
+    // A crashed overlay must not strand the app hidden.
+    ow.webContents.on('render-process-gone', () => settleRegion(null))
+    const load = VITE_DEV_SERVER_URL
+      ? ow.loadURL(`${VITE_DEV_SERVER_URL}?overlay=1`)
+      : ow.loadFile(path.join(RENDERER_DIST, 'index.html'), { query: { overlay: '1' } })
+    void load.then(() => {
+      if (ow.isDestroyed()) return
+      ow.show()
+      ow.focus()
+    }).catch(() => { /* destroyed while loading */ })
+  })
+}
+
+async function startRegionCapture(): Promise<CaptureResult | null> {
+  if (captureActive) throw new Error('A capture is already in progress')
+  if (!win || win.isDestroyed()) throw new Error('No window to capture from')
+  captureActive = true
+  regionSettled = false
+  restoreMain = {
+    visible: win.isVisible(),
+    minimized: win.isMinimized(),
+    card: !!cardWin && !cardWin.isDestroyed() && cardWin.isVisible(),
+  }
+  const result = new Promise<RegionOutcome | null>((resolve) => { regionResolve = resolve })
+  // Hard safety net: a closed/crashed overlay can never keep the app hidden.
+  regionTimeout = setTimeout(() => settleRegion(null), 120_000)
+  try {
+    try { win.hide() } catch { /* ignore */ }
+    try { if (restoreMain.card) cardWin?.hide() } catch { /* ignore */ }
+    await delay(250)
+    await buildRegionOverlays()
+    if (!regionOverlays.length) settleRegion(null)
+    const outcome = await result
+    return outcome ? { dataUrl: outcome.dataUrl, source: 'region', action: outcome.action } : null
+  } finally {
+    cleanupRegion()
+  }
+}
+
+function cropCommit(entry: RegionOverlay, payload: CaptureOverlayCommit | undefined): string | null {
+  // Annotated captures arrive pre-composited by the overlay canvas.
+  if (payload && typeof payload.dataUrl === 'string') {
+    if (payload.dataUrl.length > 120 * 1024 * 1024) return null
+    return /^data:image\/png;base64,/.test(payload.dataUrl) ? payload.dataUrl : null
+  }
+  const rect = payload?.rect
+  if (!rect) return null
+  const { image, imageSize, display } = entry
+  const bw = display.bounds.width || 1
+  const bh = display.bounds.height || 1
+  const scaleX = imageSize.width / bw
+  const scaleY = imageSize.height / bh
+  let x = Math.round(rect.x * scaleX)
+  let y = Math.round(rect.y * scaleY)
+  let w = Math.round(rect.w * scaleX)
+  let h = Math.round(rect.h * scaleY)
+  x = Math.max(0, Math.min(x, imageSize.width - 1))
+  y = Math.max(0, Math.min(y, imageSize.height - 1))
+  w = Math.max(1, Math.min(w, imageSize.width - x))
+  h = Math.max(1, Math.min(h, imageSize.height - y))
+  const cropped = image.crop({ x, y, width: w, height: h })
+  return cropped.isEmpty() ? null : cropped.toDataURL()
+}
+
+async function captureDisplay(displayId?: number): Promise<CaptureResult | null> {
+  if (captureActive) throw new Error('A capture is already in progress')
+  captureActive = true
+  const target = screen.getAllDisplays().find((d) => d.id === displayId) ?? screen.getPrimaryDisplay()
+  const wasVisible = !!win && !win.isDestroyed() && win.isVisible()
+  const wasMinimized = !!win && !win.isDestroyed() && win.isMinimized()
+  const cardVisible = !!cardWin && !cardWin.isDestroyed() && cardWin.isVisible()
+  try {
+    try { win?.hide() } catch { /* ignore */ }
+    try { if (cardVisible) cardWin?.hide() } catch { /* ignore */ }
+    await delay(200)
+    const width = Math.min(8192, Math.max(1, Math.round(target.size.width * target.scaleFactor)))
+    const height = Math.min(8192, Math.max(1, Math.round(target.size.height * target.scaleFactor)))
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height } })
+    const src = sources.find((s) => s.display_id === String(target.id)) ?? sources[0]
+    if (!src || src.thumbnail.isEmpty()) return null
+    return { dataUrl: src.thumbnail.toDataURL(), source: 'display' }
+  } finally {
+    captureActive = false
+    if (!isQuitting) {
+      try { if (wasVisible && win && !win.isDestroyed()) { win.show(); if (wasMinimized) win.minimize(); else win.focus() } } catch { /* ignore */ }
+      try { if (cardVisible && cardWin && !cardWin.isDestroyed()) cardWin.show() } catch { /* ignore */ }
+    }
+  }
+}
+
+async function captureWindow(sourceId: string, sourceName?: string): Promise<CaptureResult | null> {
+  if (captureActive) throw new Error('A capture is already in progress')
+  captureActive = true
+  try {
+    const displays = screen.getAllDisplays()
+    const scale = displays.reduce((m, d) => Math.max(m, d.scaleFactor), 1)
+    const maxW = displays.reduce((m, d) => Math.max(m, d.size.width), 0)
+    const maxH = displays.reduce((m, d) => Math.max(m, d.size.height), 0)
+    const sources = await desktopCapturer.getSources({
+      types: ['window'],
+      thumbnailSize: { width: Math.min(6000, Math.max(1, Math.round(maxW * scale))), height: Math.min(6000, Math.max(1, Math.round(maxH * scale))) },
+    })
+    const src = sources.find((s) => s.id === sourceId) ?? (sourceName ? sources.find((s) => s.name === sourceName) : undefined)
+    if (!src || src.thumbnail.isEmpty()) return null
+    return { dataUrl: src.thumbnail.toDataURL(), source: 'window' }
+  } finally {
+    captureActive = false
+  }
 }
 
 app.whenReady().then(() => {
@@ -259,7 +511,16 @@ app.whenReady().then(() => {
       const u = new URL(request.url)
       // Reject any hostname other than empty/'local' (DNS-rebinding style bypass).
       if (u.hostname !== '' && u.hostname !== 'local') return new Response('Bad request', { status: 400 })
-      let p = decodeURIComponent(u.pathname)
+      // Decode per-segment (matching the per-segment encodeURIComponent on the
+      // preload side) and reject any segment that hides a path separator.
+      let p: string
+      try {
+        const segs = u.pathname.split('/').map((s) => decodeURIComponent(s))
+        if (segs.some((s) => s.includes('/') || s.includes('\\'))) return new Response('Bad request', { status: 400 })
+        p = segs.join('/')
+      } catch {
+        return new Response('Bad request', { status: 400 })
+      }
       if (p.includes('\0')) return new Response('Bad request', { status: 400 })
       if (process.platform === 'win32') {
         // dh-file://local/C:/path -> pathname "/C:/path"
@@ -393,6 +654,8 @@ app.on('before-quit', () => {
   stopGlobalShortcuts()
   try { netmon.stopNetMonitor() } catch { /* ignore */ }
   try { resmon.stopResMonitor() } catch { /* ignore */ }
+  // Drop a downloaded-but-uninstalled update installer from temp.
+  try { cleanupPendingInstaller() } catch { /* ignore */ }
   try {
     const lim = { ...DEFAULT_NET_LIMITS, ...(dataCollections.get('netLimits', {}) as Partial<typeof DEFAULT_NET_LIMITS>) }
     // Synchronous cleanup: the async variant cannot be awaited here (the
@@ -436,7 +699,68 @@ ipcMain.handle('window:maximize', winOnly('window:maximize', () => {
   else win?.maximize()
 }))
 ipcMain.handle('window:show', winOnly('window:show', () => { win?.show(); win?.focus() }))
-ipcMain.handle('window:close', winOnly('window:close', () => win?.close()))
+ipcMain.handle('window:close', winOnly('window:close', (e) => {
+  const fromCard = (() => { try { return !!cardWin && !cardWin.isDestroyed() && e.sender === cardWin.webContents } catch { return false } })()
+  if (fromCard) cardWin?.close()
+  else win?.close()
+}))
 ipcMain.handle('window:isMaximized', winOnly('window:isMaximized', () => win?.isMaximized() ?? false))
 ipcMain.handle('window:fullscreen', winOnly('window:fullscreen', () => win?.setFullScreen(!win.isFullScreen())))
 ipcMain.handle('app:quit', winOnly('app:quit', () => { isQuitting = true; app.quit() }))
+
+// Capture channels: region/display/window are only accepted from the main
+// renderer; overlay channels only from a live overlay window. Each is
+// rate-limited, and `e.senderFrame === e.sender.mainFrame` blocks sub-frames.
+function captureOnly<T>(channel: string, fn: () => T | Promise<T>) {
+  return (e: Electron.IpcMainInvokeEvent): T | Promise<T> => {
+    let ok = false
+    try {
+      ok = e.senderFrame === e.sender.mainFrame && !!win && !win.isDestroyed() && e.sender === win.webContents
+    } catch { ok = false }
+    if (!ok) throw new Error('Blocked: bad sender')
+    checkWinRate(channel)
+    return fn()
+  }
+}
+function overlayEntryFor(e: Electron.IpcMainInvokeEvent): RegionOverlay | null {
+  try {
+    if (e.senderFrame !== e.sender.mainFrame) return null
+    return overlayEntries.get(e.sender.id) ?? null
+  } catch { return null }
+}
+
+ipcMain.handle('screen:captureRegion', captureOnly('screen:captureRegion', () => startRegionCapture()))
+ipcMain.handle('screen:captureDisplay', (e, displayId?: number) => {
+  const fn = captureOnly<CaptureResult | null>('screen:captureDisplay', () => captureDisplay(typeof displayId === 'number' ? displayId : undefined))
+  return fn(e)
+})
+ipcMain.handle('screen:captureWindow', (e, sourceId?: string, sourceName?: string) => {
+  const fn = captureOnly<CaptureResult | null>('screen:captureWindow', () => {
+    if (typeof sourceId !== 'string' || !sourceId || sourceId.length > 512) throw new Error('Invalid source id')
+    return captureWindow(sourceId, typeof sourceName === 'string' ? sourceName.slice(0, 512) : undefined)
+  })
+  return fn(e)
+})
+
+ipcMain.handle('capture:overlay:ready', (e) => {
+  const entry = overlayEntryFor(e)
+  if (!entry || entry.win.isDestroyed()) throw new Error('Blocked: bad overlay')
+  checkWinRate('capture:overlay:ready')
+  entry.win.webContents.send('capture:overlay:init', overlayInitPayload(entry))
+  return true
+})
+ipcMain.handle('capture:overlay:commit', (e, payload?: CaptureOverlayCommit) => {
+  const entry = overlayEntryFor(e)
+  if (!entry) throw new Error('Blocked: bad overlay')
+  checkWinRate('capture:overlay:commit')
+  const dataUrl = cropCommit(entry, payload)
+  settleRegion(dataUrl ? { dataUrl, action: payload?.action } : null)
+  return true
+})
+ipcMain.handle('capture:overlay:cancel', (e) => {
+  const entry = overlayEntryFor(e)
+  if (!entry) throw new Error('Blocked: bad overlay')
+  checkWinRate('capture:overlay:cancel')
+  settleRegion(null)
+  return true
+})

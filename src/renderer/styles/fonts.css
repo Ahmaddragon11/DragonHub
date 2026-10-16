@@ -1,2 +1,9 @@
 /* System font stack used offline. Inter/Cairo are used when installed on the system;
-   fallbacks to Segoe UI (Windows) so the app never depends on network fonts (CSP: no remote). */
+   fallbacks to Segoe UI (Windows) so the app never depends on network fonts (CSP: no remote).
+
+   `--font-arabic` is consumed by `[dir='rtl']` in index.css. The ordering puts Arabic
+   faces first so Arabic text renders with correct shaping/metrics, while Latin glyphs
+   inside Arabic text fall through to Inter/Segoe UI. */
+:root {
+  --font-arabic: 'Cairo', 'Noto Naskh Arabic', 'Noto Sans Arabic', 'Segoe UI', Tahoma, 'Inter', system-ui, sans-serif;
+}

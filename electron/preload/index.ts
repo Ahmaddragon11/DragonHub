@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { CaptureDisplay, CaptureOverlayCommit, CaptureOverlayInit, CaptureResult, ScreenSource } from '../../src/shared/types'
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string }
 
@@ -11,7 +12,7 @@ const INVOKE_ALLOW = new Set([
   'app:checkForUpdates', 'app:cancelUpdateDownload', 'app:installUpdate',
   'app:systemTheme', 'app:openUserData', 'app:setLoginItem', 'app:keepAwake', 'app:quit',
   'app:lastSeenVersion', 'app:markVersionSeen',
-  'screen:sources',
+  'screen:sources', 'screen:windows', 'screen:displays', 'screen:captureRegion', 'screen:captureDisplay', 'screen:captureWindow',
   'window:minimize', 'window:maximize', 'window:close', 'window:fullscreen', 'window:isMaximized', 'window:show',
   'clipboard:write', 'clipboard:read', 'clipboard:writeImage',
   'settings:get', 'settings:set', 'settings:reset',
@@ -47,12 +48,22 @@ const CARD_INVOKE_ALLOW = new Set([
   'app:quit',
 ])
 
+// Overlay preload: the region-capture overlay (index.html?overlay=1) may only
+// talk to the three capture:<overlay> channels + receive its init event. A
+// compromised overlay renderer therefore cannot reach fs/vault/net/dialog.
+const OVERLAY_INVOKE_ALLOW = new Set([
+  'capture:overlay:ready', 'capture:overlay:commit', 'capture:overlay:cancel',
+])
+
 const isCard = (() => {
   try { return typeof location !== 'undefined' && location.search.includes('card=1') } catch { return false }
 })()
+const isOverlay = (() => {
+  try { return typeof location !== 'undefined' && location.search.includes('overlay=1') } catch { return false }
+})()
 
 async function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise<T> {
-  const allow = isCard ? CARD_INVOKE_ALLOW : INVOKE_ALLOW
+  const allow = isOverlay ? OVERLAY_INVOKE_ALLOW : isCard ? CARD_INVOKE_ALLOW : INVOKE_ALLOW
   if (!allow.has(channel)) throw new Error('Channel not allowed: ' + channel)
   const r = (await ipcRenderer.invoke(channel, ...args)) as Result<T> | T
   if (r && typeof r === 'object' && 'ok' in (r as object)) {
@@ -64,12 +75,15 @@ async function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise
 }
 
 // Whitelisted event channels renderer may subscribe to
-const EVENTS = new Set(['downloads:update', 'downloads:ytdlp-status', 'job:progress', 'vault:locked', 'theme:system', 'window:state', 'net:update', 'res:update', 'updates:progress', 'dh:openPalette', 'dh:trayAction'])
+const EVENTS = new Set(['downloads:update', 'downloads:ytdlp-status', 'job:progress', 'vault:locked', 'theme:system', 'window:state', 'net:update', 'res:update', 'updates:progress', 'dh:openPalette', 'dh:trayAction', 'capture:overlay:init'])
 // Card renderer only needs live resource updates.
 const CARD_EVENTS = new Set(['res:update'])
+// Overlay renderer only receives its init payload.
+const OVERLAY_EVENTS = new Set(['capture:overlay:init'])
 
 function on(channel: string, cb: (payload: unknown) => void): () => void {
-  if (!(isCard ? CARD_EVENTS : EVENTS).has(channel)) throw new Error('Channel not allowed: ' + channel)
+  const allow = isOverlay ? OVERLAY_EVENTS : isCard ? CARD_EVENTS : EVENTS
+  if (!allow.has(channel)) throw new Error('Channel not allowed: ' + channel)
   const listener = (_: unknown, payload: unknown) => cb(payload)
   ipcRenderer.on(channel, listener)
   return () => ipcRenderer.removeListener(channel, listener)
@@ -113,12 +127,37 @@ const cardWindowApi: WindowApi = {
 // the real surface and a member missing from either side is a compile error.
 const windowApi: WindowApi = isCard ? cardWindowApi : mainWindowApi
 
+// Real screen-capture surface. The main renderer uses the capture/listing
+// members; the overlay renderer uses ready/commit/cancel/onInit. Channel
+// allow-lists above enforce the split even though the object is shared.
+const captureApi = {
+  /** Launch the full-desktop region overlay. Resolves with the crop, or null when cancelled. */
+  region: () => invoke<CaptureResult | null>('screen:captureRegion'),
+  /** Capture one display wholly (defaults to the primary display). */
+  display: (displayId?: number) => invoke<CaptureResult | null>('screen:captureDisplay', displayId),
+  /** Capture a window by its desktopCapturer source id (name used as fallback). */
+  window: (sourceId: string, sourceName?: string) => invoke<CaptureResult | null>('screen:captureWindow', sourceId, sourceName),
+  /** List open windows with thumbnails. */
+  windows: () => invoke<ScreenSource[]>('screen:windows'),
+  /** List displays for the full-screen picker. */
+  displays: () => invoke<CaptureDisplay[]>('screen:displays'),
+  /** Overlay: subscribe to the frozen-screenshot init payload. */
+  onInit: (cb: (init: CaptureOverlayInit) => void) => on('capture:overlay:init', cb as (p: unknown) => void),
+  /** Overlay: signal that the UI mounted; main replies with `capture:overlay:init`. */
+  ready: () => invoke('capture:overlay:ready'),
+  /** Overlay: confirm the capture. */
+  commit: (payload: CaptureOverlayCommit) => invoke('capture:overlay:commit', payload),
+  /** Overlay: cancel the capture. */
+  cancel: () => invoke('capture:overlay:cancel'),
+}
+
 const api = {
   invoke,
   on,
   window: windowApi,
+  capture: captureApi,
   platform: process.platform,
-  toFileUrl: (p: string) => 'dh-file://local/' + encodeURI(p.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F'),
+  toFileUrl: (p: string) => 'dh-file://local/' + p.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/'),
 }
 
 contextBridge.exposeInMainWorld('dh', api)

@@ -5,6 +5,7 @@ import { useApp } from '@/store'
 import { TitleBar, Sidebar, Splash, CommandPalette, ShortcutsOverlay, useGlobalShortcuts, useViewport } from '@/components/Shell'
 import { Toasts, Skeleton } from '@/components/ui'
 import { Onboarding, WhatsNew } from '@/components/Onboarding'
+import { UpdateCard } from '@/components/UpdateCard'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { pageVariants, useMotionPrefs } from '@/lib/motion'
 import Dashboard from '@/pages/Dashboard'
@@ -135,6 +136,7 @@ export default function App() {
             <ShortcutsOverlay />
             <Onboarding />
             <WhatsNew />
+            <UpdateCard floating />
             <Toasts />
           </div>
         )}

@@ -4,7 +4,7 @@ import { Clapperboard, FolderOpen, Play, Camera, Square, Zap, Music, Film, Maxim
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle, Slider, Empty } from '@/components/ui'
-import { invoke, on, toFileUrl } from '@/lib/api'
+import { invoke, on, toFileUrl, errorMessage } from '@/lib/api'
 import { formatBytes, formatDuration, uid, cn, VIDEO_EXT, AUDIO_EXT } from '@/lib/utils'
 import type { MediaInfo, VideoOp, JobProgress } from '@shared/types'
 
@@ -64,7 +64,7 @@ export default function Video() {
     const ext = p.split('.').pop()?.toLowerCase() || ''
     const audio = AUDIO_EXT.has(ext); setIsAudio(audio)
     if (audio) { setFormat('mp3'); setExtract(true) } else { setFormat('mp4'); setExtract(false) }
-    try { const i = await invoke('video:info', p); setInfo(i); setStart(0); setEnd(Math.floor(i.duration || 0)); setW(String(i.width || '')); setH(String(i.height || '')) } catch (e: any) { toast(String(e.message || e), 'error') }
+    try { const i = await invoke('video:info', p); setInfo(i); setStart(0); setEnd(Math.floor(i.duration || 0)); setW(String(i.width || '')); setH(String(i.height || '')) } catch (e) { toast(errorMessage(e), 'error') }
   }
   const openFile = async () => {
     const r = await invoke('dialog:openFile', { filters: [{ name: 'Media', extensions: [...VIDEO_EXT, ...AUDIO_EXT] }] })
@@ -89,7 +89,7 @@ export default function Video() {
       fps: fps ? +fps : undefined, speed: speed !== 1 ? speed : undefined, volume: volume !== 1 ? volume : undefined,
       rotate: rotate || undefined, mute: mute || undefined, extractAudio: extract || AFMT.includes(format) || undefined,
     }
-    try { await invoke('video:process', id, op) } catch (e: any) { toast(String(e.message || e), 'error'); setJobId(null) }
+    try { await invoke('video:process', id, op) } catch (e) { toast(errorMessage(e), 'error'); setJobId(null) }
   }
   const cancel = async () => { if (jobId) { await invoke('video:cancel', jobId); setJobId(null); setProgress(null) } }
   const capture = async () => {
@@ -103,7 +103,7 @@ export default function Video() {
       const b64 = String(data).split(',')[1]
       await invoke('fs:writeText', out, b64, 'base64')
       toast(t('common.done'), 'success')
-    } catch (e: any) { toast(String(e.message || e), 'error') }
+    } catch (e) { toast(errorMessage(e), 'error') }
   }
   const applyPreset = (p: string) => {
     setMute(false); setExtract(false); setRotate(0); setSpeed(1)

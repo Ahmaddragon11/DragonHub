@@ -1,5 +1,32 @@
 ﻿# DragonHub Changelog
 
+## v1.4.9 — 2026-10-15 (GitHub/Telegram links, real screenshot capture & hardening)
+
+### Added
+- **GitHub repository button** in the About page and the sidebar, next to the
+  Telegram contact button. It asks for confirmation, then opens the project page
+  (`https://github.com/Ahmaddragon11/DragonHub`) in your default browser.
+- **Real screenshot capture**: pick a region, the active window or a full
+  display, then copy, save or annotate (pen, rectangle, arrow, highlight, blur,
+  undo) with multi-monitor and per-monitor DPI support.
+- **Animated update card** with a rotating gradient border plus live download
+  speed and time remaining (ETA).
+
+### Changed
+- Contacting the developer on Telegram now asks for confirmation before opening
+  the browser.
+- Redesigned dashboard and welcome screen (live clock, daily progress ring and a
+  layered hero), and a rebuilt Task Manager (sticky summary bar, sortable and
+  groupable process table, performance dashboard).
+
+### Fixed
+- Deep hardening pass across the downloads, files, archive, media, network,
+  settings and vault services.
+
+### Security
+- Stricter IPC/preload channel allow-lists, bounded external-URL opening, and
+  isolated, hardened screenshot-overlay channels.
+
 ## v1.4.8 â€” 2026-10-10 (device section, appearance customisation & hardening pass)
 
 ### Added

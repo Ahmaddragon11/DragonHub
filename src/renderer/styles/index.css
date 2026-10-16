@@ -34,6 +34,7 @@
   --r-md: 10px;
   --r-lg: 14px;
   --r-xl: 18px;
+  --r-2xl: 22px;
 
   /* Elevation (light) */
   --hairline: rgb(var(--surface-300) / 0.9);
@@ -41,6 +42,9 @@
   --shadow-2: 0 4px 12px -2px rgb(16 18 32 / 0.08), 0 2px 4px -2px rgb(16 18 32 / 0.06);
   --shadow-3: 0 24px 48px -12px rgb(16 18 32 / 0.22), 0 8px 16px -8px rgb(16 18 32 / 0.12);
   --inner-hi: inset 0 1px 0 rgb(255 255 255 / 0.6);
+  /* Keyboard focus ring: one accent-based shadow shared by every control, mirrored
+     by the global :focus-visible outline so focus is always visible & on-brand. */
+  --focus-ring: 0 0 0 3px rgb(var(--accent) / 0.25);
 
   /* Motion: durations scale with the user's animation-speed preference */
   --ease-out: cubic-bezier(.22, 1, .36, 1);
@@ -85,19 +89,25 @@ html.dark {
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; overflow: hidden; }
+html { -webkit-tap-highlight-color: transparent; text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
 body {
   @apply bg-surface-50 text-surface-900 font-sans antialiased;
   font-size: calc(14px * var(--font-scale));
   font-feature-settings: 'cv11', 'ss01', 'tnum' 0;
   user-select: none;
+  /* Native controls (range, checkbox, progress) inherit the brand accent. */
+  accent-color: rgb(var(--accent));
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 input, textarea, [contenteditable], .selectable, .monaco-editor { user-select: text; }
-[dir='rtl'] body { font-family: 'Cairo', 'Inter', 'Segoe UI', sans-serif; }
+/* Arabic gets a script-appropriate stack (Cairo/Noto Naskh) with Latin fallbacks. */
+[dir='rtl'] body { font-family: var(--font-arabic); font-feature-settings: 'cv11', 'ss01'; }
+html[dir='rtl'] { font-family: var(--font-arabic); }
 ::selection { background: rgb(var(--accent) / 0.28); }
 
-/* Scrollbars: thin, quiet, only visible on hover of the scroller */
+/* Scrollbars: thin, quiet, consistent across Chromium + the scrollbar-width fallback. */
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--surface-400) / 0.5) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgb(var(--surface-400) / 0.45); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
@@ -370,12 +380,19 @@ html:not(.dark) .dh-tooltip .kbd { background: rgb(255 255 255 / .18); }
 .compact .input, .compact .select { @apply px-2.5 py-1.5 text-xs; }
 .compact header.page-header { @apply mb-3; }
 
-/* Keyboard focus must always be visible (a11y). Pointer clicks stay clean. */
+/* Keyboard focus must always be visible (a11y). Pointer clicks stay clean.
+   One accent outline for every interactive element; controls that paint their own
+   ring (inputs) or have no focus surface (dialogs/scroll containers) opt out. */
 :focus { outline: none; }
-[tabindex='-1']:focus-visible, [role='dialog']:focus-visible, main:focus-visible { outline: none; }
 :focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; border-radius: var(--r-xs); }
 .input:focus-visible, .select:focus-visible, textarea:focus-visible,
-input[type='text']:focus-visible, input[type='search']:focus-visible, input:not([type]):focus-visible { outline: none; }
+input[type='text']:focus-visible, input[type='search']:focus-visible, input:not([type]):focus-visible,
+[tabindex='-1']:focus-visible, [role='dialog']:focus-visible, main:focus-visible { outline: none; }
+/* Windows High Contrast / forced colors: defer to the system focus indicator. */
+@media (forced-colors: active) {
+  :focus-visible { outline: 2px solid CanvasText; }
+  .btn-primary, .btn-soft, .btn-outline { border: 1px solid ButtonText; }
+}
 
 .sr-only-focusable:not(:focus) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -384,3 +401,90 @@ input[type='text']:focus-visible, input[type='search']:focus-visible, input:not(
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
   .card-interactive:hover, .dashboard-stat:hover .dashboard-stat-icon, .dashboard-action:hover > span:first-child { transform: none; }
 }
+
+/* ==========================================================================
+   Update card — floating/inline surface with a rotating gradient border.
+   The spin is a single compositor-friendly transform on a ::before layer; the
+   inner ::after paints the real surface so only a hairline ring shows. No
+   per-frame JS, no @property needed (works in Electron/Chromium as-is).
+   ========================================================================== */
+.update-card {
+  position: relative;
+  border-radius: var(--r-2xl);
+  overflow: hidden;
+  isolation: isolate;
+  background: rgb(var(--surface-100));
+  box-shadow: var(--shadow-3), var(--inner-hi);
+}
+.update-card::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 250%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%) rotate(0deg);
+  background: conic-gradient(from 0deg, #3b82f6, #ef4444, #f59e0b, #3b82f6);
+  animation: updateBorderSpin 5s linear infinite;
+  z-index: 0;
+}
+.update-card::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  border-radius: calc(var(--r-2xl) - 1.5px);
+  background: rgb(var(--surface-100) / 0.98);
+  z-index: 1;
+}
+html[data-glass='on'] .update-card::after {
+  background: rgb(var(--surface-100) / 0.82);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+.update-card-content { position: relative; z-index: 2; }
+.update-card-floating {
+  position: fixed;
+  inset-block-end: 1rem;
+  inset-inline-start: 1rem;
+  z-index: 95;
+  width: min(400px, calc(100vw - 2rem));
+}
+@keyframes updateBorderSpin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Progress bar: brand gradient fill; an indeterminate sweep when size is unknown. */
+.update-track {
+  height: 10px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(var(--surface-300) / 0.7);
+}
+.update-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b82f6, #ef4444, #f59e0b);
+  transition: width var(--dur-3) var(--ease-out);
+}
+.update-fill-indeterminate {
+  width: 40% !important;
+  animation: updateIndeterminate 1.3s var(--ease-in-out) infinite;
+}
+@keyframes updateIndeterminate {
+  0% { margin-inline-start: -40%; }
+  100% { margin-inline-start: 100%; }
+}
+
+/* Reduced motion / low-power: freeze the border spin (static gradient stays) and
+   stop the indeterminate sweep. `data-anim='off'` and `prefers-reduced-motion`
+   already kill animations globally — these rules make the intent explicit. */
+@media (prefers-reduced-motion: reduce) {
+  .update-card::before,
+  .update-fill-indeterminate { animation: none; }
+}
+html.low-power .update-card::before,
+html[data-anim='off'] .update-card::before,
+html[data-anim='reduced'] .update-card::before { animation: none; }

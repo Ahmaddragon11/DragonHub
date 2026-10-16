@@ -4,7 +4,7 @@ import { Wifi, ArrowDown, ArrowUp, Download, Upload, ShieldAlert, AlertTriangle,
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Field, Toggle, Slider, Empty, Progress } from '@/components/ui'
-import { invoke, on } from '@/lib/api'
+import { invoke, on, errorMessage } from '@/lib/api'
 import { uid } from '@/lib/utils'
 import { dailyAllowanceMB, planUsage, effectiveDailyCapMB, lastNDays, formatMB, projectDepletion, weekTotals } from '@/lib/netplan'
 import type { NetPlan, NetLimits, NetLive, NetDay, NetConfig, NetCycle } from '@shared/types'
@@ -127,7 +127,7 @@ export default function Network() {
   useEffect(() => {
     let alive = true
     loadAll()
-      .catch((e: unknown) => { if (alive) toast(e instanceof Error ? e.message : t('toast.error'), 'error') })
+      .catch((e: unknown) => { if (alive) toast(errorMessage(e, t('toast.error')), 'error') })
       .finally(() => { if (alive) setLoading(false) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { alive = false }
@@ -163,7 +163,7 @@ export default function Network() {
       const r = await invoke<{ blocked: boolean; needsAdmin: boolean }>('net:setBlocked', to)
       setLive((l) => (l ? { ...l, blocked: r.blocked, needsAdmin: r.needsAdmin } : l))
       toast(t(r.blocked ? 'net.blocked' : 'net.unblocked'), r.blocked ? 'warning' : 'success')
-    } catch (e: unknown) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+    } catch (e: unknown) { toast(errorMessage(e, t('toast.error')), 'error') }
   }
 
   const patchLimits = async (patch: Partial<NetLimits>) => {
@@ -175,7 +175,7 @@ export default function Network() {
       setLimits(cfg.limits)
     } catch (e: unknown) {
       setLimits(prev)
-      toast(e instanceof Error ? e.message : t('toast.error'), 'error')
+      toast(errorMessage(e, t('toast.error')), 'error')
     }
   }
 
@@ -194,7 +194,7 @@ export default function Network() {
         setLimits(cfg.limits)
       } catch (e: unknown) {
         setLimits(snapshot)
-        toast(e instanceof Error ? e.message : t('toast.error'), 'error')
+        toast(errorMessage(e, t('toast.error')), 'error')
       }
     }, 400)
   }
@@ -253,7 +253,7 @@ export default function Network() {
       applyConfig(cfg)
       setHistory(await invoke<NetDay[]>('net:history', 30))
       toast(t('toast.saved'))
-    } catch (e: unknown) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+    } catch (e: unknown) { toast(errorMessage(e, t('toast.error')), 'error') }
   }
 
   const clearPlan = async () => {
@@ -261,7 +261,7 @@ export default function Network() {
       const cfg = await invoke<NetConfig>('net:setPlan', null)
       applyConfig(cfg)
       toast(t('toast.deleted'))
-    } catch (e: unknown) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+    } catch (e: unknown) { toast(errorMessage(e, t('toast.error')), 'error') }
   }
 
   const todayTotal = (live?.todayDownMB ?? 0) + (live?.todayUpMB ?? 0)
@@ -300,7 +300,7 @@ export default function Network() {
       setExePath(f)
       const st = await invoke<{ blocked: boolean }>('net:appBlockedCheck', f)
       setAppBlocked(!!st.blocked)
-    } catch (e: unknown) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+    } catch (e: unknown) { toast(errorMessage(e, t('toast.error')), 'error') }
   }
 
   const toggleAppBlock = async () => {
@@ -312,7 +312,7 @@ export default function Network() {
       setAppBlocked(r.blocked)
       if (r.needsAdmin) toast(t('net.needsAdmin'), 'warning')
       else toast(t(r.blocked ? 'net.blocked' : 'net.unblocked'), r.blocked ? 'warning' : 'success')
-    } catch (e: unknown) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+    } catch (e: unknown) { toast(errorMessage(e, t('toast.error')), 'error') }
   }
 
   const runSpeedTest = async () => {
@@ -323,7 +323,7 @@ export default function Network() {
       const r = await invoke<{ mbps: number; bytes: number; ms: number }>('net:speedTest')
       setSpeedResult(r)
       toast(t('net.speedTestResult', { s: `${r.mbps} Mbps` }), 'success')
-    } catch (e: unknown) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+    } catch (e: unknown) { toast(errorMessage(e, t('toast.error')), 'error') }
     finally { setSpeedRunning(false) }
   }
 
@@ -334,7 +334,7 @@ export default function Network() {
       const csv = ['date,downMB,upMB,totalMB', ...rows30.map((d) => `${d.date},${d.downMB ?? 0},${d.upMB ?? 0},${(d.downMB ?? 0) + (d.upMB ?? 0)}`)].join('\n')
       await invoke('fs:writeText', fp, csv)
       toast(t('toast.saved'))
-    } catch (e: unknown) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+    } catch (e: unknown) { toast(errorMessage(e, t('toast.error')), 'error') }
   }
 
   const showSkeleton = loading && !limits && !live

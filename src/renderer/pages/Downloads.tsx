@@ -4,7 +4,7 @@ import { Download, Link, Play, Pause, X, Trash2, FolderOpen, ExternalLink, Rotat
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Empty, Progress } from '@/components/ui'
-import { invoke, on } from '@/lib/api'
+import { invoke, on, errorMessage } from '@/lib/api'
 import { formatBytes, formatDuration, cn } from '@/lib/utils'
 import type { DownloadItem } from '@shared/types'
 
@@ -39,8 +39,8 @@ const DownloadRow = React.memo(function DownloadRow({ d, onAct, onRemove }: {
           {(d.status === 'paused' || d.status === 'queued') && d.kind === 'direct' && <button className="btn-icon" title={t('common.resume')} aria-label={t('common.resume')} onClick={() => onAct('dl:resume', d.id)}><Play size={15} /></button>}
           {(d.status === 'error' || d.status === 'cancelled') && d.kind === 'direct' && <button className="btn-icon" title={t('common.retry')} aria-label={t('common.retry')} onClick={() => onAct('dl:resume', d.id)}><RotateCcw size={15} /></button>}
           {isActive(d) && <button className="btn-icon hover:text-rose-500" title={t('common.cancelAction')} aria-label={t('common.cancelAction')} onClick={() => onAct('dl:cancel', d.id)}><X size={15} /></button>}
-          {d.status === 'completed' && <><button className="btn-icon" title={t('downloads.openFile')} onClick={() => invoke('fs:open', d.savePath)}><ExternalLink size={15} /></button><button className="btn-icon" title={t('downloads.openFolder')} onClick={() => invoke('fs:showInFolder', d.savePath)}><FolderOpen size={15} /></button></>}
-          <button className="btn-icon hover:text-rose-500" title={`${t('common.delete')} — Shift: ${t('downloads.removeWithFile')}`} onClick={(e) => onRemove(d.id, e.shiftKey)}><Trash2 size={15} /></button>
+          {d.status === 'completed' && <><button className="btn-icon" title={t('downloads.openFile')} aria-label={t('downloads.openFile')} onClick={() => invoke('fs:open', d.savePath)}><ExternalLink size={15} /></button><button className="btn-icon" title={t('downloads.openFolder')} aria-label={t('downloads.openFolder')} onClick={() => invoke('fs:showInFolder', d.savePath)}><FolderOpen size={15} /></button></>}
+          <button className="btn-icon hover:text-rose-500" title={`${t('common.delete')} — Shift: ${t('downloads.removeWithFile')}`} aria-label={t('common.delete')} onClick={(e) => onRemove(d.id, e.shiftKey)}><Trash2 size={15} /></button>
         </div>
       </div>
       {isActive(d) && (
@@ -92,11 +92,11 @@ export default function Downloads() {
       if (kind === 'direct') await withTimeout(invoke('dl:add', url.trim(), { segments }))
       else await withTimeout(invoke('dl:mediaDownload', url.trim(), { audioOnly, format: fmt || undefined }), 60000)
       setUrl(''); setInfo(null); setFmt(''); toast(t('toast.created'))
-    } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false) }
+    } catch (e) { toast(errorMessage(e), 'error') } finally { setBusy(false) }
   }
-  const fetchInfo = async () => { if (!valid) return; setBusy(true); try { setInfo(await withTimeout(invoke('dl:mediaInfo', url.trim()), 30000)) } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false) } }
+  const fetchInfo = async () => { if (!valid) return; setBusy(true); try { setInfo(await withTimeout(invoke('dl:mediaInfo', url.trim()), 30000)) } catch (e) { toast(errorMessage(e), 'error') } finally { setBusy(false) } }
   const act = useCallback(async (ch: string, ...a: unknown[]) => {
-    try { await withTimeout(invoke(ch, ...a)); setDownloads(await withTimeout(invoke<DownloadItem[]>('dl:list'))) } catch (e: any) { toast(e.message, 'error') }
+    try { await withTimeout(invoke(ch, ...a)); setDownloads(await withTimeout(invoke<DownloadItem[]>('dl:list'))) } catch (e) { toast(errorMessage(e), 'error') }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const removeItem = useCallback(async (id: string, deleteFile: boolean) => {
@@ -126,7 +126,7 @@ export default function Downloads() {
       </PageHeader>
       <section className="card p-4 mb-4">
         <div className="flex gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-0"><Link size={15} className="absolute start-3 top-3 text-surface-500" /><input ref={urlRef} dir="ltr" className="input ps-9 py-2.5" placeholder={t('downloads.addUrl')} value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
+          <div className="relative flex-1 min-w-0"><Link size={15} className="absolute start-3 top-3 text-surface-500" /><input ref={urlRef} dir="ltr" className="input ps-9 py-2.5" aria-label={t('downloads.addUrl')} placeholder={t('downloads.addUrl')} value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /></div>
           {kind === 'media' && <button className="btn-soft shrink-0" onClick={fetchInfo} disabled={!valid || busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Youtube size={15} />}{t('downloads.fetchInfo')}</button>}
           <button className="btn-primary px-6 shrink-0" onClick={add} disabled={!valid || busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}{t('downloads.add')}</button>
         </div>
@@ -141,7 +141,7 @@ export default function Downloads() {
           <div className="mt-3 flex gap-3 rounded-xl bg-surface-200/60 p-3 animate-slide-up">
             {safeThumb(info.thumbnail) && <img src={safeThumb(info.thumbnail) as string} className="h-20 w-36 object-cover rounded-lg shrink-0" referrerPolicy="no-referrer" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} alt="" />}
             <div className="flex-1 min-w-0"><p className="font-medium text-sm truncate">{info.title}</p><p className="text-xs text-surface-500">{info.uploader} • {formatDuration(info.duration)}</p>
-              {!audioOnly && <select className="select mt-2 text-xs py-1 max-w-full" value={fmt} onChange={(e) => setFmt(e.target.value)}><option value="">{t('downloads.bestQuality')}</option>{[...info.formats].reverse().filter((f: any) => f.vcodec !== 'none').map((f: any) => <option key={f.id} value={f.acodec === 'none' ? `${f.id}+ba` : f.id}>{f.res} {f.note || ''} .{f.ext} {f.filesize ? formatBytes(f.filesize) : ''}</option>)}</select>}
+              {!audioOnly && <select className="select mt-2 text-xs py-1 max-w-full" aria-label={t('video.format')} value={fmt} onChange={(e) => setFmt(e.target.value)}><option value="">{t('downloads.bestQuality')}</option>{[...info.formats].reverse().filter((f: any) => f.vcodec !== 'none').map((f: any) => <option key={f.id} value={f.acodec === 'none' ? `${f.id}+ba` : f.id}>{f.res} {f.note || ''} .{f.ext} {f.filesize ? formatBytes(f.filesize) : ''}</option>)}</select>}
             </div>
           </div>
         )}

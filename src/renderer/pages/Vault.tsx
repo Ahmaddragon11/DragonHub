@@ -5,7 +5,7 @@ import { Shield, ShieldCheck, Lock, Unlock, Plus, Search, Copy, Eye, EyeOff, Sta
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Modal, Field, Toggle, Slider, TagInput, Empty } from '@/components/ui'
-import { invoke, on } from '@/lib/api'
+import { invoke, on, errorMessage } from '@/lib/api'
 import { uid, cn, relTime } from '@/lib/utils'
 import type { VaultItem, VaultItemType, VaultMeta } from '@shared/types'
 
@@ -91,6 +91,7 @@ export default function Vault() {
   const [genOpen, setGenOpen] = useState(false)
   const [chOpen, setChOpen] = useState(false); const [oldPw, setOldPw] = useState(''); const [newPw, setNewPw] = useState('')
   const [showSecret, setShowSecret] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   // Never leave plaintext secrets in state longer than needed.
   const closeEdit = () => { setEdit(null); setShowSecret(false) }
@@ -106,7 +107,7 @@ export default function Vault() {
       setMetaLoading(false)
     }
   }
-  useEffect(() => { refresh().catch((e: any) => setErr(String(e?.message || e))) }, [])
+  useEffect(() => { refresh().catch((e: unknown) => setErr(errorMessage(e))) }, [])
   useEffect(() => on('vault:locked', () => { setUnlocked(false); setItems([]); setSel(null); setEdit(null); setReveal({}) }), [])
   useEffect(() => {
     if (!unlocked) return
@@ -120,16 +121,16 @@ export default function Vault() {
     setErr('')
     if (pw.length < 8) return setErr(t('vault.tooShort'))
     if (pw !== pw2) return setErr(t('vault.mismatch'))
-    try { await invoke('vault:init', pw); setPw(''); setPw2(''); await refresh() } catch (e: any) { setErr(String(e.message || e)) }
+    try { await invoke('vault:init', pw); setPw(''); setPw2(''); await refresh() } catch (e) { setErr(errorMessage(e)) }
   }
-  const unlock = async () => { setErr(''); try { await invoke('vault:unlock', pw); setPw(''); await refresh() } catch (e: any) { setErr(String(e.message || e)) } }
-  const lock = async () => { await invoke('vault:lock'); setUnlocked(false); setItems([]); setSel(null); closeEdit(); setReveal({}); setPw(''); setPw2(''); setErr('') }
-  const copy = async (text: string) => { await invoke('clipboard:write', text, settings.vaultClearClipboardSec); toast(t('vault.copiedClear', { s: settings.vaultClearClipboardSec }), 'success') }
+  const unlock = async () => { setErr(''); try { await invoke('vault:unlock', pw); setPw(''); await refresh() } catch (e) { setErr(errorMessage(e)) } }
+  const lock = async () => { try { await invoke('vault:lock'); setUnlocked(false); setItems([]); setSel(null); closeEdit(); setReveal({}); setPw(''); setPw2(''); setErr('') } catch (e) { toast(errorMessage(e), 'error') } }
+  const copy = async (text: string) => { try { await invoke('clipboard:write', text, settings.vaultClearClipboardSec); toast(t('vault.copiedClear', { s: settings.vaultClearClipboardSec }), 'success') } catch (e) { toast(errorMessage(e), 'error') } }
   const openExternalSafe = (raw?: string) => {
     const url = (raw || '').trim()
     // Allow only http(s) — reject javascript:/file:/data: and other schemes.
     if (!/^https?:\/\//i.test(url)) { toast(t('common.blockedUrl'), 'error'); return }
-    invoke('app:openExternal', url).catch((e: unknown) => toast(e instanceof Error ? e.message : t('toast.error'), 'error'))
+    invoke('app:openExternal', url).catch((e: unknown) => toast(errorMessage(e, t('toast.error')), 'error'))
   }
   const save = async () => {
     if (!edit || !edit.title.trim()) return
@@ -137,18 +138,23 @@ export default function Vault() {
     if ((edit.tags || []).length > 20) { toast(t('vault.tooManyTags'), 'error'); return }
     if ((edit.fields || []).length > 50) { toast(t('vault.tooManyFields'), 'error'); return }
     if ((edit.notes || '').length > 10000) { toast(t('vault.notesTooLong'), 'error'); return }
-    const it = { ...edit, updatedAt: Date.now() }
-    await invoke('vault:upsert', it); setEdit(null); setSel(it); setItems(await invoke('vault:list')); toast(t('toast.saved'))
+    setSaving(true)
+    try {
+      const it = { ...edit, updatedAt: Date.now() }
+      await invoke('vault:upsert', it); setEdit(null); setSel(it); setItems(await invoke('vault:list')); toast(t('toast.saved'))
+    } catch (e) { toast(errorMessage(e), 'error') } finally { setSaving(false) }
   }
   const del = async (it: VaultItem) => {
-    if (!(await invoke('dialog:confirm', t('common.confirmDelete'), it.title))) return
-    await invoke('vault:remove', it.id); setSel(null); setItems(await invoke('vault:list')); toast(t('toast.deleted'))
+    try {
+      if (settings.confirmDelete && !(await invoke('dialog:confirm', t('common.confirmDelete'), it.title))) return
+      await invoke('vault:remove', it.id); setSel(null); setItems(await invoke('vault:list')); toast(t('toast.deleted'))
+    } catch (e) { toast(errorMessage(e), 'error') }
   }
-  const fav = async (it: VaultItem) => { const n = { ...it, favorite: !it.favorite }; await invoke('vault:upsert', n); setItems(await invoke('vault:list')); if (sel?.id === it.id) setSel(n) }
+  const fav = async (it: VaultItem) => { try { const n = { ...it, favorite: !it.favorite }; await invoke('vault:upsert', n); setItems(await invoke('vault:list')); if (sel?.id === it.id) setSel(n) } catch (e) { toast(errorMessage(e), 'error') } }
   const changePw = async () => {
     setErr('')
     if (newPw.length < 8) return setErr(t('vault.tooShort'))
-    try { await invoke('vault:changePassword', oldPw, newPw); setChOpen(false); setOldPw(''); setNewPw(''); toast(t('toast.updated')) } catch (e: any) { setErr(String(e.message || e)) }
+    try { await invoke('vault:changePassword', oldPw, newPw); setChOpen(false); setOldPw(''); setNewPw(''); toast(t('toast.updated')) } catch (e) { setErr(errorMessage(e)) }
   }
   const doImport = async () => {
     try {
@@ -159,7 +165,7 @@ export default function Vault() {
       await invoke('vault:import')
       await refresh()
       toast(t('common.done'))
-    } catch (e: any) { if (e?.message) toast(e.message, 'error') }
+    } catch (e) { toast(errorMessage(e), 'error') }
   }
   const newItem = (type: VaultItemType = 'password'): VaultItem => ({ id: uid(), type, title: '', secret: '', tags: [], fields: [], favorite: false, createdAt: Date.now(), updatedAt: Date.now() })
 
@@ -197,7 +203,7 @@ export default function Vault() {
       <PageHeader title={t('vault.title')} icon={<ShieldCheck />} subtitle={t('vault.security')}>
         <button className="btn" onClick={() => setGenOpen(true)}><Wand2 size={14} /> {t('vault.generator')}</button>
         <button className="btn" title={t('vault.changePassword')} onClick={() => setChOpen(true)}><KeyRound size={14} /></button>
-        <button className="btn" title={t('vault.exportBackup')} onClick={async () => { try { const r = await invoke('vault:export'); if (r) toast(t('common.done')) } catch (e: any) { toast(e.message, 'error') } }}><Download size={14} /></button>
+        <button className="btn" title={t('vault.exportBackup')} onClick={async () => { try { const r = await invoke('vault:export'); if (r) toast(t('common.done')) } catch (e) { toast(errorMessage(e), 'error') } }}><Download size={14} /></button>
         <button className="btn" title={t('vault.importBackup')} onClick={doImport}><Upload size={14} /></button>
         <button className="btn" onClick={lock}><Lock size={14} /> {t('vault.lock')}</button>
         <button className="btn-primary" onClick={() => setEdit(newItem())}><Plus size={16} /> {t('vault.newItem')}</button>
@@ -205,7 +211,7 @@ export default function Vault() {
       <div className="flex flex-1 min-h-0">
         <aside className="w-80 shrink-0 border-e border-surface-300 flex flex-col">
           <div className="p-3 space-y-2">
-            <div className="relative"><Search size={14} className="absolute start-3 top-3 opacity-50" /><input className="input ps-9" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <div className="relative"><Search size={14} className="absolute start-3 top-3 opacity-50" /><input data-search className="input ps-9" aria-label={t('common.search')} placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
             <div className="flex flex-wrap gap-1">
               <button className={cn('badge cursor-pointer', typeF === 'all' ? 'bg-accent text-white' : 'bg-surface-200 text-surface-700')} onClick={() => setTypeF('all')}>{t('common.all')}</button>
               {TYPES.map((ty) => <button key={ty} className={cn('badge cursor-pointer', typeF === ty ? 'bg-accent text-white' : 'bg-surface-200 text-surface-700')} onClick={() => setTypeF(ty)}>{types[ty]}</button>)}
@@ -228,9 +234,9 @@ export default function Vault() {
                 <div className="flex items-center gap-4">
                   <div className={cn('w-14 h-14 rounded-2xl flex items-center justify-center text-white text-lg font-bold', TYPE_COLOR[sel.type])}>{sel.title.slice(0, 2).toUpperCase()}</div>
                   <div className="flex-1 min-w-0"><h2 className="text-xl font-bold truncate">{sel.title}</h2><div className="text-xs opacity-50">{types[sel.type]} • {relTime(sel.updatedAt, i18n.language)}</div></div>
-                  <button className="btn-icon" onClick={() => fav(sel)}><Star size={16} className={sel.favorite ? 'text-amber-400 fill-amber-400' : ''} /></button>
-                  <button className="btn-icon" onClick={() => setEdit({ ...sel })}><Pencil size={16} /></button>
-                  <button className="btn-icon text-red-400" onClick={() => del(sel)}><Trash2 size={16} /></button>
+                  <button className="btn-icon" title={t('notes.favorite')} aria-label={t('notes.favorite')} onClick={() => fav(sel)}><Star size={16} className={sel.favorite ? 'text-amber-400 fill-amber-400' : ''} /></button>
+                  <button className="btn-icon" title={t('common.edit')} aria-label={t('common.edit')} onClick={() => setEdit({ ...sel })}><Pencil size={16} /></button>
+                  <button className="btn-icon text-red-400" title={t('common.delete')} aria-label={t('common.delete')} onClick={() => del(sel)}><Trash2 size={16} /></button>
                 </div>
                 <div className="card divide-y divide-surface-300">
                   {sel.username && <Row label={t('vault.username')} value={sel.username} onCopy={copy} />}
@@ -283,7 +289,7 @@ export default function Vault() {
               ))}
             </div>
             <div className="col-span-2"><Field label={t('vault.notes')}><textarea className="input min-h-[70px]" value={edit.notes || ''} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field></div>
-            <div className="col-span-2 flex justify-end gap-2"><button className="btn" onClick={closeEdit}>{t('common.cancel')}</button><button className="btn-primary" onClick={save}>{t('common.save')}</button></div>
+            <div className="col-span-2 flex justify-end gap-2"><button className="btn" onClick={closeEdit}>{t('common.cancel')}</button><button className="btn-primary" onClick={save} disabled={saving}>{t('common.save')}</button></div>
           </div>
         )}
       </Modal>

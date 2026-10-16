@@ -12,7 +12,7 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/Ahmaddragon11/DragonHub?style=for-the-badge&label=Latest%20Release)](https://github.com/Ahmaddragon11/DragonHub/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/Ahmaddragon11/DragonHub?style=for-the-badge)](https://github.com/Ahmaddragon11/DragonHub/stargazers)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE.md)
 
 </div>
 
@@ -470,7 +470,7 @@ git push origin v1.4.0
   الحفظ عند الإغلاق، الاختصارات أثناء الكتابة.
 - أوامر سريعة جديدة في لوحة الأوامر (Ctrl+K)، ودورة سمة ثلاثية (داكن/فاتح/نظام).
 - التفاصيل: `CHANGELOG.md`. الصيغ المدعومة والقيود: `SUPPORTED_FORMATS.md`.
-  البنية: `ARCHITECTURE.md`. تقرير التحقق: `VERIFICATION_REPORT.md`.
+  البنية: `ARCHITECTURE.md`.
 
 ## الشبكة والاستهلاك (جديد في 1.3.0)
 

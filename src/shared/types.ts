@@ -1,8 +1,9 @@
 // Shared type contracts between main process and renderer
 
-export const APP_VERSION = '1.4.8'
+export const APP_VERSION = '1.4.9'
 export const DEVELOPER = 'AHMADDRAGON'
 export const TELEGRAM_URL = 'https://t.me/ahmaddragon'
+export const GITHUB_URL = 'https://github.com/Ahmaddragon11/DragonHub'
 
 export type Theme = 'dark' | 'light' | 'system'
 export type Language = 'ar' | 'en'
@@ -308,6 +309,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.9',
+    date: '2026-10-15',
+    changes: [
+      { type: 'added', text: 'GitHub repository button in the About page and the sidebar — opens the project page in your browser after a confirmation prompt' },
+      { type: 'changed', text: 'Contacting the developer on Telegram now asks for confirmation before opening the browser' },
+      { type: 'added', text: 'Real screenshot capture: region, active window and full screen, with an annotation editor (pen, rectangle, arrow, highlight, blur, undo) and multi-monitor/DPI support' },
+      { type: 'added', text: 'Animated update card with a rotating gradient border, live download speed and time remaining (ETA)' },
+      { type: 'changed', text: 'Redesigned dashboard and welcome screen with live clock, daily progress ring and a layered hero' },
+      { type: 'changed', text: 'Task Manager rebuilt with a sticky summary bar, sortable columns, grouping and a performance dashboard' },
+      { type: 'fixed', text: 'Deep backend hardening pass across downloads, files, archive, media, network, settings and vault services' },
+      { type: 'security', text: 'Broader audit fixes: stricter IPC/preload allow-lists, bounded external-URL opening and hardened overlay channels' },
+    ],
+  },
+  {
     version: '1.4.8',
     date: '2026-10-10',
     changes: [
@@ -575,6 +590,54 @@ export interface ScreenSource {
   /** Decoded pixel size of the thumbnail (may differ from the display when scaled). */
   width: number
   height: number
+}
+
+/** One physical display, as reported to the capture UI (sizes are CSS px / DIP). */
+export interface CaptureDisplay {
+  id: number
+  label: string
+  width: number
+  height: number
+  scaleFactor: number
+  primary: boolean
+}
+
+/** Payload the main process sends to a freshly mounted region-capture overlay. */
+export interface CaptureOverlayInit {
+  /** Full-resolution frozen screenshot of the display (PNG data URL). */
+  image: string
+  /** Display id the overlay covers. */
+  displayId: string
+  /** Display bounds in CSS px (the overlay window exactly covers these). */
+  bounds: { x: number; y: number; width: number; height: number }
+  /** Display DPI scale (physical px = CSS px × scaleFactor). */
+  scaleFactor: number
+  /** Pixel size of `image` (may differ from bounds on scaled displays). */
+  imageSize: { width: number; height: number }
+  /** UI language for the overlay chrome. */
+  lang: 'ar' | 'en'
+}
+
+/** What the user asked the overlay to do with the finished capture. */
+export type CaptureAction = 'copy' | 'save'
+
+/** Message an overlay sends to main when the user confirms a capture. */
+export interface CaptureOverlayCommit {
+  action: CaptureAction
+  /** Selection rectangle in CSS px, relative to the display. Omitted when `dataUrl` is set. */
+  rect?: { x: number; y: number; w: number; h: number }
+  /** Pre-composited PNG data URL (annotated captures). Takes precedence over `rect`. */
+  dataUrl?: string
+}
+
+/** Result of any real capture. `null` from the API means the user cancelled. */
+export interface CaptureResult {
+  /** PNG data URL of the captured (and possibly annotated) image. */
+  dataUrl: string
+  /** Which capture path produced it. */
+  source: 'region' | 'display' | 'window'
+  /** Action the overlay asked for (region captures only). */
+  action?: CaptureAction
 }
 
 export interface ResConfig {

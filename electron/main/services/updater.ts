@@ -11,6 +11,22 @@ const RELEASE_DOWNLOAD_PATH_PREFIX = '/Ahmaddragon11/DragonHub/releases/download
 const CHECKSUMS_ASSET_NAME = 'SHA256SUMS.txt'
 const MAX_CHECKSUMS_BYTES = 256 * 1024
 const SHA256_HEX_LINE = /^([0-9a-f]{64})[ \t]+\*?(.+)$/
+// Progress reporting bounds keep a bogus sample (clock jump / tiny chunk) from
+// ever surfacing an absurd speed or "remaining time" in the UI.
+const MAX_SPEED_BPS = 5_000_000_000
+const MAX_ETA_SECONDS = 86_400
+const clamp = (n: number, min: number, max: number): number => Math.min(max, Math.max(min, n))
+
+/** Progress payload streamed to the renderer during an update check/download. */
+export interface UpdateProgressEvent {
+  phase: 'checking' | 'downloading'
+  receivedBytes?: number
+  totalBytes?: number
+  /** Smoothed transfer rate in bytes/second (present while streaming). */
+  speed?: number
+  /** Estimated seconds remaining when both the total size and a rate are known. */
+  eta?: number
+}
 
 interface ReleaseAsset {
   name?: unknown
@@ -142,7 +158,7 @@ async function verifyInstallerIntegrity(
 }
 
 export async function downloadLatestUpdate(
-  onProgress: (progress: { phase: 'checking' | 'downloading'; receivedBytes?: number; totalBytes?: number }) => void,
+  onProgress: (progress: UpdateProgressEvent) => void,
 ): Promise<UpdateCheckResult> {
   if (!app.isPackaged || process.platform !== 'win32') return { status: 'unsupported' }
 
@@ -185,14 +201,33 @@ export async function downloadLatestUpdate(
     try {
       let receivedBytes = 0
       let lastReportedAt = 0
+      let lastSampleAt = Date.now()
+      let lastSampleBytes = 0
+      let smoothedSpeed = 0
+      // Coalesce to ~7 fps and derive a smoothed rate + ETA from real timestamps,
+      // so the renderer gets them for free without any extra IPC channel.
+      const report = (force = false) => {
+        const now = Date.now()
+        if (!force && now - lastReportedAt < 150) return
+        const elapsed = (now - lastSampleAt) / 1000
+        if (elapsed > 0) {
+          const instant = (receivedBytes - lastSampleBytes) / elapsed
+          // Exponential moving average keeps the readout stable between samples.
+          smoothedSpeed = smoothedSpeed > 0 ? smoothedSpeed * 0.7 + instant * 0.3 : instant
+          lastSampleAt = now
+          lastSampleBytes = receivedBytes
+        }
+        lastReportedAt = now
+        const speed = smoothedSpeed > 0 ? clamp(Math.round(smoothedSpeed), 0, MAX_SPEED_BPS) : undefined
+        const eta = speed && totalBytes
+          ? clamp(Math.round(Math.max(0, totalBytes - receivedBytes) / speed), 0, MAX_ETA_SECONDS)
+          : undefined
+        onProgress({ phase: 'downloading', receivedBytes, totalBytes, speed, eta })
+      }
       const progress = new Transform({
         transform(chunk: Buffer, _encoding, callback) {
           receivedBytes += chunk.length
-          const now = Date.now()
-          if (now - lastReportedAt >= 150) {
-            onProgress({ phase: 'downloading', receivedBytes, totalBytes })
-            lastReportedAt = now
-          }
+          report()
           callback(null, chunk)
         },
       })
@@ -203,7 +238,7 @@ export async function downloadLatestUpdate(
         fs.createWriteStream(installerPath, { flags: 'wx' }),
         { signal: controller.signal },
       )
-      onProgress({ phase: 'downloading', receivedBytes, totalBytes })
+      report(true)
       controller.signal.throwIfAborted()
 
       const installerFile = await fs.promises.open(installerPath, 'r')
@@ -246,4 +281,17 @@ export function getDownloadedInstaller(): { path: string; version: string } | nu
     return null
   }
   return pendingInstaller
+}
+
+/** The installer was handed to the OS: keep the file, forget the pending ref so
+ *  before-quit cleanup does not delete it out from under the running setup. */
+export function releaseDownloadedInstaller(): void {
+  pendingInstaller = null
+}
+
+/** Delete a downloaded-but-never-installed update installer (app quit cleanup). */
+export function cleanupPendingInstaller(): void {
+  if (!pendingInstaller) return
+  try { fs.rmSync(pendingInstaller.path, { force: true }) } catch { /* best effort */ }
+  pendingInstaller = null
 }

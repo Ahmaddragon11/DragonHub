@@ -4,7 +4,7 @@ import { FolderOpen, Folder, File, FileText, FileImage, FileVideo, FileAudio, Fi
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, ContextMenu, Modal, Field, Empty } from '@/components/ui'
-import { invoke, toFileUrl } from '@/lib/api'
+import { invoke, toFileUrl, errorMessage } from '@/lib/api'
 import { formatBytes, formatDate, cn, IMAGE_EXT, VIDEO_EXT, AUDIO_EXT, ARCHIVE_EXT, TEXT_EXT } from '@/lib/utils'
 import type { FileEntry, DriveInfo } from '@shared/types'
 
@@ -34,9 +34,8 @@ function iconFor(e: FileEntry, size = 18) {
 }
 
 type Clip = { op: 'copy' | 'cut'; paths: string[] } | null
-let clipboardState: Clip = null
 
-function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial: string; active: boolean; onActivate: () => void; onOpenIn: (kind: 'editor' | 'images' | 'video' | 'compress', p: string) => void; onPathChange?: (p: string) => void }) {
+function Pane({ initial, active, onActivate, onOpenIn, onPathChange, clipboard, setClipboard }: { initial: string; active: boolean; onActivate: () => void; onOpenIn: (kind: 'editor' | 'images' | 'video' | 'compress', p: string) => void; onPathChange?: (p: string) => void; clipboard: Clip; setClipboard: React.Dispatch<React.SetStateAction<Clip>> }) {
   const { t } = useTranslation()
   const { settings, setSettings, toast, touchRecentFile } = useApp(useShallow((s) => ({ settings: s.settings, setSettings: s.setSettings, toast: s.toast, touchRecentFile: s.touchRecentFile })))
   const [path, setPath] = useState(initial)
@@ -49,7 +48,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   const [loading, setLoading] = useState(false)
   const [renaming, setRenaming] = useState<FileEntry | null>(null); const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState<'file' | 'folder' | null>(null)
-  const [props, setProps] = useState<{ e: FileEntry; size?: any; hash?: string } | null>(null)
+  const [props, setProps] = useState<{ e: FileEntry; size?: any; hash?: string; algo?: string } | null>(null)
   const [preview, setPreview] = useState<{ e: FileEntry; text?: string } | null>(null)
   const [sort, setSort] = useState<{ k: 'name' | 'size' | 'modified' | 'ext'; d: 1 | -1 }>({ k: 'name', d: 1 })
   const pathInput = useRef<HTMLInputElement>(null)
@@ -64,7 +63,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
       // Race guard: a slow stale response must never overwrite a newer folder.
       if (loadSeq.current !== id) return
       setEntries(ents); setSel(new Set())
-    } catch (e: any) { if (loadSeq.current === id) toast(e.message, 'error') } finally { if (loadSeq.current === id) setLoading(false) }
+    } catch (e) { if (loadSeq.current === id) toast(errorMessage(e), 'error') } finally { if (loadSeq.current === id) setLoading(false) }
   }, [path, settings.showHiddenFiles, toast])
   useEffect(() => { load() }, [path, settings.showHiddenFiles])
   // Report the live path upward so the parent's "add favorite" uses the folder
@@ -107,10 +106,10 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
   }
 
   const selected = entries.filter((e) => sel.has(e.path))
-  const doCopy = (cut = false) => { clipboardState = { op: cut ? 'cut' : 'copy', paths: selected.map((e) => e.path) }; toast(`${selected.length} ${cut ? t('common.cut') : t('common.copy')}`, 'info') }
+  const doCopy = (cut = false) => { setClipboard({ op: cut ? 'cut' : 'copy', paths: selected.map((e) => e.path) }); toast(`${selected.length} ${cut ? t('common.cut') : t('common.copy')}`, 'info') }
   const doPaste = async () => {
-    if (!clipboardState) return
-    for (const src of clipboardState.paths) {
+    if (!clipboard) return
+    for (const src of clipboard.paths) {
       try {
         const info = await invoke<{ base: string }>('fs:pathInfo', src)
         const dest = await invoke<string>('fs:join', path, info.base)
@@ -123,10 +122,10 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
             overwrite = true
           }
         } catch { /* exists check best-effort — let main enforce */ }
-        try { await invoke(clipboardState.op === 'cut' ? 'fs:move' : 'fs:copy', src, dest, overwrite) } catch (e: any) { toast(e.message, 'error') }
-      } catch (e: any) { toast(e instanceof Error ? e.message : t('toast.error'), 'error') }
+        try { await invoke(clipboard.op === 'cut' ? 'fs:move' : 'fs:copy', src, dest, overwrite) } catch (e) { toast(errorMessage(e), 'error') }
+      } catch (e) { toast(errorMessage(e, t('toast.error')), 'error') }
     }
-    if (clipboardState.op === 'cut') clipboardState = null
+    if (clipboard.op === 'cut') setClipboard(null)
     load(); toast(t('common.done'))
   }
   const doDelete = async (permanent = false) => {
@@ -148,7 +147,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
         }
       } catch { /* best-effort */ }
     }
-    try { await invoke('fs:rename', renaming.path, dest, overwrite); load(); toast(t('toast.updated')) } catch (e: any) { toast(e.message, 'error') }
+    try { await invoke('fs:rename', renaming.path, dest, overwrite); load(); toast(t('toast.updated')) } catch (e) { toast(errorMessage(e), 'error') }
     setRenaming(null)
   }
   const doCreate = async () => {
@@ -156,9 +155,9 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
     if (!validName(newName)) { toast(t('files.invalidName'), 'error'); return }
     const p = await invoke<string>('fs:join', path, newName.trim())
     try {
-      if (await invoke<boolean>('fs:exists', p)) { toast(t('files.overwriteConfirm'), 'error'); return }
+      if (await invoke<boolean>('fs:exists', p)) { toast(t('toast.error'), 'error'); return }
     } catch { /* best-effort */ }
-    try { await invoke(creating === 'folder' ? 'fs:mkdir' : 'fs:createFile', p); load(); toast(t('toast.created')) } catch (e: any) { toast(e.message, 'error') }
+    try { await invoke(creating === 'folder' ? 'fs:mkdir' : 'fs:createFile', p); load(); toast(t('toast.created')) } catch (e) { toast(errorMessage(e), 'error') }
     setCreating(null); setNewName('')
   }
   const showProps = async (e: FileEntry) => {
@@ -200,7 +199,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
     { label: t('files.showInExplorer'), icon: <FolderOpen size={14} />, onClick: () => invoke('fs:showInFolder', ctx.e!.path) },
     { sep: true, label: '' },
     { label: ARCHIVE_EXT.has(ctx.e.ext) ? t('files.extractHere') : t('files.compressHere'), icon: <Archive size={14} />, onClick: () => onOpenIn('compress', ctx.e!.path) },
-    ...(!ctx.e.isDirectory ? [{ label: t('files.hash'), icon: <Hash size={14} />, onClick: async () => { const target = ctx.e!; const h = await invoke<string>('fs:hash', target.path, 'sha256'); setProps((p) => (p && p.e.path === target.path ? { e: target, hash: h } : p)) } }] : []),
+    ...(!ctx.e.isDirectory ? [{ label: t('files.hash'), icon: <Hash size={14} />, onClick: async () => { const target = ctx.e!; const h = await invoke<string>('fs:hash', target.path, 'sha256'); setProps((p) => (p && p.e.path === target.path ? { e: target, hash: h, algo: 'sha256' } : p)) } }] : []),
     { label: t('files.properties'), icon: <Info size={14} />, onClick: () => showProps(ctx.e!) },
     { sep: true, label: '' },
     { label: settings.useRecycleBin ? t('files.moveToTrash') : t('common.delete'), icon: <Trash2 size={14} />, onClick: () => doDelete(false), danger: true },
@@ -250,15 +249,15 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
             {crumbs.map((c, i) => <React.Fragment key={i}><button className="hover:text-accent px-1 rounded truncate max-w-[140px]" onClick={(e) => { e.stopPropagation(); crumbGo(i) }}>{c}</button>{i < crumbs.length - 1 && <span className="text-surface-500">›</span>}</React.Fragment>)}
           </div>
         )}
-        <div className="relative w-40 shrink-0"><Search size={13} className="absolute start-2.5 top-2 text-surface-500" /><input className="input ps-8 py-1 text-xs" placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="relative w-40 shrink-0"><Search size={13} className="absolute start-2.5 top-2 text-surface-500" /><input data-search className="input ps-8 py-1 text-xs" aria-label={t('common.search')} placeholder={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
         <button className="btn-icon" title={t('common.view')} aria-label={t('common.view')} onClick={() => setView(view === 'list' ? 'grid' : 'list')}>{view === 'list' ? <LayoutGrid size={15} /> : <List size={15} />}</button>
-        <button className="btn-icon" title={t('files.hidden')} onClick={() => setSettings({ showHiddenFiles: !settings.showHiddenFiles })}>{settings.showHiddenFiles ? <Eye size={15} /> : <EyeOff size={15} />}</button>
+        <button className="btn-icon" title={t('files.hidden')} aria-label={t('files.hidden')} onClick={() => setSettings({ showHiddenFiles: !settings.showHiddenFiles })}>{settings.showHiddenFiles ? <Eye size={15} /> : <EyeOff size={15} />}</button>
       </div>
       <div className="flex-1 overflow-auto" onContextMenu={(e) => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY }) }} onClick={(e) => { if (e.target === e.currentTarget) setSel(new Set()) }}>
         {view === 'list' ? (
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-surface-100 text-[11px] text-surface-600 uppercase tracking-wide">
-              <tr>{([['name', t('common.name')], ['ext', t('common.type')], ['size', t('common.size')], ['modified', t('common.modified')]] as const).map(([k, l]) => <th key={k} className={cn('text-start px-3 py-2 cursor-pointer hover:text-accent select-none', k === 'size' && 'text-end w-24', k === 'ext' && 'w-20', k === 'modified' && 'w-44')} onClick={() => setSort((s) => ({ k, d: s.k === k ? (s.d * -1) as 1 | -1 : 1 }))}>{l}{sort.k === k && (sort.d === 1 ? ' ↑' : ' ↓')}</th>)}</tr>
+              <tr>{([['name', t('common.name')], ['ext', t('common.type')], ['size', t('common.size')], ['modified', t('common.modified')]] as const).map(([k, l]) => <th key={k} aria-sort={sort.k === k ? (sort.d === 1 ? 'ascending' : 'descending') : 'none'} className={cn('px-3 py-2', k === 'size' && 'text-end w-24', k === 'ext' && 'w-20', k === 'modified' && 'w-44')}><button type="button" className="cursor-pointer hover:text-accent select-none" onClick={() => setSort((s) => ({ k, d: s.k === k ? (s.d * -1) as 1 | -1 : 1 }))}>{l}{sort.k === k && (sort.d === 1 ? ' ↑' : ' ↓')}</button></th>)}</tr>
             </thead>
             <tbody>
               {list.map((e) => (
@@ -287,7 +286,7 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
       </div>
       <footer className="flex items-center gap-3 px-3 py-1.5 border-t border-surface-300/60 text-[11px] text-surface-500">
         <span>{t('common.items', { count: entries.length })}</span>{sel.size > 0 && <span>• {t('common.selected', { count: sel.size })} ({formatBytes(selected.reduce((a, e) => a + e.size, 0))})</span>}
-        {clipboardState && <span className="ms-auto">📋 {clipboardState.paths.length}</span>}
+        {clipboard && <span className="ms-auto flex items-center gap-1"><Clipboard size={12} />{clipboard.paths.length}</span>}
       </footer>
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctxItems as any} onClose={() => setCtx(null)} />}
       <Modal open={!!renaming} onClose={() => setRenaming(null)} title={t('common.rename')}><input autoFocus className="input" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doRename()} onFocus={(e) => e.target.select()} /><div className="flex justify-end gap-2 mt-4"><button className="btn-ghost" onClick={() => setRenaming(null)}>{t('common.cancel')}</button><button className="btn-primary" onClick={doRename}>{t('common.rename')}</button></div></Modal>
@@ -298,8 +297,8 @@ function Pane({ initial, active, onActivate, onOpenIn, onPathChange }: { initial
           <Field label={t('common.size')}><p>{props.e.isDirectory ? (props.size ? `${formatBytes(props.size.size)} • ${t('files.filesFolders', { files: props.size.files, folders: props.size.folders })}` : t('files.calculating')) : `${formatBytes(props.e.size)} (${props.e.size.toLocaleString()} B)`}</p></Field>
           <Field label={t('common.modified')}><p>{formatDate(props.e.modified, settings.language)}</p></Field>
           <Field label={t('common.created')}><p>{formatDate(props.e.created, settings.language)}</p></Field>
-          {props.hash && <Field label="SHA-256"><p className="font-mono text-xs break-all" dir="ltr">{props.hash}</p></Field>}
-          {!props.e.isDirectory && !props.hash && <div className="flex gap-2 flex-wrap">{(['md5', 'sha1', 'sha256', 'sha512'] as const).map((a) => <button key={a} className="btn-soft text-xs" onClick={async () => setProps({ ...props, hash: `${a.toUpperCase()}: ` + (await invoke<string>('fs:hash', props.e.path, a)) })}>{a.toUpperCase()}</button>)}</div>}
+          {props.hash && <Field label={(props.algo || 'sha256').toUpperCase()}><p className="font-mono text-xs break-all" dir="ltr">{props.hash}</p></Field>}
+          {!props.e.isDirectory && !props.hash && <div className="flex gap-2 flex-wrap">{(['md5', 'sha1', 'sha256', 'sha512'] as const).map((a) => <button key={a} className="btn-soft text-xs" onClick={async () => setProps({ ...props, hash: await invoke<string>('fs:hash', props.e.path, a), algo: a })}>{a.toUpperCase()}</button>)}</div>}
         </div>}
       </Modal>
       <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.e.name} wide>
@@ -319,6 +318,7 @@ export default function Files() {
   const [roots, setRoots] = useState<[string, string] | null>(null)
   const [favs, setFavs] = useState<string[]>([])
   const [key, setKey] = useState(0)
+  const [clipboard, setClipboard] = useState<Clip>(null)
   // Live paths of the two panes (they navigate internally); favorites use these.
   const liveRef = useRef<[string, string]>(['', ''])
   const [loadError, setLoadError] = useState(false)
@@ -353,13 +353,13 @@ export default function Files() {
           {favs.length > 0 && <div><p className="label px-2 mb-1">{t('common.favorites')}</p>{favs.map((f) => <button key={f} onClick={() => goTo(f)} onContextMenu={(e) => { e.preventDefault(); const n = favs.filter((x) => x !== f); setFavs(n); invoke('data:set', 'fileFavorites', n) }} className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm hover:bg-surface-200 truncate"><Star size={14} className="text-amber-500 shrink-0" /><span className="truncate">{f.split(/[\\/]/).filter(Boolean).pop()}</span></button>)}</div>}
           <div><p className="label px-2 mb-1">{t('files.drives')}</p>{drives.map((d) => <button key={d.path} onClick={() => goTo(d.path)} className="w-full rounded-lg px-2.5 py-1.5 text-sm hover:bg-surface-200 transition-colors text-start">
             <div className="flex items-center gap-2.5"><HardDrive size={15} className="text-accent" /><span className="truncate">{d.label} ({d.path.replace(/\\$/, '')})</span></div>
-            {d.total && <><div className="progress h-1 mt-1.5"><div style={{ width: `${((d.total - (d.free || 0)) / d.total) * 100}%` }} /></div><p className="text-[10px] text-surface-500 mt-0.5">{formatBytes(d.free || 0, 0)} free of {formatBytes(d.total, 0)}</p></>}
+            {d.total && <><div className="progress h-1 mt-1.5"><div style={{ width: `${((d.total - (d.free || 0)) / d.total) * 100}%` }} /></div><p className="text-[10px] text-surface-500 mt-0.5">{formatBytes(d.free || 0, 0)} {t('net.remaining')} / {formatBytes(d.total, 0)}</p></>}
           </button>)}</div>
           <button className="btn-soft w-full text-xs" onClick={() => { const p = liveRef.current[active] || roots[active]; if (!favs.includes(p)) { const n = [...favs, p]; setFavs(n); invoke('data:set', 'fileFavorites', n) } }}><Star size={13} />{t('common.add')} {t('common.favorites')}</button>
         </aside>
         <div className={cn('grid gap-3 min-h-0 min-w-0 overflow-y-auto', dual ? 'grid-cols-1 2xl:grid-cols-2' : 'grid-cols-1')}>
-          <Pane key={`a${key}${roots[0]}`} initial={roots[0]} active={!dual || active === 0} onActivate={() => setActive(0)} onOpenIn={onOpenIn} onPathChange={(p) => { liveRef.current[0] = p }} />
-          {dual && <Pane key={`b${key}${roots[1]}`} initial={roots[1]} active={active === 1} onActivate={() => setActive(1)} onOpenIn={onOpenIn} onPathChange={(p) => { liveRef.current[1] = p }} />}
+          <Pane key={`a${key}${roots[0]}`} initial={roots[0]} active={!dual || active === 0} onActivate={() => setActive(0)} onOpenIn={onOpenIn} onPathChange={(p) => { liveRef.current[0] = p }} clipboard={clipboard} setClipboard={setClipboard} />
+          {dual && <Pane key={`b${key}${roots[1]}`} initial={roots[1]} active={active === 1} onActivate={() => setActive(1)} onOpenIn={onOpenIn} onPathChange={(p) => { liveRef.current[1] = p }} clipboard={clipboard} setClipboard={setClipboard} />}
         </div>
       </div>
     </div>

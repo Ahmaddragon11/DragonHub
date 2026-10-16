@@ -6,7 +6,7 @@ import { Code2, FolderOpen, Plus, Save, X, WrapText, Map as MapIcon, Search } fr
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Empty } from '@/components/ui'
-import { invoke } from '@/lib/api'
+import { invoke, errorMessage } from '@/lib/api'
 import { cn, extToLang, stripPath, uid } from '@/lib/utils'
 
 // Bundle monaco locally (no CDN) for offline + CSP compliance
@@ -167,7 +167,7 @@ export default function Editor() {
       conflictWarned.current.delete(tb.id)
       conflictMtime.current.delete(tb.id)
       setTabs((s) => [...s, tb]); setCur(tb.id)
-    } catch (e: any) { toast(e.message, 'error') }
+    } catch (e) { toast(errorMessage(e), 'error') }
   }
   const openedParam = useRef<string | null>(null)
   useEffect(() => {
@@ -229,7 +229,7 @@ export default function Editor() {
       conflictMtime.current.delete(tab.id)
       setTabs((s) => s.map((x) => (x.id === tab.id ? { ...x, path: p, name: stripPath(p!), saved: x.content, savedMtime: fresh?.modified ?? x.savedMtime, conflict: false, language: extToLang(p!.split('.').pop() || '') } : x)))
       toast(t('toast.saved'))
-    } catch (e: any) { toast(e.message, 'error') }
+    } catch (e) { toast(errorMessage(e), 'error') }
   }
   const close = async (id: string) => {
     const tb = tabsRef.current.find((x) => x.id === id)
@@ -245,7 +245,7 @@ export default function Editor() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const { tabs: tl, cur: c } = miscRef.current
-      if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveRef.current(e.shiftKey) }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveRef.current(e.shiftKey) }
       if (e.ctrlKey && e.key === 'o') { e.preventDefault(); miscRef.current.openDialog() }
       if (e.ctrlKey && e.key === 'n') { e.preventDefault(); miscRef.current.newTab() }
       if (e.ctrlKey && e.key === 'w' && c) { e.preventDefault(); miscRef.current.close(c) }

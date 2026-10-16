@@ -1,0 +1,98 @@
+/** Owned by the "update card" workstream. Deep-merged over the base en/ar
+ *  dictionaries (see i18n/index.ts). Keep every key in BOTH en and ar. */
+export default {
+  en: {
+    updatecard: {
+      title: 'DragonHub update',
+      currentVersion: 'Installed v{{version}}',
+      status: {
+        idle: 'Check for the latest release',
+        checking: 'Checking for updates…',
+        downloading: 'Downloading update…',
+        available: 'Version {{version}} is available',
+        ready: 'Version {{version}} is ready to install',
+      },
+      stats: {
+        downloaded: 'Downloaded',
+        speed: 'Speed',
+        eta: 'Time left',
+        unknown: '—',
+      },
+      actions: {
+        check: 'Check for updates',
+        checkAgain: 'Check again',
+        download: 'Download',
+        cancel: 'Cancel',
+        cancelling: 'Cancelling…',
+        installNow: 'Install now',
+        installing: 'Installing…',
+        later: 'Later',
+        dismiss: 'Dismiss',
+        collapse: 'Collapse',
+        expand: 'Expand',
+      },
+      messages: {
+        upToDate: 'You are on the latest version',
+        unsupported: 'Updates are available only for packaged Windows releases.',
+        cancelled: 'The update download was cancelled.',
+        cancelUnavailable: 'The operation finished before it could be cancelled.',
+        later: 'You can install the update later from here.',
+        error: 'Something went wrong',
+      },
+      a11y: {
+        region: 'DragonHub update',
+        progress: 'Update download progress',
+        close: 'Dismiss update',
+        collapse: 'Collapse update card',
+        expand: 'Expand update card',
+      },
+    },
+  } as Record<string, unknown>,
+  ar: {
+    updatecard: {
+      title: 'تحديث DragonHub',
+      currentVersion: 'المثبّت v{{version}}',
+      status: {
+        idle: 'تحقّق من أحدث إصدار',
+        checking: 'جارٍ التحقق من التحديثات…',
+        downloading: 'جارٍ تنزيل التحديث…',
+        available: 'الإصدار {{version}} متاح',
+        ready: 'الإصدار {{version}} جاهز للتثبيت',
+      },
+      stats: {
+        downloaded: 'تم التنزيل',
+        speed: 'السرعة',
+        eta: 'الوقت المتبقي',
+        unknown: '—',
+      },
+      actions: {
+        check: 'التحقق من التحديثات',
+        checkAgain: 'تحقّق مرة أخرى',
+        download: 'تنزيل',
+        cancel: 'إلغاء',
+        cancelling: 'جارٍ الإلغاء…',
+        installNow: 'التثبيت الآن',
+        installing: 'جارٍ التثبيت…',
+        later: 'لاحقاً',
+        dismiss: 'تجاهل',
+        collapse: 'طيّ',
+        expand: 'توسيع',
+      },
+      messages: {
+        upToDate: 'أنت على أحدث إصدار',
+        unsupported: 'التحديثات متاحة فقط لإصدارات Windows المثبّتة.',
+        cancelled: 'تم إلغاء تنزيل التحديث.',
+        cancelUnavailable: 'اكتملت العملية قبل إمكانية إلغائها.',
+        later: 'يمكنك تثبيت التحديث لاحقاً من هنا.',
+        error: 'حدث خطأ ما',
+      },
+      a11y: {
+        region: 'تحديث DragonHub',
+        progress: 'تقدّم تنزيل التحديث',
+        close: 'تجاهل التحديث',
+        collapse: 'طيّ بطاقة التحديث',
+        expand: 'توسيع بطاقة التحديث',
+      },
+    },
+  } as Record<string, unknown>,
+}

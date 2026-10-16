@@ -28,6 +28,12 @@ export default {
           soft: 'rgb(var(--accent-soft) / <alpha-value>)',
           fg: 'rgb(var(--accent-fg) / <alpha-value>)',
         },
+        /* Semantic status colors — the single vocabulary for feedback/surfaces so
+           components stop hard-coding raw palette shades (same hues, one name). */
+        danger: 'rgb(244 63 94 / <alpha-value>)',
+        success: 'rgb(16 185 129 / <alpha-value>)',
+        warning: 'rgb(245 158 11 / <alpha-value>)',
+        info: 'rgb(14 165 233 / <alpha-value>)',
       },
       boxShadow: {
         glow: '0 4px 14px -4px rgb(var(--accent) / 0.45)',
@@ -35,7 +41,17 @@ export default {
         e1: 'var(--shadow-1)',
         e2: 'var(--shadow-2)',
         e3: 'var(--shadow-3)',
+        /* Keyboard focus ring — pairs with the global :focus-visible outline. */
+        ring: '0 0 0 3px rgb(var(--accent) / 0.18)',
+        focus: '0 0 0 2px rgb(var(--surface-100)), 0 0 0 4px rgb(var(--accent))',
       },
+      /* Motion tokens mirror lib/motion.ts and the ease / duration CSS vars. */
+      transitionTimingFunction: {
+        out: 'cubic-bezier(.22, 1, .36, 1)',
+        inout: 'cubic-bezier(.65, 0, .35, 1)',
+        spring: 'cubic-bezier(.34, 1.56, .64, 1)',
+      },
+      transitionDuration: { 1: '110ms', 2: '170ms', 3: '260ms', 4: '380ms' },
       animation: {
         'fade-in': 'fadeIn 0.25s cubic-bezier(.22,1,.36,1) both',
         'slide-up': 'slideUp 0.7s cubic-bezier(.22,1,.36,1) both',
@@ -44,6 +60,8 @@ export default {
         'spin-slow': 'spin 8s linear infinite',
         'pulse-glow': 'pulseGlow 3s ease-in-out infinite',
         'shimmer': 'shimmer 2.5s linear infinite',
+        /* Rotating gradient border for the update card (see styles/index.css). */
+        'spin-border': 'updateBorderSpin 5s linear infinite',
       },
       keyframes: {
         fadeIn: { from: { opacity: 0 }, to: { opacity: 1 } },
@@ -52,6 +70,7 @@ export default {
         float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-10px)' } },
         pulseGlow: { '0%,100%': { boxShadow: '0 0 0 0 rgb(var(--accent) / 0.4)' }, '50%': { boxShadow: '0 0 40px 6px rgb(var(--accent) / 0.25)' } },
         shimmer: { from: { backgroundPosition: '-200% 0' }, to: { backgroundPosition: '200% 0' } },
+        updateBorderSpin: { from: { transform: 'translate(-50%, -50%) rotate(0deg)' }, to: { transform: 'translate(-50%, -50%) rotate(360deg)' } },
       },
     },
   },

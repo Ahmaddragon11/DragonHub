@@ -12,7 +12,7 @@ Lightweight log of architectural/UX decisions. Keep it short; update per cycle.
 | UX | Tray menu was minimal (show/card/quit) — no quick create actions | P2 |
 | Bug | `isHiddenWin()` returned `false` always → `showHiddenFiles` setting had no effect on Windows | P2 |
 | Bug | symlink→folder reported as a file → opened via system app, not the browser | P2 |
-| Security | generic `data:set` could write `netState/netPlan/netLimits/netAppBlocks`, bypassing validated handlers (documented Critical in AUDIT_REPORT) | P1 |
+| Security | generic `data:set` could write `netState/netPlan/netLimits/netAppBlocks`, bypassing validated handlers (documented Critical in the security review) | P1 |
 | UX | Palette didn't index recent file locations; notes editor was a bare textarea; Settings had no index/search | P2 |
 | Quality | No automated tests despite pure helpers (`tasks`/`fuzzy`/`netplan`) | P2 |
 

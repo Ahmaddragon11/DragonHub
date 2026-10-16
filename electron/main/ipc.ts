@@ -11,7 +11,7 @@ import * as media from './services/media'
 import * as netmon from './services/netmonitor'
 import * as netblock from './services/netblock'
 import * as resmon from './services/resmonitor'
-import { cancelUpdateDownload, downloadLatestUpdate, getDownloadedInstaller } from './services/updater'
+import { cancelUpdateDownload, downloadLatestUpdate, getDownloadedInstaller, releaseDownloadedInstaller } from './services/updater'
 import { settingsStore, dataCollections, GENERIC_SET_BLOCKED_KEYS } from './services/settings'
 import { refreshGlobalShortcuts } from './services/globalShortcuts'
 import type { AppSettings, CompressOptions, ImageOp, VideoOp, VaultItem, VersionInfo, NetPlan, NetLimits, NetConfig, NetCycle, ResConfig, ResCardConfig } from '../../src/shared/types'
@@ -55,6 +55,8 @@ const RATE_LIMITS: Record<string, { n: number; ms: number }> = {
   'app:setLoginItem': { n: 20, ms: 60000 },
   'app:keepAwake': { n: 20, ms: 60000 },
   'screen:sources': { n: 30, ms: 60000 },
+  'screen:windows': { n: 30, ms: 60000 },
+  'screen:displays': { n: 60, ms: 60000 },
   'clipboard:writeImage': { n: 40, ms: 60000 },
   'app:version': { n: 120, ms: 10000 },
   'app:lastSeenVersion': { n: 60, ms: 10000 },
@@ -75,6 +77,38 @@ function checkRate(channel: string) {
   if (arr.length >= lim.n) throw new Error('Rate limited, try again shortly')
   arr.push(now)
   rateHits.set(channel, arr)
+}
+
+/** Shared external-URL guard used by both the app:openExternal channel and the
+ *  main window's setWindowOpenHandler. Returns null when the URL is safe to
+ *  hand to shell.openExternal, otherwise a rejection reason. Blocks
+ *  localhost/loopback/link-local/cloud-metadata targets (SSRF / DNS-rebinding). */
+export function externalUrlBlockReason(url: unknown): string | null {
+  if (typeof url !== 'string' || url.length > 2048) return 'Blocked URL'
+  if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) return 'Blocked URL scheme'
+  if (!/^https?:\/\//i.test(url)) return null
+  let host = ''
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  } catch {
+    return 'Blocked URL'
+  }
+  const blocked =
+    host === 'localhost' ||
+    host === '::1' ||
+    host === '0.0.0.0' ||
+    /^127\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    host === 'metadata.google.internal' ||
+    host === 'metadata.google' ||
+    host.endsWith('.metadata.google.internal') ||
+    host === 'instance-data' ||
+    host === '169.254.169.254'
+  if (blocked) {
+    try { console.warn('[security] blocked openExternal to local/metadata host:', host) } catch { /* ignore */ }
+    return 'Blocked URL host'
+  }
+  return null
 }
 
 /** Wrap a handler so errors are serialized safely to the renderer. */
@@ -121,33 +155,8 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
     cpuModel: os.cpus()[0]?.model, totalMem: os.totalmem(), freeMem: os.freemem(), uptime: os.uptime(), user: os.userInfo().username,
   }))
   h('app:openExternal', (url: string) => {
-    if (typeof url !== 'string' || url.length > 2048) throw new Error('Blocked URL')
-    if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) throw new Error('Blocked URL scheme')
-    // Block localhost / loopback / link-local / cloud-metadata targets (SSRF /
-    // DNS-rebinding): at minimum http://localhost and http://127.*.
-    if (/^https?:\/\//i.test(url)) {
-      let host = ''
-      try {
-        host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '')
-      } catch {
-        throw new Error('Blocked URL')
-      }
-      const blocked =
-        host === 'localhost' ||
-        host === '::1' ||
-        host === '0.0.0.0' ||
-        /^127\./.test(host) ||
-        /^169\.254\./.test(host) ||
-        host === 'metadata.google.internal' ||
-        host === 'metadata.google' ||
-        host.endsWith('.metadata.google.internal') ||
-        host === 'instance-data' ||
-        host === '169.254.169.254'
-      if (blocked) {
-        try { console.warn('[security] blocked openExternal to local/metadata host:', host) } catch { /* ignore */ }
-        throw new Error('Blocked URL host')
-      }
-    }
+    const reason = externalUrlBlockReason(url)
+    if (reason) throw new Error(reason)
     return shell.openExternal(url)
   })
   h('app:openTelegram', () => shell.openExternal(TELEGRAM_URL))
@@ -161,6 +170,7 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
     if (!installer) throw new Error('The downloaded installer is no longer available')
     const openError = await shell.openPath(installer.path)
     if (openError) throw new Error(`Could not launch the installer: ${openError}`)
+    releaseDownloadedInstaller()
     app.quit()
   })
   h('app:systemTheme', () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'))
@@ -213,6 +223,38 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
     })
   })
 
+  // Open windows with thumbnails, for the "capture a window" picker.
+  h('screen:windows', async () => {
+    const displays = screen.getAllDisplays()
+    const scale = displays.reduce((m, d) => Math.max(m, d.scaleFactor), 1)
+    const maxW = displays.reduce((m, d) => Math.max(m, d.size.width), 0)
+    const maxH = displays.reduce((m, d) => Math.max(m, d.size.height), 0)
+    const sources = await desktopCapturer.getSources({
+      types: ['window'],
+      thumbnailSize: {
+        width: Math.min(6000, Math.max(1, Math.round(maxW * scale))),
+        height: Math.min(6000, Math.max(1, Math.round(maxH * scale))),
+      },
+    })
+    return sources.map((s) => {
+      const size = s.thumbnail.getSize()
+      return { id: s.id, name: s.name, display_id: s.display_id, thumbnail: s.thumbnail.toDataURL(), width: size.width, height: size.height }
+    })
+  })
+
+  // Physical displays for the full-screen picker (sizes are CSS px / DIP).
+  h('screen:displays', () => {
+    const primary = screen.getPrimaryDisplay()
+    return screen.getAllDisplays().map((d, i) => ({
+      id: d.id,
+      label: d.label || `Display ${i + 1}`,
+      width: d.size.width,
+      height: d.size.height,
+      scaleFactor: d.scaleFactor,
+      primary: d.id === primary.id,
+    }))
+  })
+
   // ---------- Clipboard (with auto-clear for secrets) ----------
   h('clipboard:write', (text: string, clearAfterSec?: number) => {
     if (typeof text !== 'string') throw new Error('Invalid clipboard text')
@@ -260,8 +302,18 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   h('data:importAll', async () => {
     const r = await dialog.showOpenDialog(getWin()!, { properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] })
     if (r.canceled || !r.filePaths[0]) return null
-    const parsed = JSON.parse(await files.readText(r.filePaths[0]))
-    if (parsed.app !== 'DragonHub') throw new Error('Invalid backup file')
+    const file = r.filePaths[0]
+    const MAX_IMPORT_BYTES = 100 * 1024 * 1024
+    const st = await fs.promises.stat(file).catch(() => null)
+    if (!st || !st.isFile() || st.size > MAX_IMPORT_BYTES) throw new Error('Backup file is too large (max 100MB) or unreadable')
+    const raw = await files.readText(file, MAX_IMPORT_BYTES)
+    let parsed: any
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      throw new Error('Invalid backup file (not valid JSON)')
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || parsed.app !== 'DragonHub') throw new Error('Invalid backup file')
     if (parsed.data) dataCollections.importAll(parsed.data)
     if (parsed.settings) settingsStore.set(parsed.settings)
     return true

@@ -1,6 +1,7 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { BrowserWindow } from 'electron'
 import type { CompressOptions, ArchiveEntry, JobProgress } from '../../../src/shared/types'
 import { safePath, assertRemovable } from './files'
@@ -30,8 +31,9 @@ function assertSafeEntryName(name: string) {
   if (!n || n.startsWith('/') || n.startsWith('//') || /^[a-zA-Z]:/.test(n)) {
     throw new Error(`Blocked unsafe archive entry (absolute path): ${name}`)
   }
-  // NTFS alternate data streams (file:stream) must never materialize.
-  if (n.includes(':')) {
+  // NTFS alternate data streams (file:stream) must never materialize. ':' is a
+  // legal POSIX filename character, so only reject it on Windows.
+  if (process.platform === 'win32' && n.includes(':')) {
     throw new Error(`Blocked unsafe archive entry (ADS colon): ${name}`)
   }
   const RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$/i
@@ -93,7 +95,10 @@ export async function compress(win: BrowserWindow | null, jobId: string, inputs:
   const single = ['gzip', 'bzip2', 'xz'].includes(opts.format)
   // gzip/bzip2/xz only compress single files -> wrap in tar first for multiple/dirs
   if (single && (ins.length > 1 || (await fsp.stat(ins[0]).catch(() => null))?.isDirectory())) {
-    const tarPath = out.replace(/\.(gz|bz2|xz)$/i, '')
+    // Always use a unique temp tar: when the requested extension does not match
+    // the format, `out.replace(...)` would equal `out` and the recursive
+    // compress would fail against the tar it just created (false EEXIST).
+    const tarPath = path.join(path.dirname(out), `.dragonhub-tar-${randomUUID()}.tar`)
     await new Promise<void>((res, rej) => {
       const s = Seven.add(tarPath, ins, { $bin: bin, archiveType: 'tar', recursive: true, $progress: true })
       s.on('progress', (p: any) => progress(win, { id: jobId, percent: p.percent / 2, done: false, message: 'tar' }))
@@ -101,9 +106,11 @@ export async function compress(win: BrowserWindow | null, jobId: string, inputs:
     })
     ins.length = 0; ins.push(tarPath)
     opts = { ...opts, deleteAfter: false }
-    const result = await compress(win, jobId, [tarPath], out, { ...opts, format: opts.format })
-    await fsp.rm(tarPath, { force: true })
-    return result
+    try {
+      return await compress(win, jobId, [tarPath], out, { ...opts, format: opts.format })
+    } finally {
+      await fsp.rm(tarPath, { force: true }).catch(() => {})
+    }
   }
 
   const options: Record<string, unknown> = {

@@ -109,8 +109,16 @@ export function Tooltip({ label, shortcut, children, side = 'bottom' }: { label:
 
 /* ------------------------------------------------------------ Focus trap */
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-/** Traps Tab inside `ref`, restores focus to the opener on unmount. */
-export function useFocusTrap(ref: React.RefObject<HTMLElement>, active: boolean) {
+/**
+ * Traps Tab inside `ref`, restores focus to the opener on close, and (when
+ * `onEscape` is supplied) closes the overlay on Escape. This is the single
+ * contract every dialog/overlay primitive in `ui.tsx` and Shell builds on.
+ */
+export function useFocusTrap(ref: React.RefObject<HTMLElement>, active: boolean, onEscape?: () => void) {
+  // Store the handler in a ref so the trap effect never re-runs (and therefore
+  // never re-grabs/restores focus) when the parent re-renders with a new closure.
+  const escRef = useRef(onEscape)
+  useEffect(() => { escRef.current = onEscape }, [onEscape])
   useEffect(() => {
     if (!active) return
     const opener = document.activeElement as HTMLElement | null
@@ -122,6 +130,7 @@ export function useFocusTrap(ref: React.RefObject<HTMLElement>, active: boolean)
       first.focus({ preventScroll: true })
     })
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && escRef.current) { e.stopPropagation(); escRef.current(); return }
       if (e.key !== 'Tab' || !el) return
       const items = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((n) => n.offsetParent !== null)
       if (!items.length) { e.preventDefault(); return }
@@ -144,13 +153,8 @@ export function Modal({ open, onClose, title, description, children, wide, foote
   const { reduced } = useMotionPrefs()
   const surface = useRef<HTMLDivElement>(null)
   const titleId = useId()
-  useFocusTrap(surface, open)
-  useEffect(() => {
-    if (!open) return
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
-    window.addEventListener('keydown', k)
-    return () => window.removeEventListener('keydown', k)
-  }, [open, onClose])
+  // Focus trap + Esc-to-close are owned by the shared primitive.
+  useFocusTrap(surface, open, onClose)
   const v = dialogVariants(reduced)
   return (
     <AnimatePresence>
@@ -182,7 +186,7 @@ export function Modal({ open, onClose, title, description, children, wide, foote
 
 /* ----------------------------------------------------------------- Toasts */
 const TOAST_ICON = { success: <Check size={14} strokeWidth={2.5} />, error: <XCircle size={14} />, info: <Info size={14} />, warning: <AlertTriangle size={14} /> }
-const TOAST_TONE = { success: 'text-emerald-500 bg-emerald-500/12', error: 'text-rose-500 bg-rose-500/12', info: 'text-sky-500 bg-sky-500/12', warning: 'text-amber-500 bg-amber-500/12' }
+const TOAST_TONE = { success: 'text-success bg-success/12', error: 'text-danger bg-danger/12', info: 'text-info bg-info/12', warning: 'text-warning bg-warning/12' }
 
 export function Toasts() {
   const { toasts, dismissToast } = useApp(useShallow((s) => ({ toasts: s.toasts, dismissToast: s.dismissToast })))
@@ -204,7 +208,7 @@ export function Toasts() {
             )}
             <button className="btn-icon p-1 shrink-0" aria-label={t('common.close')} onClick={() => dismissToast(x.id)}><X size={14} /></button>
             {!reduced && (
-              <motion.span aria-hidden className={cn('absolute bottom-0 start-0 h-[2px] origin-left rtl:origin-right', x.type === 'error' ? 'bg-rose-500/60' : 'bg-accent/50')}
+              <motion.span aria-hidden className={cn('absolute bottom-0 start-0 h-[2px] origin-left rtl:origin-right', x.type === 'error' ? 'bg-danger/60' : 'bg-accent/50')}
                 initial={{ scaleX: 1 }} animate={{ scaleX: 0 }} transition={{ duration: x.duration / 1000, ease: 'linear' }} style={{ width: '100%' }} />
             )}
           </motion.div>
@@ -334,6 +338,8 @@ export function Slider({ value, min, max, step = 1, onChange, suffix, label }: {
 /* ------------------------------------------------------------ ContextMenu */
 export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: { label: string; icon?: React.ReactNode; onClick?: () => void; danger?: boolean; sep?: boolean; shortcut?: string }[]; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
+  // Remember what had focus so it can be restored when the menu closes.
+  const opener = useRef<HTMLElement | null>(null)
   const focusItem = useCallback((dir: 1 | -1 | 0) => {
     const list = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]') ?? [])
     if (!list.length) return
@@ -342,6 +348,7 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
     list[next]?.focus()
   }, [])
   useEffect(() => {
+    opener.current = document.activeElement as HTMLElement | null
     const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose() }
     const k = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.stopPropagation(); onClose() }
@@ -353,7 +360,11 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
     const s = (e: Event) => { if (ref.current?.contains(e.target as Node)) return; onClose() }
     window.addEventListener('mousedown', h); window.addEventListener('keydown', k, true); window.addEventListener('resize', s); window.addEventListener('scroll', s, true)
     focusItem(0)
-    return () => { window.removeEventListener('mousedown', h); window.removeEventListener('keydown', k, true); window.removeEventListener('resize', s); window.removeEventListener('scroll', s, true) }
+    return () => {
+      window.removeEventListener('mousedown', h); window.removeEventListener('keydown', k, true); window.removeEventListener('resize', s); window.removeEventListener('scroll', s, true)
+      const o = opener.current
+      if (o && document.contains(o)) o.focus({ preventScroll: true })
+    }
   }, [onClose, focusItem])
   const menuH = Math.min(Math.max(window.innerHeight - 16, 32), items.reduce((a, it) => a + (it.sep ? 9 : 34), 12))
   const menuW = Math.min(300, Math.max(window.innerWidth - 16, 100))

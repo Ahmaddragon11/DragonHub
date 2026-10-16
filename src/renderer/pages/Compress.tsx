@@ -4,7 +4,7 @@ import { Archive, FilePlus, FolderPlus, X, Lock, Package, FolderOpen, ShieldChec
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { PageHeader, Progress, Field, Toggle } from '@/components/ui'
-import { invoke, on } from '@/lib/api'
+import { invoke, on, errorMessage } from '@/lib/api'
 import { formatBytes, stripPath, uid, cn, ARCHIVE_EXT } from '@/lib/utils'
 import type { ArchiveFormat, ArchiveEntry, JobProgress } from '@shared/types'
 
@@ -45,8 +45,8 @@ export default function Compress() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageParams])
 
-  const addFiles = async () => { const ps = await invoke<string[]>('dialog:openFile', { multi: true }); if (ps.length) { setInputs((s) => Array.from(new Set([...s, ...ps]))); if (!outDir) invoke<{ dir: string; name: string }>('fs:pathInfo', ps[0]).then((i) => { setOutDir(i.dir); if (outName === 'archive') setOutName(i.name) }).catch(() => {}) } }
-  const addFolder = async () => { const p = await invoke<string | null>('dialog:openFolder'); if (p) { setInputs((s) => Array.from(new Set([...s, p]))); if (!outDir) invoke<{ dir: string; base: string }>('fs:pathInfo', p).then((i) => { setOutDir(i.dir); setOutName(i.base) }).catch(() => {}) } }
+  const addFiles = async () => { try { const ps = await invoke<string[]>('dialog:openFile', { multi: true }); if (ps.length) { setInputs((s) => Array.from(new Set([...s, ...ps]))); if (!outDir) invoke<{ dir: string; name: string }>('fs:pathInfo', ps[0]).then((i) => { setOutDir(i.dir); if (outName === 'archive') setOutName(i.name) }).catch(() => {}) } } catch (e) { toast(errorMessage(e), 'error') } }
+  const addFolder = async () => { try { const p = await invoke<string | null>('dialog:openFolder'); if (p) { setInputs((s) => Array.from(new Set([...s, p]))); if (!outDir) invoke<{ dir: string; base: string }>('fs:pathInfo', p).then((i) => { setOutDir(i.dir); setOutName(i.base) }).catch(() => {}) } } catch (e) { toast(errorMessage(e), 'error') } }
   const fmtInfo = FORMATS.find((x) => x.f === format)!
 
   const doCompress = async () => {
@@ -57,16 +57,16 @@ export default function Compress() {
       const id = 'zip-' + uid()
       const res = await invoke<string>('zip:compressJob', id, inputs, out, { format, level, password: fmtInfo.enc && pw ? pw : undefined, solid, splitSizeMB: split || undefined, deleteAfter: delAfter })
       toast(`${t('compress.done')}: ${stripPath(res)}`)
-    } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false); setJob(null) }
+    } catch (e) { toast(errorMessage(e), 'error') } finally { setBusy(false); setJob(null) }
   }
-  const pickArchive = async () => { try { const ps = await invoke<string[]>('dialog:openFile', { filters: [{ name: 'Archives', extensions: [...ARCHIVE_EXT] }] }); if (ps[0]) { setArchive(ps[0]); setEntries(null); setTestResult(null); const i = await invoke<{ dir: string; name: string }>('fs:pathInfo', ps[0]); setDest(`${i.dir}${window.dh.platform === 'win32' ? '\\' : '/'}${i.name}`) } } catch (e: any) { toast(e?.message || String(e), 'error') } }
+  const pickArchive = async () => { try { const ps = await invoke<string[]>('dialog:openFile', { filters: [{ name: 'Archives', extensions: [...ARCHIVE_EXT] }] }); if (ps[0]) { setArchive(ps[0]); setEntries(null); setTestResult(null); const i = await invoke<{ dir: string; name: string }>('fs:pathInfo', ps[0]); setDest(`${i.dir}${window.dh.platform === 'win32' ? '\\' : '/'}${i.name}`) } } catch (e) { toast(errorMessage(e), 'error') } }
   const doExtract = async () => {
     if (!archive || !dest) return
     setBusy(true); setJob({ id: 'x', percent: 0, done: false })
-    try { await invoke('zip:extract', 'zip-' + uid(), archive, dest, xpw || undefined); toast(t('compress.extracted')) } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false); setJob(null) }
+    try { await invoke('zip:extract', 'zip-' + uid(), archive, dest, xpw || undefined); toast(t('compress.extracted')) } catch (e) { toast(errorMessage(e), 'error') } finally { setBusy(false); setJob(null) }
   }
-  const doList = async () => { if (!archive) return; setBusy(true); try { setEntries(await invoke<ArchiveEntry[]>('zip:list', archive, xpw || undefined)); setTab('browse') } catch (e: any) { toast(e.message, 'error') } finally { setBusy(false) } }
-  const doTest = async () => { if (!archive) return; setBusy(true); try { const ok = await invoke<boolean>('zip:test', archive, xpw || undefined); setTestResult(ok); toast(ok ? t('compress.valid') : t('compress.invalid'), ok ? 'success' : 'error') } finally { setBusy(false) } }
+  const doList = async () => { if (!archive) return; setBusy(true); try { setEntries(await invoke<ArchiveEntry[]>('zip:list', archive, xpw || undefined)); setTab('browse') } catch (e) { toast(errorMessage(e), 'error') } finally { setBusy(false) } }
+  const doTest = async () => { if (!archive) return; setBusy(true); try { const ok = await invoke<boolean>('zip:test', archive, xpw || undefined); setTestResult(ok); toast(ok ? t('compress.valid') : t('compress.invalid'), ok ? 'success' : 'error') } catch (e) { toast(errorMessage(e), 'error') } finally { setBusy(false) } }
   const totalSize = entries?.reduce((a, e) => a + e.size, 0) ?? 0, totalPacked = entries?.reduce((a, e) => a + e.packed, 0) ?? 0
 
   return (
@@ -79,7 +79,7 @@ export default function Compress() {
       {tab === 'compress' && (
           <div className="grid lg:grid-cols-[1fr_360px] gap-4 flex-1 min-h-0 overflow-y-auto lg:overflow-visible">
           <section className="card flex flex-col min-h-0 overflow-hidden">
-            <div className="flex items-center gap-2 p-3 border-b border-surface-300/60"><button className="btn-soft" onClick={addFiles}><FilePlus size={15} />{t('compress.addFiles')}</button><button className="btn-soft" onClick={addFolder}><FolderPlus size={15} />{t('compress.addFolder')}</button><span className="ms-auto text-xs text-surface-500">{t('common.items', { count: inputs.length })}</span><button className="btn-ghost text-xs" onClick={() => setInputs([])} disabled={!inputs.length}>{t('compress.clear')}</button></div>
+            <div className="flex items-center gap-2 p-3 border-b border-surface-300/60"><button className="btn-soft" onClick={() => void addFiles()}><FilePlus size={15} />{t('compress.addFiles')}</button><button className="btn-soft" onClick={() => void addFolder()}><FolderPlus size={15} />{t('compress.addFolder')}</button><span className="ms-auto text-xs text-surface-500">{t('common.items', { count: inputs.length })}</span><button className="btn-ghost text-xs" onClick={() => setInputs([])} disabled={!inputs.length}>{t('compress.clear')}</button></div>
             <div className="flex-1 overflow-auto p-2 space-y-1 stagger" onDragOver={(e) => e.preventDefault()}>
               {inputs.length === 0 && <p className="text-center text-sm text-surface-500 p-10">{t('compress.addFiles')} / {t('compress.addFolder')}</p>}
               {inputs.map((p) => <div key={p} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-surface-200/50 text-sm"><Package size={15} className="text-accent shrink-0" /><span className="flex-1 truncate font-mono text-xs" dir="ltr">{p}</span><button onClick={() => setInputs((s) => s.filter((x) => x !== p))} className="hover:text-rose-500"><X size={14} /></button></div>)}

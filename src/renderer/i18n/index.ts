@@ -5,6 +5,9 @@ import ar from './ar'
 import ui from './sections/ui'
 import tools from './sections/tools'
 import core from './sections/core'
+import updatecard from './sections/updatecard'
+import capture from './sections/capture'
+import home from './sections/home'
 
 /** Deep clone so merging never mutates the imported base dictionaries. */
 function clone<T>(v: T): T {
@@ -33,9 +36,15 @@ function merge(base: Record<string, unknown>, extra: Record<string, unknown>): R
 const enRes = merge(clone(en) as Record<string, unknown>, ui.en)
 merge(enRes, tools.en)
 merge(enRes, core.en)
+merge(enRes, home.en)
+merge(enRes, updatecard.en)
+merge(enRes, capture.en)
 const arRes = merge(clone(ar) as Record<string, unknown>, ui.ar)
 merge(arRes, tools.ar)
 merge(arRes, core.ar)
+merge(arRes, home.ar)
+merge(arRes, updatecard.ar)
+merge(arRes, capture.ar)
 
 i18n.use(initReactI18next).init({
   resources: { en: { translation: enRes }, ar: { translation: arRes } },

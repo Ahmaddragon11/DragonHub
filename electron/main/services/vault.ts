@@ -224,11 +224,18 @@ function assertVaultItem(item: VaultItem) {
   if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Invalid vault item')
   const it = item as unknown as Record<string, unknown>
   if (typeof it.id !== 'string' || !it.id || it.id.length > 128) throw new Error('Invalid vault item id')
-  if (typeof it.type !== 'string' || (it.type as string).length > 32) throw new Error('Invalid vault item type')
+  const TYPES = new Set(['password', 'token', 'api_key', 'note', 'card', 'ssh'])
+  if (typeof it.type !== 'string' || !TYPES.has(it.type)) throw new Error('Invalid vault item type')
   for (const k of ['title', 'username', 'secret', 'url', 'notes'] as const) {
     const v = it[k]
     if (v !== undefined && (typeof v !== 'string' || v.length > 64000)) throw new Error(`Vault item field too large: ${k}`)
   }
+  if (it.tags !== undefined) {
+    if (!Array.isArray(it.tags) || it.tags.length > 100 || it.tags.some((t) => typeof t !== 'string' || t.length > 256)) {
+      throw new Error('Invalid vault item tags')
+    }
+  }
+  if (it.favorite !== undefined && typeof it.favorite !== 'boolean') throw new Error('Invalid vault item favorite')
   const fields = it.fields
   if (fields !== undefined) {
     if (!Array.isArray(fields) || fields.length > 100) throw new Error('Too many custom fields')
@@ -238,6 +245,7 @@ function assertVaultItem(item: VaultItem) {
       if (typeof ff.label !== 'string' || ff.label.length > 256 || typeof ff.value !== 'string' || ff.value.length > 64000) {
         throw new Error('Custom field too large')
       }
+      if (ff.hidden !== undefined && typeof ff.hidden !== 'boolean') throw new Error('Invalid custom field hidden flag')
     }
   }
 }
@@ -404,12 +412,8 @@ export function generatePassword(opts: { length: number; upper: boolean; lower: 
   if (opts.symbols) pool += '!@#$%^&*()-_=+[]{};:,.<>?'
   if (!pool) pool = 'abcdefghijklmnopqrstuvwxyz'
   const len = Math.min(Math.max(opts.length, 4), 128)
-  const bytes = crypto.randomBytes(len * 2)
   let out = ''
-  for (let i = 0; i < bytes.length && out.length < len; i++) {
-    const idx = bytes[i] % pool.length
-    out += pool[idx]
-  }
+  for (let i = 0; i < len; i++) out += pool[crypto.randomInt(0, pool.length)]
   return out
 }
 
