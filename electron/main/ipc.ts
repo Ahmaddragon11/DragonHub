@@ -11,10 +11,13 @@ import * as media from './services/media'
 import * as netmon from './services/netmonitor'
 import * as netblock from './services/netblock'
 import * as resmon from './services/resmonitor'
-import { cancelUpdateDownload, downloadLatestUpdate, getDownloadedInstaller, releaseDownloadedInstaller } from './services/updater'
+import { cancelUpdateDownload, downloadLatestUpdate, getDownloadedInstaller, launchInstallerSilently, releaseDownloadedInstaller } from './services/updater'
+import { listVersions, downloadVersion, cancelVersionDownload, getDownloadedInstallerPath, forgetDownloadedInstaller } from './services/versions'
+import * as ai from './services/ai'
 import { settingsStore, dataCollections, GENERIC_SET_BLOCKED_KEYS } from './services/settings'
 import { refreshGlobalShortcuts } from './services/globalShortcuts'
-import type { AppSettings, CompressOptions, ImageOp, VideoOp, VaultItem, VersionInfo, NetPlan, NetLimits, NetConfig, NetCycle, ResConfig, ResCardConfig } from '../../src/shared/types'
+import { registerAttachmentHandlers } from './ipc-attachments'
+import type { AppSettings, AiConfig, CompressOptions, ImageOp, VideoOp, VaultItem, VersionInfo, NetPlan, NetLimits, NetConfig, NetCycle, ResConfig, ResCardConfig } from '../../src/shared/types'
 import { CHANGELOG, TELEGRAM_URL, DEFAULT_NET_LIMITS } from '../../src/shared/types'
 
 type GetWin = () => BrowserWindow | null
@@ -46,12 +49,28 @@ const RATE_LIMITS: Record<string, { n: number; ms: number }> = {
   'vault:reset': { n: 3, ms: 60000 },
   'vault:restore': { n: 3, ms: 60000 },
   'res:killProcess': { n: 10, ms: 60000 },
+  'res:setActivity': { n: 180, ms: 10000 },
+  'net:setActivity': { n: 180, ms: 10000 },
   'net:appBlocked': { n: 20, ms: 60000 },
   'net:speedTest': { n: 5, ms: 60000 },
   'app:openExternal': { n: 30, ms: 60000 },
   'app:checkForUpdates': { n: 10, ms: 60000 },
   'app:cancelUpdateDownload': { n: 10, ms: 60000 },
   'app:installUpdate': { n: 5, ms: 60000 },
+  'versions:list': { n: 30, ms: 60000 },
+  'versions:download': { n: 5, ms: 60000 },
+  'versions:cancel': { n: 10, ms: 60000 },
+  'versions:status': { n: 60, ms: 60000 },
+  'versions:install': { n: 5, ms: 60000 },
+  'ai:getConfig': { n: 120, ms: 10000 },
+  'ai:setConfig': { n: 60, ms: 60000 },
+  'ai:upsertProvider': { n: 30, ms: 60000 },
+  'ai:deleteProvider': { n: 30, ms: 60000 },
+  'ai:setKey': { n: 30, ms: 60000 },
+  'ai:test': { n: 20, ms: 60000 },
+  'ai:listModels': { n: 20, ms: 60000 },
+  'ai:chat': { n: 12, ms: 60000 },
+  'ai:abort': { n: 60, ms: 60000 },
   'app:openTelegram': { n: 30, ms: 60000 },
   'app:openUserData': { n: 20, ms: 60000 },
   'app:setLoginItem': { n: 20, ms: 60000 },
@@ -113,8 +132,10 @@ export function externalUrlBlockReason(url: unknown): string | null {
   return null
 }
 
-/** Wrap a handler so errors are serialized safely to the renderer. */
-function h<T extends unknown[], R>(channel: string, fn: (...args: T) => R | Promise<R>) {
+/** Wrap a handler so errors are serialized safely to the renderer.
+ *  Exported for sibling internal routers (ipc-attachments) that must share the
+ *  same sender-validation + rate-limit + envelope guarantees. */
+export function h<T extends unknown[], R>(channel: string, fn: (...args: T) => R | Promise<R>) {
   ipcMain.handle(channel, async (e, ...args: unknown[]) => {
     try {
       // Only the app windows (main + floating card, same process) may call
@@ -145,6 +166,9 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   senderWin = getWin
   if (getCardWin) senderCardWin = getCardWin
   const cardCtl: CardControls = card ?? { show: () => {}, hide: () => {}, toggle: () => false, isOpen: () => false }
+  // Notes attachments (notes:addAttachment / notes:exportNote) — lives in its
+  // own router file but shares the h() envelope + rate-limit + sender guards.
+  registerAttachmentHandlers()
   // ---------- App / system ----------
   h('app:version', (): VersionInfo => ({
     version: app.getVersion(), build: '2026.10.10', electron: process.versions.electron, chrome: process.versions.chrome,
@@ -170,11 +194,46 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   h('app:installUpdate', async () => {
     const installer = getDownloadedInstaller()
     if (!installer) throw new Error('The downloaded installer is no longer available')
-    const openError = await shell.openPath(installer.path)
-    if (openError) throw new Error(`Could not launch the installer: ${openError}`)
+    await launchInstallerSilently(installer.path)
     releaseDownloadedInstaller()
     app.quit()
   })
+
+  // ---------- Version manager (browse + install older releases) ----------
+  h('versions:list', (force?: boolean) => listVersions(force === true))
+  h('versions:download', (version: string) => downloadVersion(String(version ?? ''), (progress) => {
+    const win = getWin()
+    if (win && !win.isDestroyed()) win.webContents.send('versions:progress', progress)
+  }))
+  h('versions:cancel', () => cancelVersionDownload())
+  h('versions:status', (version: string) => ({ downloaded: getDownloadedInstallerPath(String(version ?? '')) !== null }))
+  h('versions:install', async (version: string) => {
+    const v = String(version ?? '')
+    const installerPath = getDownloadedInstallerPath(v)
+    if (!installerPath) throw new Error('The downloaded installer is no longer available')
+    await launchInstallerSilently(installerPath)
+    forgetDownloadedInstaller(v)
+    app.quit()
+  })
+
+  // ---------- AI assistant (DragonHub AI) ----------
+  const aiEmit = (channel: string, payload: unknown) => {
+    // try/catch: the renderer can die between the check and the send (crash,
+    // auto-recovery reload) — a throwing emit must never take down main.
+    try {
+      const win = getWin()
+      if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(channel, payload)
+    } catch { /* renderer gone */ }
+  }
+  h('ai:getConfig', () => ai.getPublicConfig())
+  h('ai:setConfig', (patch: Partial<AiConfig>) => ai.setConfig(patch ?? {}))
+  h('ai:upsertProvider', (input: ai.AiProviderInput) => ai.upsertProvider(input ?? {}))
+  h('ai:deleteProvider', (id: string) => ai.deleteProvider(String(id ?? '')))
+  h('ai:setKey', (id: string, key: string) => ai.setKey(String(id ?? ''), String(key ?? '')))
+  h('ai:test', (id?: string) => ai.testProvider(typeof id === 'string' && id ? id : undefined))
+  h('ai:listModels', (id?: string) => ai.listModels(typeof id === 'string' && id ? id : undefined))
+  h('ai:chat', (requestId: string, turns: unknown, systemPrompt?: unknown) => ai.chat(String(requestId ?? ''), turns, systemPrompt, aiEmit))
+  h('ai:abort', (requestId: string) => ai.abort(String(requestId ?? '')))
   h('app:systemTheme', () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'))
   h('app:openUserData', () => shell.openPath(app.getPath('userData')))
   h('app:lastSeenVersion', () => dataCollections.get<{ lastSeen: string | null }>('appMeta', { lastSeen: null }).lastSeen ?? null)
@@ -523,6 +582,11 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
     return { blocked, exists: netblock.appExeExists(exePath) }
   })
   h('net:speedTest', () => netmon.speedTest(10_000_000))
+  h('net:setActivity', (active: unknown) => {
+    if (typeof active !== 'boolean') throw new Error('Invalid activity flag')
+    netmon.setNetActivity(active)
+    return true
+  })
 
   // ---------- Resources monitor (CPU / RAM / disks / GPU / processes) ----------
   h('res:snapshot', () => resmon.getResSnapshot())
@@ -530,6 +594,11 @@ export function registerAllHandlers(getWin: GetWin, card?: CardControls, getCard
   h('res:history', () => resmon.getResHistory())
   h('res:config:get', () => resmon.getResConfig())
   h('res:config:set', (patch: Partial<ResConfig>) => resmon.setResConfig(patch ?? {}))
+  h('res:setActivity', (level: unknown) => {
+    if (level !== 'off' && level !== 'full') throw new Error('Invalid activity level')
+    resmon.setPageActivity(level)
+    return true
+  })
   h('res:killProcess', (pid: number) => {
     if (!Number.isInteger(pid) || (pid as number) <= 0) throw new Error('Invalid pid')
     return resmon.killProcess(pid)

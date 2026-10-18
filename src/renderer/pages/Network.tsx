@@ -142,9 +142,10 @@ export default function Network() {
       } catch { /* main side unreachable — keep last values */ }
     }
     pull()
-    const id = setInterval(pull, 2000)
     const off = on<NetLive>('net:update', (l) => { if (l) setLive(l) })
-    return () => { alive = false; clearInterval(id); off() }
+    // Demand-driven monitor: claim sampling while mounted, release on exit.
+    void invoke('net:setActivity', true)
+    return () => { alive = false; off(); void invoke('net:setActivity', false) }
   }, [])
 
   // Radar auto-refresh while the tools tab is open.

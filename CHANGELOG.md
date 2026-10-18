@@ -1,5 +1,40 @@
 ﻿# DragonHub Changelog
 
+## v1.5.0 — 2026-10-17 (DragonHub AI, version manager, silent updates & a visual overhaul)
+
+### Added
+- **DragonHub AI assistant**: a full chat page with multiple providers, streaming
+  answers, model listing/testing and API keys sealed with Windows DPAPI — keys are
+  never stored in plain text.
+- **Version manager**: browse every published stable release and install any older
+  build; downloads are SHA-256 verified before the setup is ever launched.
+- **Silent in-app updates**: once you approve an update, the setup now installs it
+  unattended — no folder or machine prompts, right back where the app already
+  lives — and DragonHub reopens automatically when it finishes.
+- **Customizable focus timer**: set your own work / short-break / long-break
+  durations; the choice is saved and restored per day along with the cycle count.
+- **"Detect best settings" benchmark** in Settings → Performance: measures real
+  frame times and picks the matching quality level (eco, balanced or high).
+- **Redesigned installer artwork**: new header, welcome sidebar and uninstaller
+  sidebar painted in the DragonHub theme colors.
+
+### Changed
+- Rebuilt Settings with grouped navigation and scroll-spy sections (appearance,
+  performance, network & security, updates and AI each in their own pane).
+- Dashboard hero refresh: the clock now lives in its own card with Latin digits
+  and an animated sweep, and hero copy sits on a readable scrim.
+- Page transitions are direction-aware now — forward/back slides follow the
+  sidebar order (flipped automatically for RTL layouts).
+- Focus timer panel shows and edits your chosen durations inline.
+
+### Fixed
+- **Command palette freeze**: opening search and pressing Escape could leave an
+  invisible overlay swallowing every click; the palette exit path no longer
+  animates layout or filters, and stuck overlays are click-through by design.
+- Stability hardening: crash-recovery logging, AI streams aborted on quit and
+  renderer death, and eco quality no longer uses backdrop blur (removes the
+  tearing seam some GPUs showed with layered glass).
+
 ## v1.4.9 — 2026-10-15 (GitHub/Telegram links, real screenshot capture & hardening)
 
 ### Added

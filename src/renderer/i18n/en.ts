@@ -26,7 +26,7 @@ export default {
     title: 'Notes', newNote: 'New note', placeholderTitle: 'Note title', placeholderBody: 'Write in Markdown… **bold**, *italic*, - lists, # headings, `code`, - [ ] tasks',
     pin: 'Pin', unpin: 'Unpin', archive: 'Archive', unarchive: 'Unarchive', favorite: 'Favorite', wordCount: '{{count}} words', chars: '{{count}} chars',
     editMode: 'Edit', previewMode: 'Preview', splitMode: 'Split', exportMd: 'Export as Markdown', toolbar: 'Formatting toolbar', mdBold: 'Bold (Ctrl+B)', mdItalic: 'Italic (Ctrl+I)', mdHeading: 'Heading', mdQuote: 'Quote', mdBullet: 'Bullet list', mdNumber: 'Numbered list', mdTask: 'Task item', mdCode: 'Code', mdLink: 'Link', allNotes: 'All notes', sortUpdated: 'Last updated', sortCreated: 'Created', sortTitle: 'Title',
-    noteDeleted: 'Note deleted', savedLocally: 'Saved', addTag: 'Add tag…',
+    noteDeleted: 'Note deleted', savedLocally: 'Saved', addTag: 'Add tag…', insertImage: 'Insert image', imageFailed: "Couldn't attach the image",
   },
   projects: {
     title: 'Projects & Ideas', newProject: 'New project / idea', board: 'Board', listView: 'List', milestones: 'Milestones', addMilestone: 'Add milestone', links: 'Links', addLink: 'Add link',
@@ -116,7 +116,7 @@ export default {
   },
   errors: { title: 'This section hit a problem', desc: 'Your data is safe. You can retry or switch to another section.', copy: 'Copy details' },
   a11y: { skip: 'Skip to content' },
-  focus: { title: 'Focus timer', work: 'Work', short: 'Break', long: 'Long break', workDone: 'Work session done — take a break', breakDone: 'Break over — back to work', sessions: '{{count}} sessions today' },
+  focus: { title: 'Focus timer', work: 'Work', short: 'Break', long: 'Long break', workDone: 'Work session done — take a break', breakDone: 'Break over — back to work', sessions: '{{count}} sessions today', customize: 'Customize durations', customizeHint: 'Minutes per session (1–180)', workMins: 'Work', shortMins: 'Short break', longMins: 'Long break', done: 'Done' },
   side: { main: 'Main', productivity: 'Productivity', files: 'Files & Tools', media: 'Media', security: 'Security', system: 'System', collapse: 'Collapse sidebar', expand: 'Expand sidebar', menu: 'Navigation' },
   toast: { saved: 'Saved', deleted: 'Deleted', copied: 'Copied to clipboard', error: 'Something went wrong', created: 'Created', updated: 'Updated' },
 }

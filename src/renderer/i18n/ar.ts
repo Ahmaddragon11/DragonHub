@@ -26,7 +26,7 @@ export default {
     title: 'الملاحظات', newNote: 'ملاحظة جديدة', placeholderTitle: 'عنوان الملاحظة', placeholderBody: 'اكتب بصيغة Markdown… **عريض**، *مائل*، - قوائم، # عناوين، `كود`، - [ ] مهام',
     pin: 'تثبيت', unpin: 'إلغاء التثبيت', archive: 'أرشفة', unarchive: 'إلغاء الأرشفة', favorite: 'مفضلة', wordCount: '{{count}} كلمة', chars: '{{count}} حرف',
     editMode: 'تحرير', previewMode: 'معاينة', splitMode: 'مقسّم', exportMd: 'تصدير كـ Markdown', toolbar: 'شريط التنسيق', mdBold: 'عريض (Ctrl+B)', mdItalic: 'مائل (Ctrl+I)', mdHeading: 'عنوان', mdQuote: 'اقتباس', mdBullet: 'قائمة نقطية', mdNumber: 'قائمة مرقّمة', mdTask: 'عنصر مهمة', mdCode: 'كود', mdLink: 'رابط', allNotes: 'كل الملاحظات', sortUpdated: 'آخر تحديث', sortCreated: 'تاريخ الإنشاء', sortTitle: 'العنوان',
-    savedLocally: 'محفوظ', noteDeleted: 'تم حذف الملاحظة', addTag: 'أضف وسماً…',
+    savedLocally: 'محفوظ', noteDeleted: 'تم حذف الملاحظة', addTag: 'أضف وسماً…', insertImage: 'إدراج صورة', imageFailed: 'تعذر إرفاق الصورة',
   },
   projects: {
     title: 'المشاريع والأفكار', newProject: 'مشروع / فكرة جديدة', board: 'لوحة', listView: 'قائمة', milestones: 'المراحل', addMilestone: 'إضافة مرحلة', links: 'الروابط', addLink: 'إضافة رابط',
@@ -116,7 +116,7 @@ export default {
     feature: { notes: 'الملاحظات والأفكار', tasks: 'المهام والتذكيرات', projects: 'المشاريع', files: 'الملفات والمحرر', vault: 'الخزنة المشفّرة', resources: 'النظام والشبكة' },
   },
   a11y: { skip: 'تخطَّ إلى المحتوى' },
-  focus: { title: 'مؤقت التركيز', work: 'عمل', short: 'استراحة', long: 'استراحة طويلة', workDone: 'انتهت جلسة العمل — وقت الاستراحة', breakDone: 'انتهت الاستراحة — عودة للعمل', sessions: '{{count}} جلسة اليوم' },
+  focus: { title: 'مؤقت التركيز', work: 'عمل', short: 'استراحة', long: 'استراحة طويلة', workDone: 'انتهت جلسة العمل — وقت الاستراحة', breakDone: 'انتهت الاستراحة — عودة للعمل', sessions: '{{count}} جلسة اليوم', customize: 'تخصيص المدد', customizeHint: 'الدقائق لكل جلسة (1–180)', workMins: 'مدة العمل', shortMins: 'استراحة قصيرة', longMins: 'استراحة طويلة', done: 'تم' },
   side: { main: 'الرئيسية', productivity: 'الإنتاجية', files: 'الملفات والأدوات', media: 'الوسائط', security: 'الأمان', system: 'النظام', collapse: 'طي القائمة', expand: 'توسيع القائمة', menu: 'التنقل' },
   toast: { saved: 'تم الحفظ', deleted: 'تم الحذف', copied: 'تم النسخ إلى الحافظة', error: 'حدث خطأ ما', created: 'تم الإنشاء', updated: 'تم التحديث' },
 }

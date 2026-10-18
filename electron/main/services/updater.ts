@@ -1,4 +1,5 @@
-import { app } from 'electron'
+import { app, shell } from 'electron'
+import { spawn } from 'node:child_process'
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -322,6 +323,31 @@ export function getDownloadedInstaller(): { path: string; version: string } | nu
  *  before-quit cleanup does not delete it out from under the running setup. */
 export function releaseDownloadedInstaller(): void {
   pendingInstaller = null
+}
+
+/**
+ * Hand the installer to Windows setup with every page suppressed. NSIS reuses
+ * the previous install folder (`InstallDirRegKey`, per-user) so nothing is
+ * asked, and `--force-run` reopens DragonHub once the silent install finishes.
+ * Falls back to the normal interactive launch if the silent spawn cannot
+ * start, so approving an update is never a dead end.
+ */
+export async function launchInstallerSilently(installerPath: string): Promise<void> {
+  try {
+    const child = spawn(installerPath, ['--updated', '/S', '--force-run'], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    await new Promise<void>((resolve, reject) => {
+      child.once('error', reject)
+      child.once('spawn', () => resolve())
+    })
+    child.unref()
+    return
+  } catch { /* fall through to the interactive installer */ }
+  const openError = await shell.openPath(installerPath)
+  if (openError) throw new Error(`Could not launch the installer: ${openError}`)
 }
 
 /** Delete a downloaded-but-never-installed update installer (app quit cleanup). */

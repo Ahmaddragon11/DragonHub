@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Check, Info, AlertTriangle, XCircle } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useSpring, useMotionValueEvent } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { cn } from '@/lib/utils'
 import { useApp } from '@/store'
@@ -394,4 +394,34 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
 /* --------------------------------------------------------------- Skeleton */
 export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden className={cn('shimmer', className)} />
+}
+
+/* ---------------------------------------------------------- AnimatedNumber */
+/**
+ * Number readout that springs to its new value (v1.5.0) — a framer-motion
+ * `useSpring` (feather-light curve, matching `spring.light`) renders through a
+ * change subscription, so long-running counters stay driven by the compositor.
+ * Under reduced/off motion prefs (`useMotionPrefs`) the spring is jumped
+ * straight to the target so the readout is never stale or glittery.
+ */
+export function AnimatedNumber({ value, format = (n: number) => String(Math.round(n)), className }: {
+  value: number
+  format?: (n: number) => string
+  className?: string
+}) {
+  const { reduced } = useMotionPrefs()
+  const sv = useSpring(value, { stiffness: 220, damping: 30 })
+  const [text, setText] = useState(() => format(value))
+
+  // latest formatter without re-subscribing on caller-side closures
+  const formatRef = useRef(format)
+  formatRef.current = format
+
+  useEffect(() => {
+    if (reduced) sv.jump(value)
+    else sv.set(value)
+  }, [value, reduced, sv])
+  useMotionValueEvent(sv, 'change', (v) => setText(formatRef.current(v)))
+
+  return <span dir="ltr" className={cn('tabular-nums', className)}>{text}</span>
 }

@@ -230,6 +230,7 @@ export function UpdateCard({ floating = false, className }: { floating?: boolean
                   <button type="button" className="btn-ghost" onClick={runCheck} disabled={pending === 'check'}>
                     <RefreshCw size={14} /> {t('updatecard.actions.checkAgain')}
                   </button>
+                  <p className="w-full text-[10.5px] leading-relaxed text-surface-500">{t('updatecard.actions.installHint')}</p>
                 </>
               )}
 

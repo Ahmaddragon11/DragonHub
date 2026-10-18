@@ -1,10 +1,12 @@
-import { app, BrowserWindow, shell, ipcMain, nativeTheme, Menu, Tray, protocol, net, session, desktopCapturer, screen } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, nativeTheme, Menu, Tray, protocol, net, session, desktopCapturer, screen, powerMonitor } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { registerAllHandlers, externalUrlBlockReason } from './ipc'
 import { settingsStore, dataCollections } from './services/settings'
 import { cleanupPendingInstaller } from './services/updater'
+import { cleanupVersionInstallers } from './services/versions'
+import { stopAllChats } from './services/ai'
 import { initGlobalShortcuts, refreshGlobalShortcuts, stopGlobalShortcuts } from './services/globalShortcuts'
 import * as netmon from './services/netmonitor'
 import * as netblock from './services/netblock'
@@ -22,6 +24,43 @@ let cardWin: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
 let netBlocked = false
+
+// ---------- crash resilience ----------
+// Electron's default for an uncaught main-process error is an "Error" dialog
+// and an undefined app state afterwards. Log to the console + logs/crash.log
+// and keep running instead — logging must never throw.
+function crashLog(kind: string, detail: unknown): void {
+  try { console.error(`[dragonhub] ${kind}:`, detail) } catch { /* ignore */ }
+  try {
+    const text = detail instanceof Error ? (detail.stack || detail.message) : String(detail)
+    const dir = app.getPath('logs')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.appendFileSync(path.join(dir, 'crash.log'), `${new Date().toISOString()} ${kind}: ${text}\n`)
+  } catch { /* logging must never throw */ }
+}
+process.on('uncaughtException', (err) => crashLog('uncaughtException', err))
+process.on('unhandledRejection', (reason) => crashLog('unhandledRejection', reason))
+
+// Hardened renderer crash recovery: reload the shell after a renderer crash /
+// OOM (never a normal exit), throttled so a crash loop cannot spin forever.
+let lastRecoveryReloadAt = 0
+function attachCrashRecovery(w: BrowserWindow) {
+  w.webContents.on('render-process-gone', (_e, details) => {
+    crashLog('renderer-gone', `${details.reason} exit=${details.exitCode}`)
+    if (isQuitting) return
+    // A dead renderer can never consume the events of an in-flight AI stream.
+    try { stopAllChats() } catch { /* ignore */ }
+    if (details.reason === 'clean-exit') return
+    const now = Date.now()
+    if (now - lastRecoveryReloadAt < 30_000) return
+    lastRecoveryReloadAt = now
+    setTimeout(() => {
+      try { if (!w.isDestroyed()) w.webContents.reload() } catch { /* ignore */ }
+    }, 800)
+  })
+  w.on('unresponsive', () => crashLog('unresponsive', 'window stopped responding'))
+}
+app.on('child-process-gone', (_e, details) => crashLog('child-process-gone', `${details.type} ${details.reason} exit=${details.exitCode}`))
 
 // ---------- floating monitor card (rescard) ----------
 // Same renderer bundle, opened as `index.html?card=1` so no second Vite
@@ -47,8 +86,26 @@ function runtimeIconPath(): string {
   return path.join(process.env.APP_ROOT!, 'build', iconFileName())
 }
 
+// Demand-driven monitors: the card is the only long-lived consumer that is not
+// a rendered page. Every open/close path routes through here, so both services
+// reschedule their cheap-idle cadence right away.
+function setCardSeenActivity(open: boolean): void {
+  // Card-open holds the res monitor at 'basic' (no page needed) and keeps the
+  // net tick at normal cadence; closing lets both relax to their idle modes.
+  try { resmon.setCardActivity(open) } catch { /* optional */ }
+  try { netmon.setNetActivity(open) } catch { /* optional */ }
+}
+
+// Window visibility feeds the same demand model: hide/minimize (tray or
+// taskbar) drops the res monitor to 'off' and suppresses net broadcasts;
+// show/restore bring both back. The card keeps its own demand tracked above.
+function setMainSeenHidden(hidden: boolean): void {
+  try { resmon.setWindowHidden(hidden) } catch { /* optional */ }
+  try { netmon.setWindowHidden(hidden) } catch { /* optional */ }
+}
+
 function createCardWindow(): BrowserWindow | null {
-  if (cardWin && !cardWin.isDestroyed()) { cardWin.show(); cardWin.focus(); return cardWin }
+  if (cardWin && !cardWin.isDestroyed()) { cardWin.show(); cardWin.focus(); setCardSeenActivity(true); return cardWin }
   try {
     const cfg = resmon.getResCardConfig()
     const w = cfg.size === 'small' ? 288 : 348
@@ -78,6 +135,7 @@ function createCardWindow(): BrowserWindow | null {
         devTools: !app.isPackaged,
       },
     })
+    attachCrashRecovery(cardWin)
     // Security: same navigation guards as the main window — no new windows,
     // no navigation away from the app bundle (main + sub-frames + redirects).
     cardWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -99,7 +157,7 @@ function createCardWindow(): BrowserWindow | null {
     if (VITE_DEV_SERVER_URL) cardWin.loadURL(cardUrlSuffix())
     else cardWin.loadFile(path.join(RENDERER_DIST, 'index.html'), { query: { card: '1' } })
     cardWin.once('ready-to-show', () => cardWin?.show())
-    cardWin.on('closed', () => { cardWin = null })
+    cardWin.on('closed', () => { cardWin = null; setCardSeenActivity(false) })
     // Persist manual moves (renderer also saves on drag end; this is a backup).
     try {
       let saveT: ReturnType<typeof setTimeout> | null = null
@@ -113,6 +171,7 @@ function createCardWindow(): BrowserWindow | null {
         }, 800)
       })
     } catch { /* ignore */ }
+    setCardSeenActivity(true)
     return cardWin
   } catch { return null }
 }
@@ -172,6 +231,7 @@ function createWindow() {
   })
 
   win.once('ready-to-show', () => win?.show())
+  attachCrashRecovery(win)
 
   // Security: block navigation & new windows, open external links via shell only if http(s)
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -212,6 +272,14 @@ function createWindow() {
   win.on('unmaximize', () => win?.webContents.send('window:state', { maximized: false }))
   win.on('enter-full-screen', () => win?.webContents.send('window:state', { fullscreen: true }))
   win.on('leave-full-screen', () => win?.webContents.send('window:state', { fullscreen: false }))
+  // Demand-driven monitors: hiding/minimizing to tray or taskbar drops the res
+  // monitor to 'off' (unless the floating card is open) and suppresses net
+  // broadcasts; show/restore bring both back. Context-menu "Minimize" does not
+  // emit 'hide', so 'minimize' mirrors it explicitly.
+  win.on('hide', () => { try { setMainSeenHidden(true) } catch { /* optional */ } })
+  win.on('minimize', () => { try { setMainSeenHidden(true) } catch { /* optional */ } })
+  win.on('show', () => { try { setMainSeenHidden(false) } catch { /* optional */ } })
+  win.on('restore', () => { try { setMainSeenHidden(false) } catch { /* optional */ } })
 }
 
 // ---------- global shortcuts (system-wide hotkeys) ----------
@@ -506,7 +574,10 @@ app.whenReady().then(() => {
   // dotfiles/.ssh, no userData root/tree, no symlinks escaping checks).
   // Sensitive app-state files are never served (vault / settings / data store).
   const SENSITIVE_FILES = new Set(['vault.bin', 'dragonhub-data.json', 'dragonhub-settings.json'])
-  protocol.handle('dh-file', (request) => {
+  // Async handler: realpath/stat are awaited off the main thread — a Files or
+  // Images page previewing hundreds of files used to run one sync stat per
+  // request on the main process, stalling IPC and freezing the window.
+  protocol.handle('dh-file', async (request) => {
     try {
       const u = new URL(request.url)
       // Reject any hostname other than empty/'local' (DNS-rebinding style bypass).
@@ -530,13 +601,13 @@ app.whenReady().then(() => {
       // Resolve symlinks so all checks below apply to the real target.
       let real: string
       try {
-        real = fs.realpathSync(normalized)
+        real = await fs.promises.realpath(normalized)
       } catch {
         return new Response('Not found', { status: 404 })
       }
       let st: fs.Stats
       try {
-        st = fs.statSync(real)
+        st = await fs.promises.stat(real)
       } catch {
         return new Response('Not found', { status: 404 })
       }
@@ -616,6 +687,15 @@ app.whenReady().then(() => {
   })
   createWindow()
   createTray()
+  // Power state bridge: the renderer gates seconds-precision UI (dashboard
+  // clock, etc.) while on battery. Initial state is pushed once shortly after
+  // the window exists, then on AC/battery transitions.
+  try {
+    const sendPowerState = (onBattery: boolean) => { try { win?.webContents.send('app:powerState', { onBattery }) } catch { /* ignore */ } }
+    powerMonitor.on('on-ac', () => sendPowerState(false))
+    powerMonitor.on('on-battery', () => sendPowerState(true))
+    setTimeout(() => sendPowerState(powerMonitor.isOnBatteryPower()), 1500)
+  } catch { /* powerMonitor not available on this platform */ }
   // Register system-wide hotkeys after the window exists; ignored if the user
   // disabled them or a key is already taken by another app.
   initGlobalShortcuts(() => win)
@@ -656,6 +736,10 @@ app.on('before-quit', () => {
   try { resmon.stopResMonitor() } catch { /* ignore */ }
   // Drop a downloaded-but-uninstalled update installer from temp.
   try { cleanupPendingInstaller() } catch { /* ignore */ }
+  // Drop downloaded-but-uninstalled version-manager installers from temp.
+  try { cleanupVersionInstallers() } catch { /* ignore */ }
+  // Abort every in-flight AI stream so no fetch outlives the window.
+  try { stopAllChats() } catch { /* ignore */ }
   try {
     const lim = { ...DEFAULT_NET_LIMITS, ...(dataCollections.get('netLimits', {}) as Partial<typeof DEFAULT_NET_LIMITS>) }
     // Synchronous cleanup: the async variant cannot be awaited here (the

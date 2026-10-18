@@ -76,6 +76,12 @@ export default function Resources() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Demand-driven monitor: claim full sampling while mounted, release on exit.
+  useEffect(() => {
+    void invoke('res:setActivity', 'full')
+    return () => { void invoke('res:setActivity', 'off') }
+  }, [])
+
   // Live snapshot stream (2s tick in main).
   // NOTE: threshold alerts are side-effects — kept OUTSIDE any setState updater
   // (updaters must stay pure; StrictMode may double-invoke them).
@@ -113,13 +119,18 @@ export default function Resources() {
     return off
   }, [t, toast])
 
-  // Process list refresh (heavier PS call — every 4s, skipped while frozen).
+  // Process list refresh (heavier PS call — every 4s, skipped while frozen or hidden).
   useEffect(() => {
-    const id = setInterval(() => {
-      if (frozenRef.current) return
+    const pull = () => {
       invoke<ResProcess[]>('res:processes', cfg?.topN ?? 12).then((p) => { if (Array.isArray(p)) setProcs(p) }).catch(() => { /* keep last */ })
+    }
+    const id = setInterval(() => {
+      if (frozenRef.current || document.hidden) return
+      pull()
     }, 4000)
-    return () => clearInterval(id)
+    const onVis = () => { if (!document.hidden && !frozenRef.current) pull() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis) }
   }, [cfg?.topN])
 
   const patchCfg = async (patch: Partial<ResConfig>) => {

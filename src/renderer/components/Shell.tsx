@@ -5,7 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   LayoutDashboard, StickyNote, Lightbulb, CheckSquare, FolderOpen, Code2, Download, Archive, Image, Clapperboard, ShieldCheck,
   Keyboard, Settings, Info, Minus, Square, X, Copy, Search, ChevronsLeft, ChevronsRight, ChevronDown, Sun, Moon, Languages, Send, Github, Wifi, Gauge,
-  ArrowLeft, ArrowRight, Menu, CornerDownLeft, History, PanelLeft, Monitor, CircleHelp, FileText, Activity, Camera,
+  ArrowLeft, ArrowRight, Menu, CornerDownLeft, History, PanelLeft, Monitor, CircleHelp, FileText, Activity, Camera, Bot,
 } from 'lucide-react'
 import { useApp, type PageId, type RecentKind } from '@/store'
 import { cn, relTime, stripPath } from '@/lib/utils'
@@ -30,6 +30,7 @@ export const NAV: { id: PageId; icon: React.ReactNode; group: NavGroup }[] = [
   { id: 'notes', icon: <StickyNote size={18} />, group: 'workspace' },
   { id: 'tasks', icon: <CheckSquare size={18} />, group: 'workspace' },
   { id: 'projects', icon: <Lightbulb size={18} />, group: 'workspace' },
+  { id: 'ai', icon: <Bot size={18} />, group: 'workspace' },
   { id: 'files', icon: <FolderOpen size={18} />, group: 'filesMedia' },
   { id: 'editor', icon: <Code2 size={18} />, group: 'filesMedia' },
   { id: 'images', icon: <Image size={18} />, group: 'filesMedia' },
@@ -204,7 +205,7 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
     <aside ref={drawerRef} aria-label={t('side.menu')} role={mobile ? 'dialog' : undefined} aria-modal={mobile ? true : undefined} tabIndex={mobile ? -1 : undefined}
       style={{ width: collapsed ? COLLAPSED_W : EXPANDED_W }}
       className={cn('flex flex-col overflow-hidden shrink-0 relative z-10 transition-[width] duration-200 ease-out',
-        mobile ? 'h-full surface-raised rounded-none rounded-e-2xl' : 'glass rounded-2xl m-2 mt-0 me-0')}>
+        mobile ? 'h-full surface-raised rounded-none rounded-e-2xl' : 'sidebar-panel rounded-2xl m-2 mt-0 me-0')}>
       <div className={cn('flex items-center gap-2 px-3 pt-3 pb-2 shrink-0', collapsed && 'justify-center px-0')}>
         <Logo size={24} />
         {!collapsed && <span className="text-sm font-semibold tracking-tight gradient-text truncate flex-1">DragonHub</span>}
@@ -237,7 +238,7 @@ export function Sidebar({ viewport, drawerOpen, onCloseDrawer }: { viewport: 'mo
                       const meta = [badge > 0 ? t('common.items', { count: badge }) : '', dot ? t('about.updateAvailableBadge', { version: updateVersion ?? '' }) : ''].filter(Boolean).join(isRtl ? '، ' : ', ')
                       const btn = (
                         <button key={n.id} onClick={() => go(n.id)} aria-current={active ? 'page' : undefined} aria-label={collapsed ? (meta ? `${t(`nav.${n.id}`)} — ${meta}` : t(`nav.${n.id}`)) : undefined}
-                          className={cn('relative w-full flex items-center gap-2.5 rounded-[10px] h-9 text-[13px] group transition-colors duration-150 fly-host',
+                          className={cn('nav-item relative w-full flex items-center gap-2.5 rounded-[10px] h-9 text-[13px] group transition-colors duration-150 fly-host',
                             collapsed ? 'justify-center px-0' : 'px-2.5',
                             active ? 'text-surface-950 font-medium' : 'text-surface-600 hover:text-surface-900 hover:bg-surface-200/70')}>
                           {active && (
@@ -443,19 +444,30 @@ export function CommandPalette() {
   }, [idx])
   const run = (c?: Cmd) => { if (!c) return; s.setPalette(false); c.run() }
 
+  // Distinctive entrance: spring in from a lift (skipped when motion is reduced).
+  const paletteVariants = reduced
+    ? { initial: { opacity: 0 }, enter: { opacity: 1 }, exit: { opacity: 0, transition: { duration: 0.1 } } }
+    : {
+        initial: { opacity: 0, scale: 0.92, y: 20 },
+        enter: { opacity: 1, scale: 1, y: 0, transition: spring.soft },
+        exit: { opacity: 0, scale: 0.96, y: 10, transition: { duration: 0.14 } },
+      }
+
   let counter = -1
   return (
     <AnimatePresence>
       {s.open && (
         <motion.div className="fixed inset-0 z-[120] flex items-start justify-center px-3 pb-4 pt-[9vh] sm:pt-[13vh]"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.1 } }} transition={{ duration: 0.14 }}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.1 } }} transition={{ duration: 0.14 }} style={{ pointerEvents: s.open ? undefined : 'none' }}
           onMouseDown={(e) => e.target === e.currentTarget && s.setPalette(false)}>
           <div aria-hidden className="fixed inset-0 -z-10 bg-black/40 backdrop-blur-[2px]" />
-          <motion.div ref={surface} variants={dialogVariants(reduced)} initial="initial" animate="enter" exit="exit"
+          <motion.div ref={surface} variants={paletteVariants} initial="initial" animate="enter" exit="exit"
             role="dialog" aria-modal="true" aria-label={t('palette.placeholder')}
-            className="surface-raised w-full max-w-[620px] overflow-hidden flex flex-col max-h-[min(72vh,560px)]">
-            <div className="flex items-center gap-3 px-4 h-[52px] border-b border-[color:var(--hairline)] shrink-0">
-              <Search size={17} className="text-surface-500 shrink-0" />
+            className="palette-shell w-full max-w-[620px] overflow-hidden flex flex-col max-h-[min(72vh,560px)]">
+            <div className="palette-content relative flex flex-col flex-1 min-h-0">
+            <div className="relative flex items-center gap-3 px-4 h-[52px] shrink-0">
+              <Search size={17} className="text-surface-500 shrink-0 palette-icon" />
+              <span aria-hidden className="palette-search-underline absolute bottom-0 start-0 end-0" />
               <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('palette.placeholder')} className="flex-1 bg-transparent outline-none text-[15px] placeholder:text-surface-500"
                 role="combobox" aria-expanded="true" aria-controls="palette-list" aria-activedescendant={flat[idx] ? `pal-${idx}` : undefined} aria-autocomplete="list"
                 onKeyDown={(e) => {
@@ -487,7 +499,7 @@ export function CommandPalette() {
                       <div key={c.id} id={`pal-${i}`} data-idx={i} role="option" aria-selected={active}
                         onMouseMove={() => { if (idx !== i) setIdx(i) }} onClick={() => run(c)}
                         className={cn('relative flex items-center gap-3 px-2.5 h-10 rounded-lg text-[13.5px] cursor-pointer', active ? 'text-surface-950' : 'text-surface-700')}>
-                        {active && <motion.span layoutId={reduced ? undefined : 'pal-hl'} transition={{ type: 'spring', stiffness: 700, damping: 45 }} className="absolute inset-0 rounded-lg bg-surface-200" />}
+                        {active && <span className="absolute inset-0 rounded-lg bg-surface-200" />}
                         <span className={cn('relative shrink-0', active ? 'text-accent' : 'text-surface-500')}>{c.icon}</span>
                         <span className="relative flex-1 min-w-0 truncate">
                           {highlightParts(c.label, c.hits ?? []).map((p, j) => p.hit ? <mark key={j} className="bg-transparent text-accent font-semibold">{p.s}</mark> : <React.Fragment key={j}>{p.s}</React.Fragment>)}
@@ -506,6 +518,7 @@ export function CommandPalette() {
               <span className="flex items-center gap-1.5"><Kbd keys="↵" />{t('palette.hintRun')}</span>
               <span className="flex items-center gap-1.5"><Kbd keys="Esc" />{t('common.close')}</span>
               <span className="ms-auto hidden sm:block">{t('palette.hintSearch')}</span>
+            </div>
             </div>
           </motion.div>
         </motion.div>
@@ -552,7 +565,7 @@ export function ShortcutsOverlay() {
   return (
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-[120] flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }}
+        <motion.div className="fixed inset-0 z-[120] flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }} style={{ pointerEvents: open ? undefined : 'none' }}
           onMouseDown={(e) => e.target === e.currentTarget && setShortcuts(false)}>
           <div aria-hidden className="fixed inset-0 -z-10 bg-black/40 backdrop-blur-[2px]" />
           <motion.div ref={surface} tabIndex={-1} role="dialog" aria-modal="true" aria-label={t('shortcutsOverlay.title')} variants={dialogVariants(reduced)} initial="initial" animate="enter" exit="exit"

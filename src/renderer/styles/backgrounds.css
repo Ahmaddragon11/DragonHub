@@ -1,0 +1,247 @@
+/* ==========================================================================
+   Animated background presets (v1.5.0) — pure CSS, layered spans rendered by
+   components/BackgroundLayer.tsx. Only transform / opacity / background-position
+   are animated (liquid-blobs morphs border-radius per spec). Driven by
+   html[data-bg-preset]; every duration is calc(<base> * var(--bg-q) / var(--bg-speed)).
+   ========================================================================== */
+
+.bg-preset {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+  --bg-q: 1;
+}
+.bg-preset span { position: absolute; will-change: transform, opacity; }
+html:not(.dark) .bg-preset { opacity: 0.55; }
+
+/* Quality tiers (v1.5.0): eco freezes every frame; balanced stretches durations;
+   ultra shortens them; 'high' keeps the authored pace (--bg-q: 1 above). */
+html[data-quality='eco'] .bg-preset span,
+html[data-quality='eco'] .bg-preset span::before,
+html[data-quality='eco'] .bg-preset span::after { animation: none !important; }
+[data-quality='balanced'] .bg-preset { --bg-q: 1.8; }
+[data-quality='ultra'] .bg-preset { --bg-q: 0.8; }
+
+/* Repo motion switches (mirrors the .glow::before freeze in index.css). */
+html.low-power .bg-preset span,
+html.low-power .bg-preset span::before,
+html.low-power .bg-preset span::after,
+html[data-anim='off'] .bg-preset span,
+html[data-anim='off'] .bg-preset span::before,
+html[data-anim='off'] .bg-preset span::after { animation: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-preset span, .bg-preset span::before, .bg-preset span::after { animation: none !important; }
+}
+
+/* Scheduler pause while the renderer is hidden (component toggles html.bgp-paused). */
+html.bgp-paused .bg-preset span { animation-play-state: paused !important; }
+
+/* A preset owns the backdrop: retire the static siblings for every id. */
+html[data-bg-preset='aurora'] .aurora, html[data-bg-preset='aurora'] .bg-detail, html[data-bg-preset='aurora'] .app-bg { display: none !important; }
+html[data-bg-preset='ocean-waves'] .aurora, html[data-bg-preset='ocean-waves'] .bg-detail, html[data-bg-preset='ocean-waves'] .app-bg { display: none !important; }
+html[data-bg-preset='starfield'] .aurora, html[data-bg-preset='starfield'] .bg-detail, html[data-bg-preset='starfield'] .app-bg { display: none !important; }
+html[data-bg-preset='mesh-gradient'] .aurora, html[data-bg-preset='mesh-gradient'] .bg-detail, html[data-bg-preset='mesh-gradient'] .app-bg { display: none !important; }
+html[data-bg-preset='liquid-blobs'] .aurora, html[data-bg-preset='liquid-blobs'] .bg-detail, html[data-bg-preset='liquid-blobs'] .app-bg { display: none !important; }
+html[data-bg-preset='neon-grid'] .aurora, html[data-bg-preset='neon-grid'] .bg-detail, html[data-bg-preset='neon-grid'] .app-bg { display: none !important; }
+html[data-bg-preset='sunset-flow'] .aurora, html[data-bg-preset='sunset-flow'] .bg-detail, html[data-bg-preset='sunset-flow'] .app-bg { display: none !important; }
+html[data-bg-preset='ember'] .aurora, html[data-bg-preset='ember'] .bg-detail, html[data-bg-preset='ember'] .app-bg { display: none !important; }
+
+/* ==== Aurora — slow accent/emerald light curtains over a deep night base ==== */
+.bg-preset[data-preset='aurora'] span {
+  top: -28vmin;
+  left: 0;
+  width: 88vmin;
+  height: 88vmin;
+  background: radial-gradient(closest-side, rgb(var(--accent) / 0.20), transparent 70%);
+}
+.bg-preset[data-preset='aurora'] .l1 { animation: bgAurA calc(34s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate; }
+.bg-preset[data-preset='aurora'] .l2 {
+  top: 4vmin;
+  left: auto;
+  right: -22vmin;
+  width: 100vmin;
+  height: 100vmin;
+  background: radial-gradient(closest-side, rgb(16 185 129 / 0.15), rgb(6 182 212 / 0.08) 55%, transparent 75%);
+  animation: bgAurB calc(43s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate;
+}
+.bg-preset[data-preset='aurora'] .l3 {
+  top: auto;
+  bottom: -40vmin;
+  left: 14vw;
+  width: 130vmin;
+  height: 110vmin;
+  background: radial-gradient(closest-side, rgb(var(--accent-soft) / 0.12), transparent 72%);
+  animation: bgAurC calc(51s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite alternate;
+}
+@keyframes bgAurA { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(10vw, 8vmin, 0) scale(1.14); } }
+@keyframes bgAurB { from { transform: translate3d(0, 0, 0); opacity: 0.85; } to { transform: translate3d(-12vw, 9vmin, 0) scale(1.08); opacity: 1; } }
+@keyframes bgAurC { from { transform: translate3d(-4vw, 0, 0) scale(1); opacity: 0.9; } to { transform: translate3d(7vw, -8vmin, 0) scale(1.1); opacity: 1; } }
+
+/* ==== Ocean waves — tilted swell stripes rolling sideways at parallax speeds ==== */
+.bg-preset[data-preset='ocean-waves'] span {
+  top: auto;
+  bottom: -6vh;
+  left: 0;
+  width: 200vw;
+  height: 42vh;
+}
+.bg-preset[data-preset='ocean-waves'] .l1 {
+  background: repeating-linear-gradient(90deg, transparent 0, rgb(6 182 212 / 0.10) 120px, rgb(var(--accent) / 0.10) 140px, transparent 240px);
+  transform: skewY(-4deg);
+  animation: bgWaveA calc(36s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite;
+}
+.bg-preset[data-preset='ocean-waves'] .l2 {
+  bottom: 8vh;
+  height: 38vh;
+  background: repeating-linear-gradient(90deg, transparent 0, rgb(16 185 129 / 0.08) 100px, transparent 200px);
+  transform: skewY(3deg);
+  animation: bgWaveB calc(27s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite;
+}
+.bg-preset[data-preset='ocean-waves'] .l3 {
+  bottom: 22vh;
+  height: 34vh;
+  background: repeating-linear-gradient(90deg, transparent 0, rgb(var(--accent-soft) / 0.07) 130px, transparent 260px);
+  transform: skewY(-2deg);
+  animation: bgWaveC calc(46s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite;
+}
+@keyframes bgWaveA { from { background-position: 0 0; } to { background-position: -240px 0; } }
+@keyframes bgWaveB { from { background-position: 0 0; } to { background-position: 200px 0; } }
+@keyframes bgWaveC { from { background-position: 0 0; } to { background-position: -260px 0; } }
+
+/* ==== Starfield — sparse dot lattices drifting diagonally with a faint twinkle ==== */
+.bg-preset[data-preset='starfield'] {
+  --star: rgb(255 255 255 / 0.85);
+  background: radial-gradient(ellipse 90% 70% at 50% 20%, rgb(var(--accent) / 0.06), transparent 80%);
+}
+html:not(.dark) .bg-preset[data-preset='starfield'] { --star: rgb(var(--accent-soft) / 0.6); }
+.bg-preset[data-preset='starfield'] span { inset: -260px; }
+.bg-preset[data-preset='starfield'] .l1 { background-image: radial-gradient(circle at 25% 30%, var(--star) 1px, transparent 1.6px); background-size: 220px 220px; animation: bgStarA calc(90s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite; }
+.bg-preset[data-preset='starfield'] .l2 { background-image: radial-gradient(circle at 70% 65%, rgb(var(--accent-soft) / 0.55) 1.5px, transparent 2.2px); background-size: 150px 150px; animation: bgStarB calc(64s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite; }
+.bg-preset[data-preset='starfield'] .l3 { background-image: radial-gradient(circle at 45% 80%, rgb(6 182 212 / 0.5) 1px, transparent 1.5px); background-size: 110px 110px; animation: bgStarC calc(48s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite; }
+.bg-preset[data-preset='starfield'] .l4 { background-image: radial-gradient(circle at 60% 20%, var(--star) 2px, transparent 2.6px); background-size: 90px 90px; animation: bgStarD calc(40s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite; }
+@keyframes bgStarA { from { transform: translate3d(0, 0, 0); opacity: 0.6; } to { transform: translate3d(-220px, -220px, 0); opacity: 1; } }
+@keyframes bgStarB { from { transform: translate3d(0, 0, 0); opacity: 0.75; } to { transform: translate3d(-150px, 150px, 0); opacity: 0.4; } }
+@keyframes bgStarC { from { transform: translate3d(0, 0, 0); opacity: 0.5; } to { transform: translate3d(110px, 110px, 0); opacity: 0.9; } }
+@keyframes bgStarD { from { transform: translate3d(0, 0, 0); opacity: 0.9; } to { transform: translate3d(-90px, 90px, 0); opacity: 0.35; } }
+
+/* ==== Mesh gradient — four soft corner pools breathing out of phase ==== */
+.bg-preset[data-preset='mesh-gradient'] span { width: 70vmin; height: 70vmin; }
+.bg-preset[data-preset='mesh-gradient'] .l1 { top: -20vmin; left: -18vmin; background: radial-gradient(closest-side, rgb(var(--accent) / 0.18), transparent 70%); animation: bgMeshA calc(38s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate; }
+.bg-preset[data-preset='mesh-gradient'] .l2 { top: -22vmin; right: -20vmin; background: radial-gradient(closest-side, rgb(6 182 212 / 0.14), transparent 70%); animation: bgMeshB calc(44s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate; }
+.bg-preset[data-preset='mesh-gradient'] .l3 { bottom: -24vmin; left: -16vmin; background: radial-gradient(closest-side, rgb(139 92 246 / 0.12), transparent 70%); animation: bgMeshC calc(50s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate; }
+.bg-preset[data-preset='mesh-gradient'] .l4 { bottom: -26vmin; right: -14vmin; background: radial-gradient(closest-side, rgb(var(--accent-soft) / 0.14), transparent 70%); animation: bgMeshD calc(56s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate; }
+@keyframes bgMeshA { from { transform: translate3d(0, 0, 0) scale(1); opacity: 0.8; } to { transform: translate3d(9vw, 12vh, 0) scale(1.16); opacity: 1; } }
+@keyframes bgMeshB { from { transform: translate3d(0, 0, 0) scale(1.06); opacity: 1; } to { transform: translate3d(-11vw, 14vh, 0) scale(0.94); opacity: 0.7; } }
+@keyframes bgMeshC { from { transform: translate3d(0, 0, 0) scale(1); opacity: 0.65; } to { transform: translate3d(10vw, -12vh, 0) scale(1.1); opacity: 1; } }
+@keyframes bgMeshD { from { transform: translate3d(0, 0, 0) scale(1.08); opacity: 1; } to { transform: translate3d(-9vw, -14vh, 0) scale(0.96); opacity: 0.75; } }
+
+/* ==== Liquid blobs — heavily blurred colour circles drifting & morphing ==== */
+.bg-preset[data-preset='liquid-blobs'] span { filter: blur(46px); }
+.bg-preset[data-preset='liquid-blobs'] .l1 {
+  top: 6vh; left: -6vw; width: 42vmin; height: 38vmin;
+  background: radial-gradient(circle at 40% 40%, rgb(var(--accent) / 0.34), transparent 72%);
+  animation: bgBlobA calc(30s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate;
+}
+.bg-preset[data-preset='liquid-blobs'] .l2 {
+  bottom: -4vh; right: 2vw; width: 46vmin; height: 42vmin;
+  background: radial-gradient(circle at 55% 45%, rgb(16 185 129 / 0.26), transparent 72%);
+  animation: bgBlobB calc(36s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate;
+}
+.bg-preset[data-preset='liquid-blobs'] .l3 {
+  top: 34vh; left: 40vw; width: 34vmin; height: 34vmin;
+  background: radial-gradient(circle at 50% 50%, rgb(244 63 94 / 0.2), transparent 70%);
+  animation: bgBlobC calc(26s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate;
+}
+@keyframes bgBlobA {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); border-radius: 56% 44% 38% 62% / 48% 60% 40% 52%; }
+  to { transform: translate3d(14vw, 16vh, 0) rotate(26deg); border-radius: 40% 60% 58% 42% / 60% 36% 64% 44%; }
+}
+@keyframes bgBlobB {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); border-radius: 44% 56% 62% 38% / 58% 44% 56% 46%; }
+  to { transform: translate3d(-12vw, -14vh, 0) rotate(-24deg); border-radius: 62% 38% 42% 58% / 38% 62% 44% 56%; }
+}
+@keyframes bgBlobC {
+  from { transform: translate3d(0, 0, 0); border-radius: 50% 50% 44% 56% / 54% 46% 58% 42%; }
+  to { transform: translate3d(10vw, -18vh, 0); border-radius: 58% 42% 58% 42% / 42% 60% 40% 60%; }
+}
+
+/* ==== Neon grid — two perspective planes rolling opposite + horizon glow ==== */
+.bg-preset[data-preset='neon-grid'] span { background-repeat: repeat; }
+.bg-preset[data-preset='neon-grid'] .l1,
+.bg-preset[data-preset='neon-grid'] .l2 {
+  left: -50vw;
+  width: 200vw;
+  background-image: linear-gradient(rgb(var(--accent) / 0.14) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--accent) / 0.14) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+.bg-preset[data-preset='neon-grid'] .l1 {
+  bottom: -10vh;
+  height: 70vh;
+  transform: perspective(46rem) rotateX(58deg);
+  transform-origin: 50% 0;
+  animation: bgGridFloor calc(7s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite;
+}
+.bg-preset[data-preset='neon-grid'] .l2 {
+  top: -10vh;
+  height: 70vh;
+  transform: perspective(46rem) rotateX(-58deg);
+  transform-origin: 50% 100%;
+  background-image: linear-gradient(rgb(6 182 212 / 0.10) 1px, transparent 1px), linear-gradient(90deg, rgb(6 182 212 / 0.10) 1px, transparent 1px);
+  background-size: 64px 64px;
+  animation: bgGridCeil calc(9s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite;
+}
+.bg-preset[data-preset='neon-grid'] .l3 {
+  top: 50%; left: 0; width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgb(var(--accent-soft) / 0.8), transparent);
+  box-shadow: 0 0 12px rgb(var(--accent) / 0.55), 0 0 40px rgb(var(--accent) / 0.35);
+  animation: bgGridGlow calc(5s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate;
+}
+@keyframes bgGridFloor { from { background-position: 0 0; } to { background-position: 0 64px; } }
+@keyframes bgGridCeil { from { background-position: 0 0; } to { background-position: 0 -64px; } }
+@keyframes bgGridGlow { from { opacity: 0.55; transform: translate3d(0, -6px, 0); } to { opacity: 1; transform: translate3d(0, 6px, 0); } }
+
+/* ==== Sunset flow — warm dusk wash drifting sideways + two breathing pools ==== */
+.bg-preset[data-preset='sunset-flow'] span {
+  inset: 0;
+  background-size: 220% 140%;
+  background-position: 50% 30%;
+}
+.bg-preset[data-preset='sunset-flow'] .l1 {
+  background-image: linear-gradient(167deg, rgb(253 186 116 / 0.14) 4%, rgb(251 146 60 / 0.12) 26%, rgb(244 63 94 / 0.10) 52%, rgb(var(--accent) / 0.08) 78%, transparent);
+  animation: bgSunsetDrift calc(48s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate;
+}
+.bg-preset[data-preset='sunset-flow'] .l2 {
+  background-image: radial-gradient(46% 38% at 50% 96%, rgb(251 146 60 / 0.22), transparent 78%);
+  animation: bgSunsetBreath calc(22s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate;
+}
+.bg-preset[data-preset='sunset-flow'] .l3 {
+  background-image: radial-gradient(60% 44% at 24% -6%, rgb(var(--accent-soft) / 0.16), transparent 80%);
+  animation: bgSunsetBreath calc(30s * var(--bg-q, 1) / var(--bg-speed, 1)) ease-in-out infinite alternate-reverse;
+}
+@keyframes bgSunsetDrift { from { background-position: 18% 42%; } to { background-position: 82% 26%; } }
+@keyframes bgSunsetBreath { from { opacity: 0.45; transform: scale(1); } to { opacity: 1; transform: scale(1.12); } }
+
+/* ==== Ember — sparse warm sparks rising from the floor on staggered loops ==== */
+.bg-preset[data-preset='ember'] span {
+  bottom: -14px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgb(253 224 71 / 0.95), rgb(249 115 22 / 0.55) 60%, transparent 78%);
+}
+.bg-preset[data-preset='ember'] .l1 { left: 12vw; animation: bgEmber calc(14s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite; }
+.bg-preset[data-preset='ember'] .l2 { left: 38vw; width: 6px; height: 6px; animation: bgEmber calc(18s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite; animation-delay: calc(-7s * var(--bg-q, 1) / var(--bg-speed, 1)); }
+.bg-preset[data-preset='ember'] .l3 { left: 64vw; animation: bgEmber calc(16s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite; animation-delay: calc(-11s * var(--bg-q, 1) / var(--bg-speed, 1)); }
+.bg-preset[data-preset='ember'] .l4 { left: 84vw; width: 5px; height: 5px; animation: bgEmber calc(21s * var(--bg-q, 1) / var(--bg-speed, 1)) linear infinite; animation-delay: calc(-3s * var(--bg-q, 1) / var(--bg-speed, 1)); }
+@keyframes bgEmber {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  10% { opacity: 0.95; }
+  50% { transform: translate3d(40px, -50vh, 0); opacity: 0.8; }
+  90% { opacity: 0.25; }
+  100% { transform: translate3d(-20px, -102vh, 0); opacity: 0; }
+}

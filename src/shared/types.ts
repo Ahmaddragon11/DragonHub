@@ -1,6 +1,6 @@
 // Shared type contracts between main process and renderer
 
-export const APP_VERSION = '1.4.9'
+export const APP_VERSION = '1.5.0'
 export const DEVELOPER = 'AHMADDRAGON'
 export const TELEGRAM_URL = 'https://t.me/ahmaddragon'
 export const GITHUB_URL = 'https://github.com/Ahmaddragon11/DragonHub'
@@ -8,6 +8,9 @@ export const GITHUB_URL = 'https://github.com/Ahmaddragon11/DragonHub'
 export type Theme = 'dark' | 'light' | 'system'
 export type Language = 'ar' | 'en'
 export type AccentColor = 'violet' | 'blue' | 'emerald' | 'rose' | 'amber' | 'cyan' | 'orange'
+export type PerformanceLevel = 'eco' | 'balanced' | 'high' | 'ultra'
+export type BackgroundPresetId = 'aurora' | 'ocean-waves' | 'starfield' | 'mesh-gradient' | 'liquid-blobs' | 'neon-grid' | 'sunset-flow' | 'ember'
+export const BACKGROUND_PRESET_IDS: BackgroundPresetId[] = ['aurora', 'ocean-waves', 'starfield', 'mesh-gradient', 'liquid-blobs', 'neon-grid', 'sunset-flow', 'ember']
 
 export interface AppSettings {
   theme: Theme
@@ -18,6 +21,14 @@ export interface AppSettings {
   fontScale: number // 0.85 - 1.3
   compactMode: boolean
   glassEffect: boolean
+  /** Master visual/performance level (eco/balanced/high/ultra). 'auto' done via performanceAuto. */
+  performanceLevel: PerformanceLevel
+  /** When true, a battery-powered main device resolves the level to 'eco' automatically. */
+  performanceAuto: boolean
+  /** Animated background preset id ('' = none — falls back to wallpaper/aurora). */
+  backgroundPreset: string
+  /** Speed multiplier for animated background presets (0.5 - 2). */
+  backgroundPresetSpeed: number
   /** Absolute path to a wallpaper image (empty = none). Served via the dh-file:// protocol. */
   backgroundImage: string
   backgroundBlur: number // 0 - 30 px
@@ -56,6 +67,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fontScale: 1,
   compactMode: false,
   glassEffect: true,
+  // 'high' keeps the exact current visuals; other levels only gate richer/cheaper effects.
+  performanceLevel: 'high',
+  performanceAuto: false,
+  backgroundPreset: '',
+  backgroundPresetSpeed: 1,
   backgroundImage: '',
   backgroundBlur: 8,
   backgroundDim: 35,
@@ -308,6 +324,22 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.5.0',
+    date: '2026-10-16',
+    changes: [
+      { type: 'added', text: 'DragonHub AI assistant: connect any OpenAI-compatible provider (OpenAI, Groq, OpenRouter, Ollama, LM Studio or a custom base URL) with an API key stored encrypted — chat, stream answers and let it act on the app through safe, permission-gated tools' },
+      { type: 'added', text: 'AI tools: navigate sections, read/create/edit notes, break work into subtasks, plan your day, answer questions about live CPU/RAM/disk/GPU/network stats and search/read text files — every action respects per-capability toggles and destructive actions always ask first' },
+      { type: 'changed', text: 'Idle CPU usage cut dramatically: the resource and network monitors now run on demand, PowerShell probes are consolidated into a single batched call and live-updates are suppressed when nothing changed' },
+      { type: 'added', text: 'Performance & design quality levels (Eco / Balanced / High / Ultra) with an auto mode that drops to Eco on battery' },
+      { type: 'added', text: 'Liquid-glass buttons with animated multicolour water flows, press ripples and shine sweeps, plus gradient border/beamed edges for cards' },
+      { type: 'added', text: '8 ready-made animated background presets (aurora, waves, starfield, mesh gradient, liquid blobs, neon grid, sunset flow, ember) with a speed slider and live gallery previews' },
+      { type: 'added', text: 'Notes: insert/paste/drag images into notes (stored locally, exported with the note), grid view, multi-select bulk actions, tag manager and note templates' },
+      { type: 'changed', text: 'Tasks: smart filter chips (today/overdue/next 7 days), grouping by project or priority, per-column progress and list-view bulk actions' },
+      { type: 'added', text: 'One-tap AI actions inside Notes and Tasks: improve/summarise/tag notes, decompose tasks into subtasks and build a day plan' },
+      { type: 'security', text: 'AI API keys are DPAPI-encrypted in the main process and never exposed to the renderer; provider URLs are scheme/host-validated; new tools are rate-limited like every IPC channel' },
+    ],
+  },
   {
     version: '1.4.9',
     date: '2026-10-15',
@@ -683,3 +715,93 @@ export const DEFAULT_RES_CARD_CONFIG: ResCardConfig = {
   y: null,
   showTopProcess: true,
 }
+
+// ---------- AI assistant (DragonHub AI) ----------
+export type AiPresetId = 'openai' | 'groq' | 'openrouter' | 'ollama' | 'lmstudio' | 'custom'
+
+export interface AiProvider {
+  id: string
+  preset: AiPresetId
+  name: string
+  baseUrl: string
+  model: string
+}
+
+/** Provider as seen by the renderer — never carries the API key itself. */
+export interface AiProviderPublic {
+  id: string
+  preset: AiPresetId
+  name: string
+  baseUrl: string
+  model: string
+  hasKey: boolean
+}
+
+export interface AiConfig {
+  enabled: boolean
+  activeProviderId: string | null
+  temperature: number // 0 - 2
+  maxTokens: number // 128 - 8192
+  /** Empty string = built-in default prompt (localized in the renderer). */
+  systemPrompt: string
+  allowNavigation: boolean
+  allowNotesTasks: boolean // create/update notes, tasks, projects
+  confirmDestructive: boolean // delete/overwrite always asks
+  allowFileRead: boolean // let AI read text files via the file tools
+  allowSystemStats: boolean // resources/network snapshot tools
+}
+
+/** OpenAI-compatible presets rendered in the provider picker (merged into ui via main). */
+export const AI_PRESETS: { preset: AiPresetId; name: string; baseUrl: string; local: boolean; needsKey: boolean }[] = [
+  { preset: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', local: false, needsKey: true },
+  { preset: 'groq', name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', local: false, needsKey: true },
+  { preset: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', local: false, needsKey: true },
+  { preset: 'ollama', name: 'Ollama (local)', baseUrl: 'http://127.0.0.1:11434/v1', local: true, needsKey: false },
+  { preset: 'lmstudio', name: 'LM Studio (local)', baseUrl: 'http://127.0.0.1:1234/v1', local: true, needsKey: false },
+  { preset: 'custom', name: 'Custom provider', baseUrl: '', local: false, needsKey: true },
+]
+
+export const DEFAULT_AI_CONFIG: AiConfig = {
+  enabled: true,
+  activeProviderId: null,
+  temperature: 0.7,
+  maxTokens: 2048,
+  systemPrompt: '',
+  allowNavigation: true,
+  allowNotesTasks: true,
+  confirmDestructive: true,
+  allowFileRead: false,
+  allowSystemStats: true,
+}
+
+export const MAX_AI_MESSAGES = 200
+export const MAX_AI_MESSAGE_CHARS = 32_000
+
+// ---------- Version manager (browse + install any published release) ----------
+export interface ManagedRelease {
+  version: string
+  tag: string
+  name: string
+  publishedAt: string
+  notes: string
+  installerName: string | null
+  installerSize: number | null
+  hasPortable: boolean
+}
+
+export interface VersionProgressEvent {
+  phase: 'downloading' | 'verifying'
+  version: string
+  receivedBytes?: number
+  totalBytes?: number
+  speed?: number
+  eta?: number
+}
+
+/** Streaming events the AI assistant pushes while a chat is in flight. */
+export interface AiDeltaEvent { requestId: string; text: string }
+export interface AiDoneEvent { requestId: string; reason: 'stop' | 'aborted' | 'limit' }
+export interface AiErrorEvent { requestId: string; message: string }
+export interface AiToolEvent { requestId: string; tool: string }
+export interface AiNavigateEvent { page: string }
+export interface AiChatMessage { role: 'user' | 'assistant'; content: string }

@@ -18,6 +18,8 @@ const THEMES = new Set(['dark', 'light', 'system'])
 const LANGS = new Set(['ar', 'en'])
 const ACCENTS = new Set(['violet', 'blue', 'emerald', 'rose', 'amber', 'cyan', 'orange'])
 const ANIMS = new Set(['full', 'reduced', 'off'])
+const PERF_LEVELS = new Set(['eco', 'balanced', 'high', 'ultra'])
+const BG_PRESETS = new Set(['', 'aurora', 'ocean-waves', 'starfield', 'mesh-gradient', 'liquid-blobs', 'neon-grid', 'sunset-flow', 'ember'])
 
 /** Validate + clamp a settings patch so corrupt/foreign values can never persist. */
 function sanitizePatch(patch: Partial<AppSettings>): Partial<AppSettings> {
@@ -41,9 +43,15 @@ function sanitizePatch(patch: Partial<AppSettings>): Partial<AppSettings> {
   if (patch.backgroundDim !== undefined) out.backgroundDim = clamp(patch.backgroundDim, 0, 90, d.backgroundDim)
   if (patch.ambientGlow !== undefined) out.ambientGlow = !!patch.ambientGlow
   if (patch.lowPowerMode !== undefined) out.lowPowerMode = !!patch.lowPowerMode
+  if (patch.performanceLevel !== undefined && PERF_LEVELS.has(patch.performanceLevel)) out.performanceLevel = patch.performanceLevel
+  if (patch.performanceAuto !== undefined) out.performanceAuto = !!patch.performanceAuto
+  if (patch.backgroundPreset !== undefined && typeof patch.backgroundPreset === 'string') {
+    out.backgroundPreset = BG_PRESETS.has(patch.backgroundPreset) ? patch.backgroundPreset : ''
+  }
+  if (patch.backgroundPresetSpeed !== undefined) out.backgroundPresetSpeed = clamp(patch.backgroundPresetSpeed, 0.5, 2, d.backgroundPresetSpeed)
   if (patch.sidebarCollapsed !== undefined) out.sidebarCollapsed = !!patch.sidebarCollapsed
   if (patch.startPage !== undefined && typeof patch.startPage === 'string') {
-    const pages = new Set(['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'taskManager', 'screenshot', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about'])
+    const pages = new Set(['dashboard', 'notes', 'projects', 'tasks', 'ai', 'files', 'editor', 'downloads', 'network', 'resources', 'taskManager', 'screenshot', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about'])
     out.startPage = (pages.has(patch.startPage) ? patch.startPage : d.startPage).slice(0, 32)
   }
   if (patch.downloadDir !== undefined && typeof patch.downloadDir === 'string') {

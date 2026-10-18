@@ -10,6 +10,7 @@ type Result<T> = { ok: true; data: T } | { ok: false; error: string }
 const INVOKE_ALLOW = new Set([
   'app:version', 'app:changelog', 'app:paths', 'app:system', 'app:openExternal', 'app:openTelegram',
   'app:checkForUpdates', 'app:cancelUpdateDownload', 'app:installUpdate',
+  'versions:list', 'versions:download', 'versions:cancel', 'versions:status', 'versions:install',
   'app:systemTheme', 'app:openUserData', 'app:setLoginItem', 'app:keepAwake', 'app:quit',
   'app:lastSeenVersion', 'app:markVersionSeen',
   'screen:sources', 'screen:windows', 'screen:displays', 'screen:captureRegion', 'screen:captureDisplay', 'screen:captureWindow',
@@ -33,6 +34,9 @@ const INVOKE_ALLOW = new Set([
   'net:connInfo', 'net:connections', 'net:appBlocked', 'net:appBlockedCheck', 'net:speedTest',
   'res:snapshot', 'res:processes', 'res:history', 'res:config:get', 'res:config:set', 'res:killProcess',
   'res:card:get', 'res:card:set', 'res:card:show', 'res:card:hide', 'res:card:toggle', 'res:card:isOpen',
+  'res:setActivity', 'net:setActivity',
+  'notes:addAttachment', 'notes:exportNote',
+  'ai:getConfig', 'ai:setConfig', 'ai:upsertProvider', 'ai:deleteProvider', 'ai:setKey', 'ai:test', 'ai:listModels', 'ai:chat', 'ai:abort',
 ])
 
 // Restricted card preload: the floating card (index.html?card=1) only needs
@@ -75,7 +79,7 @@ async function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise
 }
 
 // Whitelisted event channels renderer may subscribe to
-const EVENTS = new Set(['downloads:update', 'downloads:ytdlp-status', 'job:progress', 'vault:locked', 'theme:system', 'window:state', 'net:update', 'res:update', 'updates:progress', 'dh:openPalette', 'dh:trayAction', 'capture:overlay:init'])
+const EVENTS = new Set(['downloads:update', 'downloads:ytdlp-status', 'job:progress', 'vault:locked', 'theme:system', 'window:state', 'net:update', 'res:update', 'updates:progress', 'versions:progress', 'dh:openPalette', 'dh:trayAction', 'capture:overlay:init', 'app:powerState', 'ai:delta', 'ai:done', 'ai:error', 'ai:tool', 'ai:navigate', 'ai:dataChanged'])
 // Card renderer only needs live resource updates.
 const CARD_EVENTS = new Set(['res:update'])
 // Overlay renderer only receives its init payload.

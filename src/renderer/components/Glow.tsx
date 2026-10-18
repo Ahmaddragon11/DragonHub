@@ -24,6 +24,12 @@ export type GlowTone =
   | 'orange'
   | 'rose'
   | 'red'
+  | 'prism'
+  | 'ocean'
+  | 'candy'
+  | 'sunset'
+  | 'aurora'
+  | 'ember'
 
 type GlowProps = {
   /** Hue family of the ring; pick one per feature so colours read as identity. */
@@ -88,6 +94,64 @@ export function GlowButton({ tone = 'accent', block, surface, className, wrapper
 /** Wrap the glyph inside a `.fly-host` element to get the hover/press flight. */
 export function FlyIcon({ children, className }: { children: React.ReactNode; className?: string }) {
   return <span className={cn('fly-icon', className)}>{children}</span>
+}
+
+/**
+ * Liquid-glass button system (v1.5.0) — composes `.btn` with the `.glass-btn`
+ * family defined at the bottom of styles/index.css.
+ *
+ *   <GlassButton variant="liquid" tone="ocean">…</GlassButton>  // animated water fill
+ *   <GlassButton variant="prism"  tone="aurora">…</GlassButton> // spinning hairline ring
+ *   <GlassButton variant="frost"  className="btn-primary">…</GlassButton> // plain glass
+ *
+ * Any `.btn` variant/utility can still be passed via `className` (it wins last).
+ * Continuously-animating layers are gated by html[data-quality] in CSS:
+ *   eco / low-power / anim-off / reduced-motion → static;
+ *   balanced → moves only on hover; high → continuous; ultra → continuous +
+ *   a subtle hue-shift. The shine sweep + press ripple are pure CSS and follow
+ *   the same gates.
+ */
+export type LiquidVariant = 'liquid' | 'frost' | 'prism'
+export type LiquidTone = 'ocean' | 'candy' | 'sunset' | 'prism' | 'aurora' | 'ember'
+
+export function GlassButton({ variant = 'liquid', tone = 'ocean', block, className, wrapperClassName, type = 'button', children, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: LiquidVariant
+  tone?: LiquidTone
+  block?: boolean
+  /** Extra classes for the `.glow-block` wrapper (applied to the button itself when `block` is off). */
+  wrapperClassName?: string
+}) {
+  const button = (
+    <button type={type} {...rest}
+      className={cn('btn glass-btn glass-shine-host', variant === 'liquid' && 'glass-liquid', variant === 'prism' && 'glass-prism', block && 'w-full', !block && wrapperClassName, className)}
+      {...(variant === 'liquid' ? { 'data-liquid': tone } : {})}
+      {...(variant === 'prism' ? { 'data-prism': tone } : {})}>
+      {variant !== 'frost' && <span className="glass-shine" aria-hidden />}
+      {children}
+    </button>
+  )
+  if (!block) return button
+  return <span className={cn('glow-block', wrapperClassName)}>{button}</span>
+}
+
+/**
+ * Card edge system (v1.5.0) — wraps a `.card` with a gradient-inch border
+ * (`.card-edge-soft`, static + cheap) or the opt-in spinning light edge
+ * (`.card-edge-beam`, gated by html[data-quality]: eco/low-power/anim-off →
+ * static, balanced → hover-only spin, high → 10s, ultra → 7s). Children are
+ * wrapped in `.card-edge-content` so they paint above the beam's inner layer.
+ */
+export type EdgeVariant = 'soft' | 'beam'
+
+export function EdgeCard({ variant = 'soft', tone = 'violet', className, children, ...rest }: React.HTMLAttributes<HTMLDivElement> & {
+  variant?: EdgeVariant
+  tone?: GlowTone
+}) {
+  return (
+    <div className={cn('card card-edge', variant === 'soft' ? 'card-edge-soft' : 'card-edge-beam')} data-edge-tone={tone} {...rest}>
+      <div className="card-edge-content">{children}</div>
+    </div>
+  )
 }
 
 /** Optional decorative streak for `.fly-host`; purely visual. */

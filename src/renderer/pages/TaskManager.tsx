@@ -320,23 +320,32 @@ export default function TaskManager() {
     return () => { alive = false }
   }, [t, toast])
 
+  // Demand-driven monitor: claim full sampling while mounted, release on exit.
+  useEffect(() => {
+    void invoke('res:setActivity', 'full')
+    return () => { void invoke('res:setActivity', 'off') }
+  }, [])
+
   // Live snapshot stream (~2s tick in main).
   useEffect(() => on<ResLive>('res:update', (s) => { if (s) setSnap(s) }), [])
 
-  // Heavier PowerShell-backed process list.
+  // Heavier PowerShell-backed process list — only polled while its tab is open.
   useEffect(() => {
+    if (tab !== 'processes') return
     const id = setInterval(() => {
       invoke<ResProcess[]>('res:processes', TOP_N).then(applyProcs).catch(() => { /* keep last */ })
     }, POLL_PROCS_MS)
     return () => clearInterval(id)
-  }, [applyProcs])
+  }, [tab, applyProcs])
 
+  // History feed — only polled while its tab is open.
   useEffect(() => {
+    if (tab !== 'performance') return
     const id = setInterval(() => {
       invoke<ResHistoryPoint[]>('res:history').then((h) => { if (aliveRef.current && Array.isArray(h)) setHist(h) }).catch(() => { /* keep last */ })
     }, POLL_HIST_MS)
     return () => clearInterval(id)
-  }, [])
+  }, [tab])
 
   const refresh = useCallback(async () => {
     setBusy(true)

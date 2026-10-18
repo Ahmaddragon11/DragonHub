@@ -6,7 +6,9 @@ import { PageHeader } from '@/components/ui'
 import { GlowButton, FlyIcon, FlySpark } from '@/components/Glow'
 import { Logo } from '@/components/Shell'
 import { UpdateCard } from '@/components/UpdateCard'
+import VersionManager from '@/components/VersionManager'
 import { invoke } from '@/lib/api'
+import { useMotionLevel } from '@/lib/motion'
 import { CHANGELOG, DEVELOPER, TELEGRAM_URL, GITHUB_URL, APP_VERSION } from '@shared/types'
 import type { VersionInfo } from '@shared/types'
 
@@ -16,10 +18,13 @@ type ChangeFilter = typeof CHANGE_TYPES[number]
 
 export default function About() {
   const { t } = useTranslation()
+  const level = useMotionLevel()
   const [v, setV] = useState<VersionInfo | null>(null)
   const [changelogQuery, setChangelogQuery] = useState('')
   const [changeFilter, setChangeFilter] = useState<ChangeFilter>('all')
   const [showAllVersions, setShowAllVersions] = useState(false)
+  // Every logo press bumps `pops`, replaying the burst rings (key remount).
+  const [pops, setPops] = useState(0)
   useEffect(() => { invoke('app:version').then(setV).catch(() => {}) }, [])
 
   const openExternalWithConfirm = async (url: string, message: string, detail: string) => {
@@ -48,9 +53,17 @@ export default function About() {
       <PageHeader title={t('about.title')} icon={<Info />} />
       <div className="flex-1 min-h-0 overflow-y-auto p-6">
         <div className="max-w-3xl mx-auto space-y-6">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="card p-8 text-center relative overflow-hidden">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="card card-edge-beam p-8 text-center" data-edge-tone="prism">
+            <div className="card-edge-content">
             <div className="absolute inset-0 aurora opacity-40 pointer-events-none" />
-            <motion.div animate={{ y: [0, -8, 0] }} transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }} className="relative mx-auto w-fit mb-4"><Logo size={88} /></motion.div>
+            <motion.button type="button" onClick={() => setPops((n) => n + 1)} whileTap={{ scale: 0.9 }} whileHover={{ scale: 1.05 }}
+              aria-label={t('about.tapLogo')} title={t('about.tapLogo')}
+              animate={{ y: level === 'eco' ? 0 : [0, -8, 0] }} transition={{ repeat: level === 'eco' ? 0 : Infinity, duration: 4, ease: 'easeInOut' }}
+              className="relative mx-auto w-fit mb-4 block outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-2xl">
+              {pops > 0 && <span key={pops} aria-hidden className="logo-burst" />}
+              {pops > 0 && <span key={`b2-${pops}`} aria-hidden className="logo-burst logo-burst-2" />}
+              <Logo size={88} />
+            </motion.button>
             <h1 className="relative text-4xl font-black gradient-text">DragonHub</h1>
             <div className="relative badge mt-2 bg-surface-200 text-surface-700">v{v?.version || APP_VERSION} • {v?.channel || 'stable'}</div>
             <p className="relative text-sm opacity-70 mt-4 max-w-xl mx-auto leading-relaxed">{t('about.desc')}</p>
@@ -66,6 +79,7 @@ export default function About() {
               </GlowButton>
             </div>
             <div className="relative text-xs opacity-50 mt-4 flex items-center justify-center gap-1">{t('about.techStack')} <Heart size={11} className="text-rose-400 fill-rose-400" /></div>
+            </div>
           </motion.div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -87,6 +101,8 @@ export default function About() {
               <div className="mt-4 p-3 rounded-xl bg-surface-200 text-xs font-mono break-all" dir="ltr">{t('about.developer')}: <b>{DEVELOPER}</b><br />{t('about.contact')}: {TELEGRAM_URL}<br />DragonHub v{APP_VERSION} (Windows 10/11 x64)</div>
             </section>
           </div>
+
+          <VersionManager />
 
           <section className="card p-5 sm:p-6" aria-labelledby="changelog-heading">
             <div className="mb-5 flex flex-wrap items-start justify-between gap-3">

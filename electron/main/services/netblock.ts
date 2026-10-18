@@ -50,6 +50,15 @@ const NO_RULES_MATCH = 'No rules match';
 const ADMIN_PATTERN = /administrator|elevation|access is denied|0x80070005|0x80070422/i;
 const ENABLED_PATTERN = /Enabled:\s*Yes/i;
 
+/**
+ * True while THIS session has the kill-switch rules applied. Quit-time cleanup
+ * (spawnSync netsh, up to 5s each) would otherwise run on every single quit even
+ * when the user never touched the network block — freezing the app on close.
+ * Stale rules from a previous crash are still handled by the async startup
+ * cleanup (`cleanupStaleRules`), so skipping the sync pass is safe.
+ */
+let sessionRulesApplied = false;
+
 /** Absolute System32 netsh (no PATH-hijack); bare-name fallback for dev hosts. */
 function netshBin(): string {
   const abs = 'C:\\Windows\\System32\\netsh.exe';
@@ -199,7 +208,10 @@ export async function isBlocked(): Promise<boolean> {
  */
 export async function setBlocked(on: boolean): Promise<SetBlockedResult> {
   const current: boolean = await isBlocked();
-  if (current === on) return { blocked: current, needsAdmin: false };
+  if (current === on) {
+    sessionRulesApplied = current;
+    return { blocked: current, needsAdmin: false };
+  }
 
   try {
     if (on) {
@@ -226,12 +238,14 @@ export async function setBlocked(on: boolean): Promise<SetBlockedResult> {
       } catch {
         // Best-effort re-read failed: fall back to pre-attempt state.
       }
+      sessionRulesApplied = actual;
       return { blocked: actual, needsAdmin: true };
     }
     throw toShortError(text, on ? 'Failed to enable network block' : 'Failed to disable network block');
   }
 
   const blocked: boolean = await isBlocked();
+  sessionRulesApplied = blocked;
   return { blocked, needsAdmin: false };
 }
 
@@ -250,14 +264,20 @@ export async function cleanupStaleRules(): Promise<void> {
   } catch {
     // Intentionally swallowed: startup cleanup must never throw.
   }
+  sessionRulesApplied = false;
 }
 
 /**
  * Synchronous variant for `before-quit`: the async version cannot be awaited
  * there (the process may exit before `netsh delete` runs). Blocks briefly
- * (5s max, typically <300ms) and never throws.
+ * (5s max, typically <300ms) and never throws. No-ops when this session never
+ * applied the rules — the async startup cleanup already handles stale rules
+ * from a previous crash, so an untouched session must not pay the netsh cost
+ * on every quit (that spawn is what froze the app on close).
  */
 export function cleanupStaleRulesSync(): void {
+  if (!sessionRulesApplied) return;
+  sessionRulesApplied = false;
   for (const name of [RULE_OUT, RULE_IN]) {
     try {
       spawnSync(netshBin(), ['advfirewall', 'firewall', 'delete', 'rule', `name="${name}"`], {

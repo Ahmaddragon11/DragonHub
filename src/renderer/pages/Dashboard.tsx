@@ -56,15 +56,40 @@ function EmptyHint({ icon, text, hint, cta, onClick }: { icon: React.ReactNode; 
   )
 }
 
-/** Isolated live clock so the seconds tick without re-rendering the dashboard. */
-function LiveClock({ lang, lowPower }: { lang: string; lowPower: boolean }) {
+/** Mega hero clock — gradient numerals with a pulsing seconds accent.
+ *  Isolated so the tick never re-renders the dashboard. */
+function HeroClock({ lang, lowPower }: { lang: string; lowPower: boolean }) {
+  const onBattery = useApp((s) => s.onBattery)
+  const slow = lowPower || onBattery
   const [now, setNow] = useState(() => new Date())
+  // Perf: Intl formatter construction is expensive — build once per language,
+  // not once per tick (they used to be re-created every second).
+  const fmtParts = useMemo(() => new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), [lang])
+  const fmtAria = useMemo(() => new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', { hour: 'numeric', minute: 'numeric' }), [lang])
   useEffect(() => {
-    const i = setInterval(() => setNow(new Date()), lowPower ? 30000 : 1000)
-    return () => clearInterval(i)
-  }, [lowPower])
-  const time = new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-US', lowPower ? { hour: '2-digit', minute: '2-digit' } : { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(now)
-  return <span className="tabular-nums font-medium text-surface-700" dir="ltr">{time}</span>
+    // Idle gate: no ticking while the window is hidden; recreate on return.
+    let i: ReturnType<typeof setInterval> | null = null
+    const start = () => { i = setInterval(() => setNow(new Date()), slow ? 30000 : 1000) }
+    const stop = () => { if (i !== null) { clearInterval(i); i = null } }
+    const onVis = () => {
+      stop()
+      if (!document.hidden) { setNow(new Date()); start() }
+    }
+    if (!document.hidden) start()
+    document.addEventListener('visibilitychange', onVis)
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis) }
+  }, [slow])
+  const parts = fmtParts.formatToParts(now)
+  const get = (ty: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === ty)?.value ?? ''
+  return (
+    <div className="hero-clock" dir="ltr" role="timer" aria-label={fmtAria.format(now)}>
+      <span>{get('hour')}</span>
+      <span className="opacity-60">:</span>
+      <span>{get('minute')}</span>
+      {!lowPower && <span className="hero-clock-sec">:{get('second')}</span>}
+      {get('dayPeriod') && <span className="hero-clock-period">{get('dayPeriod')}</span>}
+    </div>
+  )
 }
 
 interface GsStep { key: string; label: string; hint: string; done: boolean; onClick: () => void }
@@ -168,7 +193,7 @@ export default function Dashboard() {
   const gsDone = gsSteps.filter((s) => s.done).length
   const dismissGs = () => { setGsDismissed(true); try { localStorage.setItem(GS_KEY, '1') } catch { /* ignore quota */ } }
 
-  const dateLabel = new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(now)
+  const dateLabel = new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(now)
   const stats = [
     { label: t('dashboard.notesCount'), value: activeNotes.length, icon: <StickyNote size={17} />, page: 'notes' as const },
     { label: t('dashboard.tasksCount'), value: openTasks.length, icon: <CheckSquare size={17} />, page: 'tasks' as const, alert: overdue.length },
@@ -188,31 +213,34 @@ export default function Dashboard() {
 
   return (
     <motion.div className="dashboard pb-4" variants={revealSequence(reduced, k)} initial="initial" animate="enter">
-      <motion.header variants={revealItem(reduced, k)} className="dashboard-hero relative isolate overflow-hidden flex flex-wrap items-center justify-between gap-6 mb-5 px-5 py-6 sm:px-7 sm:py-7">
-        <span aria-hidden className="pointer-events-none absolute -top-16 -end-10 h-48 w-48 rounded-full bg-accent/12 blur-3xl animate-float" />
-        <span aria-hidden className="pointer-events-none absolute -bottom-24 start-1/3 h-44 w-44 rounded-full bg-accent-soft/10 blur-3xl animate-float" style={{ animationDelay: '-3s' }} />
-        <div className="min-w-0 flex-1 relative z-10">
-          <p className="inline-flex items-center gap-2 text-xs font-medium text-accent">{<Sparkles size={14} />}{dateLabel}</p>
-          <div className="flex items-center gap-2 mt-1.5 text-[12px] text-surface-500">
-            <Clock size={12} className="shrink-0" />
-            <LiveClock lang={lang} lowPower={lowPower} />
+      <motion.header variants={revealItem(reduced, k)} className="hero-card relative mb-5">
+        <div className="hero-card-content flex flex-wrap items-center justify-between gap-6 px-5 py-6 sm:px-7 sm:py-8">
+          <span aria-hidden className="pointer-events-none absolute -top-16 -end-10 h-48 w-48 rounded-full bg-accent/12 blur-3xl animate-float" />
+          <span aria-hidden className="pointer-events-none absolute -bottom-24 start-1/3 h-44 w-44 rounded-full bg-accent-soft/10 blur-3xl animate-float" style={{ animationDelay: '-3s' }} />
+          <div className="hero-copy min-w-0 flex-1 relative">
+            <span className="hero-date-chip"><span className="hero-tick" aria-hidden /><Sparkles size={13} />{dateLabel}</span>
+            <div className="hero-clock-card mt-3"><HeroClock lang={lang} lowPower={lowPower} /></div>
+            <h1 className="text-[clamp(1.35rem,2.4vw,1.9rem)] font-semibold tracking-tight leading-tight mt-3">{t(`dashboard.greeting.${greetingKey(now.getHours())}`)}</h1>
+            <p className="text-sm text-surface-700 mt-2 max-w-xl">
+              {agenda.length === 0 && doneToday === 0 ? t('dashboard.dayClear') : t('dashboard.daySummary', { open: agenda.length, done: doneToday })}
+            </p>
+            <div className="flex flex-wrap items-center gap-2.5 mt-5">
+              <GlowButton tone="accent" onClick={() => navigate('notes', { create: true })} className="btn-primary"><Plus size={15} />{t('dashboard.newNote')}</GlowButton>
+              <button onClick={() => useApp.getState().setPalette(true)} className="btn-outline text-surface-600">
+                <Command size={14} />{t('dashboard.quickFind')}<Kbd keys={['Ctrl', 'K']} className="hidden sm:inline-flex" />
+              </button>
+            </div>
           </div>
-          <h1 className="text-[clamp(1.65rem,3vw,2.35rem)] font-semibold tracking-tight leading-tight mt-2">{t(`dashboard.greeting.${greetingKey(now.getHours())}`)}</h1>
-          <p className="text-sm text-surface-600 mt-2 max-w-xl">
-            {agenda.length === 0 && doneToday === 0 ? t('dashboard.dayClear') : t('dashboard.daySummary', { open: agenda.length, done: doneToday })}
-          </p>
-          <div className="flex flex-wrap items-center gap-2.5 mt-5">
-            <GlowButton tone="accent" onClick={() => navigate('notes', { create: true })} className="btn-primary"><Plus size={15} />{t('dashboard.newNote')}</GlowButton>
-            <button onClick={() => useApp.getState().setPalette(true)} className="btn-outline text-surface-600">
-              <Command size={14} />{t('dashboard.quickFind')}<Kbd keys={['Ctrl', 'K']} className="hidden sm:inline-flex" />
-            </button>
+          <div className="hidden md:flex items-center justify-center shrink-0 relative">
+            <div className="hero-ring-wrap relative">
+              <span aria-hidden className="hero-ring-glow" />
+              <Ring value={dayPct} size={132} stroke={9}>
+                <span className="text-[27px] font-semibold tracking-tight tabular-nums leading-none">{dayPct}%</span>
+                <span className="text-[10px] text-surface-500 mt-1">{t('dashboard.todayProgress')}</span>
+                <span className="text-[10px] text-surface-400 tabular-nums mt-0.5">{doneToday}/{dayTotal}</span>
+              </Ring>
+            </div>
           </div>
-        </div>
-        <div className="hidden md:flex items-center justify-center shrink-0 relative z-10">
-          <Ring value={dayPct} size={104} stroke={8}>
-            <span className="text-[22px] font-semibold tracking-tight tabular-nums leading-none">{dayPct}%</span>
-            <span className="text-[10px] text-surface-500 mt-1">{t('dashboard.todayProgress')}</span>
-          </Ring>
         </div>
       </motion.header>
 
@@ -272,7 +300,7 @@ export default function Dashboard() {
                       <span className="block text-[13.5px] truncate group-hover:text-surface-950">{k.title}</span>
                     </button>
                     <span className={cn('text-[11.5px] tabular-nums shrink-0', late ? 'text-rose-500 font-medium' : 'text-surface-500')}>
-                      {late ? t('tasks.overdue') + ' · ' : ''}{new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG' : 'en-US', { hour: 'numeric', minute: '2-digit' }).format(k.dueDate!)}
+                      {late ? t('tasks.overdue') + ' · ' : ''}{new Intl.DateTimeFormat(lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', { hour: 'numeric', minute: '2-digit' }).format(k.dueDate!)}
                     </span>
                   </motion.li>
                 )

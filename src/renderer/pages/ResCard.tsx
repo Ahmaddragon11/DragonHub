@@ -44,12 +44,15 @@ export default function ResCard() {
       }).catch(() => {})
     } catch { /* ignore */ }
     const off = on<ResLive>('res:update', (s) => { if (s && alive) setSnap(s) })
-    const id = setInterval(() => {
+    const pullTop = () => {
       invoke<ResProcess[]>('res:processes', 5).then((p) => {
         if (alive && Array.isArray(p) && p.length > 0) setTop(p[0].displayName || p[0].name)
       }).catch(() => {})
-    }, 5000)
-    return () => { alive = false; clearInterval(id); off() }
+    }
+    const id = setInterval(() => { if (!document.hidden) pullTop() }, 5000)
+    const onVis = () => { if (!document.hidden) pullTop() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { alive = false; clearInterval(id); document.removeEventListener('visibilitychange', onVis); off() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

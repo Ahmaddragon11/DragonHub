@@ -8,6 +8,7 @@ import { PageHeader, Modal, Field, Toggle, Slider, TagInput, Empty, useFocusTrap
 import { GlowButton, FlyIcon } from '@/components/Glow'
 import { invoke, on, errorMessage } from '@/lib/api'
 import { uid, cn, relTime } from '@/lib/utils'
+import { useMotionLevel } from '@/lib/motion'
 import type { VaultItem, VaultItemType, VaultMeta } from '@shared/types'
 
 const TYPES: VaultItemType[] = ['password', 'token', 'api_key', 'note', 'card', 'ssh']
@@ -79,6 +80,7 @@ function Row({ label, value, secret, revealed, onReveal, onCopy, onOpen, mono }:
 
 export default function Vault() {
   const { t, i18n } = useTranslation()
+  const level = useMotionLevel()
   const { toast, settings } = useApp(useShallow((s) => ({ toast: s.toast, settings: s.settings })))
   const [meta, setMeta] = useState<VaultMeta | null>(null)
   const [metaLoading, setMetaLoading] = useState(true)
@@ -218,7 +220,7 @@ export default function Vault() {
     return (
       <div className="h-full flex items-center justify-center page-enter">
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="card p-8 w-[420px] text-center">
-          <motion.div animate={{ rotate: [0, -6, 6, 0] }} transition={{ repeat: Infinity, duration: 4 }} className="mx-auto w-20 h-20 rounded-3xl bg-accent/15 text-accent flex items-center justify-center mb-4 shadow-glow">
+          <motion.div animate={{ rotate: [0, -6, 6, 0] }} transition={{ repeat: level === 'eco' ? 0 : Infinity, duration: 4 }} className="mx-auto w-20 h-20 rounded-3xl bg-accent/15 text-accent flex items-center justify-center mb-4 shadow-glow">
             {isSetup ? <Shield size={40} /> : <Lock size={40} />}
           </motion.div>
           <h2 className="text-xl font-bold mb-1">{isSetup ? t('vault.setup') : t('vault.locked')}</h2>

@@ -8,6 +8,7 @@
  * - All durations scale with the user's `animationSpeed`, and collapse to 0 when
  *   animations are off or the OS requests reduced motion (see useMotionPrefs).
  */
+import { useEffect, useState } from 'react'
 import type { Transition, Variants } from 'framer-motion'
 import { useApp } from '@/store'
 
@@ -24,6 +25,37 @@ export const spring = {
   soft: { type: 'spring', stiffness: 380, damping: 32, mass: 0.9 } as Transition,
   /** Layout re-flow (lists re-ordering, shared elements). */
   layout: { type: 'spring', stiffness: 460, damping: 40 } as Transition,
+  /** Liquid-glass fills and playful squashes (v1.5.0). */
+  liquid: { type: 'spring', stiffness: 320, damping: 26, mass: 0.7 } as Transition,
+  /** Feather-light spring for counters and tiny value nudges (v1.5.0). */
+  light: { type: 'spring', stiffness: 220, damping: 30 } as Transition,
+}
+
+/**
+ * Quadrant of the html[data-quality] system ('eco' | 'balanced' | 'high' |
+ * 'ultra', applied on <html> by the store). Reads the attribute directly with
+ * local state — deliberately independent of the settings store so any
+ * component (or future lazy surface) can gate continuous motion cheaply.
+ * Defaults to 'high' when unset, matching the store's initial level.
+ */
+export type MotionLevel = 'eco' | 'balanced' | 'high' | 'ultra'
+
+const readMotionLevel = (): MotionLevel => {
+  if (typeof window === 'undefined') return 'high'
+  const q = document.documentElement.dataset.quality
+  return q === 'eco' || q === 'balanced' || q === 'ultra' ? q : 'high'
+}
+
+export function useMotionLevel(): MotionLevel {
+  const [level, setLevel] = useState<MotionLevel>(readMotionLevel)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const root = document.documentElement
+    const observer = new MutationObserver(() => setLevel(readMotionLevel()))
+    observer.observe(root, { attributes: true, attributeFilter: ['data-quality'] })
+    return () => observer.disconnect()
+  }, [])
+  return level
 }
 
 export const dur = { xs: 0.11, sm: 0.17, md: 0.26, lg: 0.38 }
@@ -40,17 +72,20 @@ export function useMotionPrefs() {
 }
 
 /**
- * Route transition: the incoming page lifts in while the outgoing page fades
- * away underneath (crossfade, not a wait-then-swap). Both layers always end up
+ * Route transition: the incoming page slides in from the travel direction of
+ * the navigation while the outgoing page slides away opposite (crossfade, not
+ * a wait-then-swap). `dir` is the signed travel axis — `1` enters from +x and
+ * exits toward -x (right-to-left in LTR), `-1` mirrors it. App flips the sign
+ * for RTL so the motion reads naturally in Arabic. Both layers always end up
  * at opacity 1 when animations are unavailable, so a stalled or throttled
  * animation can never leave the workspace blank.
  */
-export const pageVariants = (reduced: boolean, k: number): Variants => reduced
+export const pageVariants = (reduced: boolean, k: number, dir: 1 | -1): Variants => reduced
   ? { initial: { opacity: 1 }, enter: { opacity: 1, transition: { duration: 0 } }, exit: { opacity: 1, transition: { duration: 0 } } }
   : {
-      initial: { opacity: 0, y: 18, scale: 0.988 },
-      enter: { opacity: 1, y: 0, scale: 1, transition: { duration: dur.lg * k, ease: ease.out } },
-      exit: { opacity: 0, y: -10, scale: 0.994, transition: { duration: dur.sm * k, ease: ease.in } },
+      initial: { opacity: 0, x: 34 * dir, y: 8, scale: 0.994 },
+      enter: { opacity: 1, x: 0, y: 0, scale: 1, transition: { duration: dur.lg * k, ease: ease.out } },
+      exit: { opacity: 0, x: -18 * dir, y: -6, scale: 0.994, transition: { duration: dur.sm * k, ease: ease.in } },
     }
 
 /** Dashboard sections enter in reading order; never stagger individual list rows. */

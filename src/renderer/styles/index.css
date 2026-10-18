@@ -190,7 +190,8 @@ html[data-glass='off'] .glass { background: rgb(var(--surface-100)); backdrop-fi
 html.low-power .aurora { opacity: 0.35; animation: none; }
 html.low-power .card,
 html.low-power .surface-raised { box-shadow: none; }
-html.low-power .glass {
+html.low-power .glass,
+html[data-quality='eco'] .glass {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   background: rgb(var(--surface-100));
@@ -782,3 +783,800 @@ html[data-anim='reduced'] .lift:hover { transform: none; }
 
 /* Richer text selection: accent wash + accent-tinted highlight text. */
 ::selection { background: rgb(var(--accent) / 0.34); }
+
+/* ==========================================================================
+   Liquid-glass buttons + card edges (v1.5.0) — APPENDED SECTION
+   Composes with .btn / .card. Every CONTINUOUS animation below is gated by
+   html[data-quality] with this precedence (mirroring the global kill-switches
+   and the .glow::before rules above):
+     static   : [data-anim='off'] + prefers-reduced-motion + .low-power +
+                [data-anim='reduced'] + [data-quality='eco']  → animation:none
+                (static gradient stays; will-change released)
+     balanced : animation-play-state paused; runs only on :hover
+     high     : continuous at the default speeds (the base rules)
+     ultra    : continuous + liquidHue 6s hue-rotate loop on the liquid layer
+   Only transform / opacity / background-position are animated (liquidHue's
+   hue-rotate on ::before is the one spec'd ultra exception).
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Base glass button — add .glass-btn next to any .btn variant.
+   -------------------------------------------------------------------------- */
+.glass-btn {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: rgb(var(--surface-400) / 0.5);
+  background-color: rgb(var(--surface-100) / 0.6);
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0.02));
+  box-shadow: var(--inner-hi);
+}
+html[data-glass='on'] .glass-btn {
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+}
+html[data-glass='off'] .glass-btn,
+html.low-power .glass-btn {
+  background-color: rgb(var(--surface-100));
+  background-image: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* Button content must paint above the ::before liquid layer (and the ::after
+   ripple). The shine span carries its own stronger rule below. */
+.glass-btn > * { position: relative; z-index: 2; }
+
+/* --------------------------------------------------------------------------
+   Liquid variants — a multicolour "water" gradient drifting on ::before.
+   Tone sets --liquid-a…d + a tone-tinted soft shadow --liquid-shadow.
+   -------------------------------------------------------------------------- */
+.glass-btn[data-liquid] {
+  --liquid-speed: 8s;
+  --liquid-a: rgb(var(--accent-soft));
+  --liquid-b: rgb(var(--accent));
+  --liquid-c: rgb(var(--accent-soft));
+  --liquid-d: rgb(var(--accent));
+  --liquid-shadow: 0 6px 24px -10px rgb(var(--accent) / 0.4);
+  box-shadow: var(--inner-hi), var(--liquid-shadow);
+}
+.glass-btn[data-liquid]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: linear-gradient(120deg, var(--liquid-a), var(--liquid-b), var(--liquid-c), var(--liquid-d));
+  background-size: 200% 300%;
+  background-position: 0% 0%;
+  animation: liquidFlow var(--liquid-speed) linear infinite;
+  will-change: background-position;
+}
+.glass-btn[data-liquid]:hover { filter: saturate(1.12) brightness(1.05); }
+@keyframes liquidFlow {
+  0% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+  100% { background-position: 0% 0%; }
+}
+.glass-btn[data-liquid='ocean'] { --liquid-a: #38bdf8; --liquid-b: #2563eb; --liquid-c: #7dd3fc; --liquid-d: #0ea5e9; --liquid-shadow: 0 6px 24px -10px #2563eb66; }
+.glass-btn[data-liquid='candy'] { --liquid-a: #f472b6; --liquid-b: #a78bfa; --liquid-c: #7dd3fc; --liquid-d: #fbbf24; --liquid-shadow: 0 6px 24px -10px #a78bfa66; }
+.glass-btn[data-liquid='sunset'] { --liquid-a: #fbbf24; --liquid-b: #f97316; --liquid-c: #ef4444; --liquid-d: #c026d3; --liquid-shadow: 0 6px 24px -10px #f9731666; }
+.glass-btn[data-liquid='prism'] { --liquid-a: #22d3ee; --liquid-b: #a78bfa; --liquid-c: #34d399; --liquid-d: #fbbf24; --liquid-shadow: 0 6px 24px -10px #a78bfa66; }
+.glass-btn[data-liquid='aurora'] { --liquid-a: rgb(var(--accent-soft)); --liquid-b: rgb(var(--accent)); --liquid-c: rgb(var(--accent-soft)); --liquid-d: rgb(var(--accent)); --liquid-shadow: 0 6px 24px -10px rgb(var(--accent) / 0.4); }
+.glass-btn[data-liquid='ember'] { --liquid-a: #fb923c; --liquid-b: #b91c1c; --liquid-c: #f59e0b; --liquid-d: #7c1d1d; --liquid-shadow: 0 6px 24px -10px #b91c1c66; }
+
+/* --------------------------------------------------------------------------
+   Prism variant — spinning conic hairline ring (.glow-self pattern): ::before
+   is the rotating ring, ::after is the static gradient-glass inner surface and
+   content stays above. Ring colours come from --prism-a/b/c (data-prism tone).
+   -------------------------------------------------------------------------- */
+.glass-prism {
+  --prism-speed: 7s;
+  --prism-a: rgb(var(--accent-soft));
+  --prism-b: rgb(var(--accent));
+  --prism-c: rgb(var(--accent-soft));
+  --liquid-shadow: 0 6px 24px -10px rgb(var(--accent) / 0.4);
+  border-color: transparent;
+  box-shadow: var(--inner-hi), var(--liquid-shadow);
+}
+.glass-prism::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 220%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%) rotate(0deg);
+  background: conic-gradient(from 0deg, var(--prism-a), var(--prism-b), var(--prism-c), var(--prism-a));
+  animation: glowSpin var(--prism-speed) linear infinite;
+  z-index: 0;
+  will-change: transform;
+}
+.glass-prism::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  border-radius: calc(var(--r-md) - 1.5px);
+  box-shadow: var(--inner-hi);
+  background-color: rgb(var(--surface-100) / 0.55);
+  background-image:
+    linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.02)),
+    linear-gradient(120deg,
+      color-mix(in srgb, var(--prism-a) 55%, transparent),
+      color-mix(in srgb, var(--prism-b) 55%, transparent),
+      color-mix(in srgb, var(--prism-c) 55%, transparent),
+      color-mix(in srgb, var(--prism-a) 55%, transparent));
+  z-index: 1;
+}
+html[data-glass='on'] .glass-prism::after {
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+}
+html[data-glass='off'] .glass-prism::after,
+html.low-power .glass-prism::after {
+  background-color: rgb(var(--surface-100));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.glass-prism:hover::before { animation-duration: 2.4s; }
+.glass-prism:hover { box-shadow: var(--inner-hi), var(--liquid-shadow), 0 0 30px -14px var(--prism-b); }
+[data-prism='ocean'] { --prism-a: #7dd3fc; --prism-b: #2563eb; --prism-c: #38bdf8; --liquid-shadow: 0 6px 24px -10px #2563eb66; }
+[data-prism='candy'] { --prism-a: #f9a8d4; --prism-b: #a78bfa; --prism-c: #fbbf24; --liquid-shadow: 0 6px 24px -10px #a78bfa66; }
+[data-prism='sunset'] { --prism-a: #fbbf24; --prism-b: #f97316; --prism-c: #ef4444; --liquid-shadow: 0 6px 24px -10px #f9731666; }
+[data-prism='prism'] { --prism-a: #67e8f9; --prism-b: #a78bfa; --prism-c: #34d399; --liquid-shadow: 0 6px 24px -10px #a78bfa66; }
+[data-prism='aurora'] { --prism-a: rgb(var(--accent-soft)); --prism-b: rgb(var(--accent)); --prism-c: rgb(var(--accent-soft)); --liquid-shadow: 0 6px 24px -10px rgb(var(--accent) / 0.4); }
+[data-prism='ember'] { --prism-a: #fb923c; --prism-b: #b91c1c; --prism-c: #f59e0b; --liquid-shadow: 0 6px 24px -10px #b91c1c66; }
+
+/* --------------------------------------------------------------------------
+   Shine sweep (CSS-only) — a skewed white streak inside the button that
+   translates across once on hover/focus, then rests back off-screen invisible.
+   `.glass-shine-host` is the marker class GlassButton puts on the button.
+   -------------------------------------------------------------------------- */
+.glass-btn > .glass-shine {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-160%) skewX(-20deg);
+  background: linear-gradient(90deg, transparent 20%, rgb(255 255 255 / 0.28) 50%, transparent 80%);
+}
+@keyframes glassShine {
+  0% { opacity: 0; transform: translateX(-160%) skewX(-20deg); }
+  30% { opacity: 0.9; }
+  70% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateX(160%) skewX(-20deg); }
+}
+.glass-btn:hover > .glass-shine,
+.glass-btn:focus-visible > .glass-shine { animation: glassShine 700ms var(--ease-out); }
+
+/* --------------------------------------------------------------------------
+   Press ripple (CSS-only) — a soft radial bloom from the centre that plays
+   once while the button is active. ::after is reserved for it, and prism
+   buttons (whose ::after is their inner surface) are excluded.
+   -------------------------------------------------------------------------- */
+.glass-btn:not(.glass-prism):active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.35;
+  transform: scale(0.6);
+  background: radial-gradient(circle at 50% 50%, rgb(255 255 255 / 0.35), rgb(255 255 255 / 0.10) 42%, transparent 70%);
+  animation: glassRipple 450ms var(--ease-out);
+}
+@keyframes glassRipple {
+  from { opacity: 0.35; transform: scale(0.6); }
+  to { opacity: 0; transform: scale(1); }
+}
+
+/* --------------------------------------------------------------------------
+   Quality gates — liquid buttons.
+   -------------------------------------------------------------------------- */
+/* balanced: paused until hovered. */
+html[data-quality='balanced'] .glass-btn[data-liquid]::before { animation-play-state: paused; will-change: auto; }
+html[data-quality='balanced'] .glass-btn[data-liquid]:hover::before { animation-play-state: running; will-change: background-position; }
+/* ultra: continuous + a subtle hue-rotate loop on the liquid layer. */
+@keyframes liquidHue {
+  0%, 100% { filter: hue-rotate(0deg); }
+  50% { filter: hue-rotate(16deg); }
+}
+html[data-quality='ultra'] .glass-btn[data-liquid]::before { animation: liquidFlow var(--liquid-speed) linear infinite, liquidHue 6s var(--ease-in-out) infinite; }
+/* Static (mirrors the .glow::before gates above). */
+@media (prefers-reduced-motion: reduce) {
+  .glass-btn[data-liquid]::before { animation: none; will-change: auto; }
+  .glass-btn > .glass-shine { animation: none !important; }
+  .glass-btn:not(.glass-prism):active::after { animation: none; opacity: 0; }
+}
+html.low-power .glass-btn[data-liquid]::before,
+html[data-anim='off'] .glass-btn[data-liquid]::before,
+html[data-anim='reduced'] .glass-btn[data-liquid]::before,
+html[data-quality='eco'] .glass-btn[data-liquid]::before { animation: none; will-change: auto; }
+html.low-power .glass-btn > .glass-shine,
+html[data-anim='reduced'] .glass-btn > .glass-shine,
+html[data-quality='eco'] .glass-btn > .glass-shine { animation: none !important; }
+html.low-power .glass-btn:not(.glass-prism):active::after,
+html[data-anim='reduced'] .glass-btn:not(.glass-prism):active::after,
+html[data-quality='eco'] .glass-btn:not(.glass-prism):active::after { animation: none !important; opacity: 0; }
+
+/* --------------------------------------------------------------------------
+   Quality gates — prism buttons.
+   -------------------------------------------------------------------------- */
+html[data-quality='balanced'] .glass-prism::before { animation-play-state: paused; will-change: auto; }
+html[data-quality='balanced'] .glass-prism:hover::before { animation-play-state: running; will-change: transform; }
+html[data-quality='ultra'] .glass-prism::before { animation: glowSpin var(--prism-speed) linear infinite, liquidHue 6s var(--ease-in-out) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .glass-prism::before { animation: none; will-change: auto; }
+}
+html.low-power .glass-prism::before,
+html[data-anim='off'] .glass-prism::before,
+html[data-anim='reduced'] .glass-prism::before,
+html[data-quality='eco'] .glass-prism::before { animation: none; will-change: auto; }
+
+/* --------------------------------------------------------------------------
+   Card edges — static gradient-inch border (.card-edge-soft, always cheap).
+   Dual background-layer trick: the padding-box layer is the surface, the
+   border-box layer is the tone gradient that shows through the 1px
+   transparent border. Tone palette: [data-edge-tone='…'] (defaults to accent).
+   -------------------------------------------------------------------------- */
+.card-edge {
+  --edge-a: rgb(var(--accent-soft));
+  --edge-b: rgb(var(--accent));
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgb(var(--surface-100)), rgb(var(--surface-100))) padding-box,
+    linear-gradient(130deg, var(--edge-a), var(--edge-b)) border-box;
+}
+/* .card-edge-soft is exactly the rule above — semantic alias, no extra cost. */
+[data-edge-tone='mono'],
+[data-edge-tone='github'] { --edge-a: #f8fafc; --edge-b: #64748b; }
+[data-edge-tone='telegram'] { --edge-a: #7dd3fc; --edge-b: #0369a1; }
+[data-edge-tone='violet'] { --edge-a: #c4b5fd; --edge-b: #7c3aed; }
+[data-edge-tone='blue'] { --edge-a: #93c5fd; --edge-b: #2563eb; }
+[data-edge-tone='cyan'] { --edge-a: #67e8f9; --edge-b: #0891b2; }
+[data-edge-tone='emerald'] { --edge-a: #6ee7b7; --edge-b: #047857; }
+[data-edge-tone='amber'] { --edge-a: #fcd34d; --edge-b: #b45309; }
+[data-edge-tone='orange'] { --edge-a: #fdba74; --edge-b: #c2410c; }
+[data-edge-tone='rose'] { --edge-a: #fda4af; --edge-b: #be123c; }
+[data-edge-tone='red'] { --edge-a: #fca5a5; --edge-b: #b91c1c; }
+[data-edge-tone='prism'] { --edge-a: #67e8f9; --edge-b: #a78bfa; }
+
+/* --------------------------------------------------------------------------
+   Card edges — spinning light beam (opt-in, .update-card pattern).
+   An oversized rotating ::before conic sits behind an inner ::after surface
+   (inset 1.5px); the card needs position:relative + isolation (set here, plus
+   overflow:hidden + isolation). CHILDREN must sit above the ::after layer —
+   wrap them in .card-edge-content (position:relative; z-index:2), exactly like
+   .update-card-content. Reuses the updateBorderSpin + glow keyframes above.
+   -------------------------------------------------------------------------- */
+.card-edge-beam {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.card-edge-beam::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 250%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%) rotate(0deg);
+  background: conic-gradient(from 0deg, var(--edge-a), var(--edge-b), var(--edge-a));
+  animation: updateBorderSpin 10s linear infinite;
+  z-index: 0;
+  will-change: transform;
+}
+.card-edge-beam::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  z-index: 1;
+  border: 1px solid transparent;
+  border-radius: calc(var(--r-xl) - 1.5px);
+  background:
+    linear-gradient(rgb(var(--surface-100)), rgb(var(--surface-100))) padding-box,
+    linear-gradient(130deg, var(--edge-a), var(--edge-b)) border-box;
+}
+.card-edge-content { position: relative; z-index: 2; }
+/* Quality gates: eco/low-power/anim-off → static; balanced → hover-only;
+   high → 10s (the base rule); ultra → 7s. */
+html[data-quality='balanced'] .card-edge-beam::before { animation-play-state: paused; will-change: auto; }
+html[data-quality='balanced'] .card-edge-beam:hover::before { animation-play-state: running; will-change: transform; }
+html[data-quality='ultra'] .card-edge-beam::before { animation-duration: 7s; }
+@media (prefers-reduced-motion: reduce) {
+  .card-edge-beam::before { animation: none; will-change: auto; }
+}
+html.low-power .card-edge-beam::before,
+html[data-anim='off'] .card-edge-beam::before,
+html[data-anim='reduced'] .card-edge-beam::before,
+html[data-quality='eco'] .card-edge-beam::before { animation: none; will-change: auto; }
+
+/* --------------------------------------------------------------------------
+   Sidebar / panel hook (for later wiring) — subtle glass pill for active
+   sidebar items. Static only, no animation, no backdrop work.
+   -------------------------------------------------------------------------- */
+.nav-glass {
+  border-radius: var(--r-md);
+  background: rgb(var(--accent) / 0.12);
+  border: 1px solid rgb(var(--accent) / 0.25);
+  box-shadow: var(--inner-hi);
+}
+
+/* --------------------------------------------------------------------------
+   Glow tone additions (v1.5.0) — new data-glow-tone palettes for the ring
+   system above. Attribute-only, same contract as the existing tones.
+   -------------------------------------------------------------------------- */
+[data-glow-tone='prism'] { --glow-a: #67e8f9; --glow-b: #a78bfa; --glow-c: #34d399; }
+[data-glow-tone='ocean'] { --glow-a: #7dd3fc; --glow-b: #2563eb; --glow-c: #38bdf8; }
+[data-glow-tone='candy'] { --glow-a: #f9a8d4; --glow-b: #a78bfa; --glow-c: #fbbf24; }
+[data-glow-tone='sunset'] { --glow-a: #fbbf24; --glow-b: #f97316; --glow-c: #ef4444; }
+[data-glow-tone='aurora'] { --glow-a: rgb(var(--accent-soft)); --glow-b: rgb(var(--accent)); --glow-c: rgb(var(--accent-soft)); }
+[data-glow-tone='ember'] { --glow-a: #fb923c; --glow-b: #b91c1c; --glow-c: #f59e0b; }
+
+/* --------------------------------------------------------------------------
+   Eco quality gate: ambient float blobs (dashboard/hero onboarding) freeze.
+   -------------------------------------------------------------------------- */
+html[data-quality='eco'] .animate-float { animation: none !important; }
+
+/* ==========================================================================
+   v1.5.1 polish wave — hero beam card, mega clock, sidebar hover system,
+   palette beam, logo burst and AI chat skin. Every continuous animation
+   follows the same gates as the sections above:
+     static: prefers-reduced-motion / anim-off / anim-reduced / low-power / eco
+     balanced: hover-only, ultra: faster.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Hero card — rotating multicolour beam border behind an inner surface.
+   Children must live in .hero-card-content (z-index 2).
+   -------------------------------------------------------------------------- */
+.hero-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--r-2xl);
+  --hero-a: #22d3ee;
+  --hero-b: rgb(var(--accent));
+  --hero-c: #f472b6;
+  --hero-speed: 9s;
+  box-shadow: var(--shadow-2), var(--inner-hi);
+}
+.hero-card::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 250%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%) rotate(0deg);
+  background: conic-gradient(from 0deg, var(--hero-a), var(--hero-b), var(--hero-c), var(--hero-a));
+  animation: updateBorderSpin var(--hero-speed) linear infinite;
+  z-index: 0;
+  will-change: transform;
+}
+.hero-card::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  border-radius: calc(var(--r-2xl) - 1.5px);
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgb(var(--accent) / 0.14), transparent 55%),
+    radial-gradient(110% 130% at 0% 100%, rgb(34 211 238 / 0.10), transparent 60%),
+    radial-gradient(95% 120% at 100% 100%, rgb(244 114 182 / 0.08), transparent 62%),
+    linear-gradient(115deg, rgb(var(--accent) / 0.10), rgb(var(--surface-100) / 0.97) 55%, rgb(var(--accent-soft) / 0.07));
+  z-index: 1;
+}
+html[data-glass='on'] .hero-card::after {
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgb(var(--accent) / 0.16), transparent 55%),
+    radial-gradient(110% 130% at 0% 100%, rgb(34 211 238 / 0.12), transparent 60%),
+    radial-gradient(95% 120% at 100% 100%, rgb(244 114 182 / 0.10), transparent 62%),
+    linear-gradient(115deg, rgb(var(--accent) / 0.12), rgb(var(--surface-100) / 0.86) 55%, rgb(var(--accent-soft) / 0.08));
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+html.low-power .hero-card::after,
+html[data-glass='off'] .hero-card::after {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgb(var(--accent) / 0.12), transparent 55%),
+    radial-gradient(110% 130% at 0% 100%, rgb(34 211 238 / 0.09), transparent 60%),
+    radial-gradient(95% 120% at 100% 100%, rgb(244 114 182 / 0.07), transparent 62%),
+    linear-gradient(115deg, rgb(var(--accent) / 0.08), rgb(var(--surface-100)) 55%, rgb(var(--accent-soft) / 0.06));
+}
+.hero-card-content { position: relative; z-index: 2; }
+.hero-card:hover::before { animation-duration: 3.4s; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-card::before { animation: none; }
+}
+html.low-power .hero-card::before,
+html[data-anim='off'] .hero-card::before,
+html[data-anim='reduced'] .hero-card::before,
+html[data-quality='eco'] .hero-card::before { animation: none; will-change: auto; }
+html[data-quality='balanced'] .hero-card::before { animation-play-state: paused; will-change: auto; }
+html[data-quality='balanced'] .hero-card:hover::before { animation-play-state: running; }
+html[data-quality='ultra'] .hero-card::before { animation-duration: 6.5s; }
+
+/* --------------------------------------------------------------------------
+   Mega clock — gradient numerals with a slow light sweep + soft glow.
+   -------------------------------------------------------------------------- */
+.hero-clock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.08em;
+  direction: ltr;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(2.2rem, 5vw, 3.8rem);
+  background: linear-gradient(100deg, rgb(var(--surface-900)) 0%, rgb(var(--surface-900)) 36%, rgb(var(--accent)) 50%, rgb(var(--surface-900)) 64%, rgb(var(--surface-900)) 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: heroClockSweep 9s var(--ease-in-out) infinite;
+  filter: drop-shadow(0 6px 22px rgb(var(--accent) / 0.16));
+}
+.hero-clock-sec {
+  font-size: 0.44em;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: rgb(var(--accent));
+  background: none;
+  -webkit-text-fill-color: rgb(var(--accent));
+  animation: heroClockPulse 2s var(--ease-in-out) infinite;
+}
+.hero-clock-period { font-size: 0.34em; font-weight: 700; color: rgb(var(--surface-600)); -webkit-text-fill-color: rgb(var(--surface-600)); margin-inline-start: 0.35em; }
+@keyframes heroClockSweep {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes heroClockPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+html.low-power .hero-clock,
+html[data-anim='off'] .hero-clock,
+html[data-anim='reduced'] .hero-clock,
+html[data-quality='eco'] .hero-clock { animation: none; background-position: 0% 50%; }
+html.low-power .hero-clock-sec,
+html[data-anim='off'] .hero-clock-sec,
+html[data-anim='reduced'] .hero-clock-sec,
+html[data-quality='eco'] .hero-clock-sec { animation: none; }
+html[data-quality='balanced'] .hero-clock,
+html[data-quality='balanced'] .hero-clock-sec { animation-play-state: paused; }
+html[data-quality='balanced'] .hero-card:hover .hero-clock,
+html[data-quality='balanced'] .hero-card:hover .hero-clock-sec { animation-play-state: running; }
+html[data-quality='ultra'] .hero-clock { animation-duration: 6.5s; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-clock { animation: none; background-position: 0% 50%; }
+  .hero-clock-sec,
+  .hero-tick { animation: none; }
+}
+
+/* Inner clock card — uniform chip surface so the mega digits never wash out
+   over the vivid gradient. Blur only with glass on; has-bg / eco / low-power
+   stay flat (Chromium compositor seams + weak-GPU cost). */
+.hero-clock-card {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--r-xl);
+  padding: 0.7rem 1.1rem;
+  background: rgb(var(--surface-100) / 0.72);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-1), var(--inner-hi);
+}
+html[data-glass='on'] .hero-clock-card {
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+}
+html.low-power .hero-clock-card,
+html[data-glass='off'] .hero-clock-card,
+html[data-quality='eco'] .hero-clock-card,
+html.has-bg .hero-clock-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Hero copy scrim — soft reading wash (not a gray box) behind greeting +
+   summary so vivid colours stay loud and text stays legible in both themes.
+   RTL-aware: the wash anchors to inline-start via the [dir] override. */
+.hero-copy {
+  border-radius: var(--r-xl);
+  background: radial-gradient(120% 140% at 0% 50%, rgb(var(--surface-100) / 0.55), transparent 72%);
+  padding: 0.6rem 1rem;
+  margin: -0.6rem -1rem;
+}
+[dir='rtl'] .hero-copy { background: radial-gradient(120% 140% at 100% 50%, rgb(var(--surface-100) / 0.55), transparent 72%); }
+.hero-copy h1,
+.hero-copy > p { text-shadow: 0 1px 12px rgb(0 0 0 / 0.14); }
+.hero-date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.32rem 0.8rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgb(var(--accent));
+  background: rgb(var(--accent) / 0.10);
+  border: 1px solid rgb(var(--accent) / 0.22);
+}
+.hero-tick { display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: rgb(var(--accent)); box-shadow: 0 0 0 0 rgb(var(--accent) / 0.5); animation: heroTick 2s var(--ease-out) infinite; }
+@keyframes heroTick {
+  0% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0.5); }
+  70% { box-shadow: 0 0 0 8px rgb(var(--accent) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--accent) / 0); }
+}
+html.low-power .hero-tick,
+html[data-anim='off'] .hero-tick,
+html[data-anim='reduced'] .hero-tick,
+html[data-quality='eco'] .hero-tick { animation: none; }
+html[data-quality='balanced'] .hero-tick { animation-play-state: paused; }
+html[data-quality='balanced'] .hero-card:hover .hero-tick { animation-play-state: running; }
+.hero-ring-wrap { animation: heroRingFloat 7s var(--ease-in-out) infinite; }
+@keyframes heroRingFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+html.low-power .hero-ring-wrap,
+html[data-anim='off'] .hero-ring-wrap,
+html[data-anim='reduced'] .hero-ring-wrap,
+html[data-quality='eco'] .hero-ring-wrap { animation: none; }
+.hero-ring-glow { position: absolute; inset: -14px; border-radius: 999px; background: radial-gradient(circle, rgb(var(--accent) / 0.20), transparent 65%); filter: blur(6px); animation: heroGlowPulse 4.5s var(--ease-in-out) infinite; pointer-events: none; }
+@keyframes heroGlowPulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+html.low-power .hero-ring-glow,
+html[data-anim='off'] .hero-ring-glow,
+html[data-anim='reduced'] .hero-ring-glow,
+html[data-quality='eco'] .hero-ring-glow { animation: none; }
+
+/* --------------------------------------------------------------------------
+   Sidebar — wallpaper-safe panel + animated hover system.
+   html.has-bg disables backdrop-filter here: blurring an already blurred +
+   scaled wallpaper layer produces the torn/diagonal seams Chromium shows.
+   -------------------------------------------------------------------------- */
+.sidebar-panel {
+  background: rgb(var(--surface-100) / 0.92);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-2), var(--inner-hi);
+}
+html.has-bg .sidebar-panel {
+  background: linear-gradient(180deg, rgb(var(--surface-100) / 0.97), rgb(var(--surface-100) / 0.94));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+html.low-power .sidebar-panel {
+  background: rgb(var(--surface-100));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+/* Nav items: sliding accent wash + growing start bar + glyph lift. */
+.nav-item { position: relative; overflow: hidden; }
+.nav-item::before {
+  content: '';
+  position: absolute;
+  inset-block: 5px;
+  inset-inline-start: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: rgb(var(--accent));
+  transform: scaleY(0);
+  transition: transform var(--dur-3) var(--ease-spring);
+  z-index: 1;
+}
+.nav-item:hover::before { transform: scaleY(1); }
+.nav-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgb(var(--accent) / 0.18), rgb(var(--accent) / 0.04) 55%, transparent);
+  opacity: 0;
+  transform: translateX(-18%);
+  transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out);
+  z-index: 0;
+}
+html[dir='rtl'] .nav-item::after {
+  background: linear-gradient(270deg, rgb(var(--accent) / 0.18), rgb(var(--accent) / 0.04) 55%, transparent);
+  transform: translateX(18%);
+}
+.nav-item:hover::after { opacity: 1; transform: translateX(0); }
+.nav-item:active { transform: scale(0.985); }
+.nav-item { transition: transform var(--dur-2) var(--ease-out), color var(--dur-2), background-color var(--dur-2); }
+html.low-power .nav-item::after,
+html[data-anim='off'] .nav-item::after,
+html[data-anim='reduced'] .nav-item::after { transition: none; }
+html.low-power .nav-item::before,
+html[data-anim='off'] .nav-item::before { transition: none; }
+
+/* --------------------------------------------------------------------------
+   Command palette — spinning multicolour beam + rich open transition.
+   -------------------------------------------------------------------------- */
+.palette-shell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--r-2xl);
+  box-shadow: var(--shadow-3), var(--inner-hi), 0 0 80px -30px rgb(var(--accent) / 0.65);
+  --palette-speed: 8s;
+}
+.palette-shell::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 240%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%) rotate(0deg);
+  background: conic-gradient(from 0deg, #22d3ee, #a78bfa, #f472b6, #fbbf24, #22d3ee);
+  animation: updateBorderSpin var(--palette-speed) linear infinite;
+  z-index: 0;
+  will-change: transform;
+}
+.palette-shell::after {
+  content: '';
+  position: absolute;
+  inset: 1.5px;
+  border-radius: calc(var(--r-2xl) - 1.5px);
+  background: rgb(var(--surface-100) / 0.94);
+  z-index: 1;
+}
+html[data-glass='on'] .palette-shell::after {
+  background: rgb(var(--surface-100) / 0.85);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+.palette-content { position: relative; z-index: 2; }
+.palette-search-underline {
+  height: 2px;
+  background: linear-gradient(90deg, #22d3ee, #a78bfa, #f472b6, #fbbf24);
+  background-size: 300% 100%;
+  animation: paletteUnderline 4s linear infinite;
+}
+@keyframes paletteUnderline {
+  0% { background-position: 0% 0; }
+  100% { background-position: 300% 0; }
+}
+.palette-icon { animation: paletteIconIn .5s var(--ease-spring) both; }
+@keyframes paletteIconIn {
+  from { transform: scale(0.4) rotate(-30deg); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .palette-shell::before { animation: none; }
+}
+html.low-power .palette-shell::before,
+html[data-anim='off'] .palette-shell::before,
+html[data-anim='reduced'] .palette-shell::before,
+html[data-quality='eco'] .palette-shell::before { animation: none; will-change: auto; }
+html[data-quality='balanced'] .palette-shell::before { animation-play-state: paused; }
+html[data-quality='balanced'] .palette-shell:hover::before { animation-play-state: running; }
+html.low-power .palette-search-underline,
+html[data-anim='off'] .palette-search-underline,
+html[data-anim='reduced'] .palette-search-underline { animation: none; }
+html.low-power .palette-icon,
+html[data-anim='off'] .palette-icon,
+html[data-anim='reduced'] .palette-icon { animation: none; }
+
+/* --------------------------------------------------------------------------
+   Logo burst — press feedback rings for the About hero logo.
+   -------------------------------------------------------------------------- */
+.logo-burst {
+  position: absolute;
+  inset: -6px;
+  border-radius: 30%;
+  border: 2px solid rgb(var(--accent) / 0.6);
+  animation: logoBurst .75s var(--ease-out) forwards;
+  pointer-events: none;
+}
+.logo-burst-2 { animation-delay: .09s; border-color: rgb(34 211 238 / 0.55); }
+@keyframes logoBurst {
+  from { transform: scale(0.86) rotate(-6deg); opacity: 0.9; }
+  to { transform: scale(1.45) rotate(6deg); opacity: 0; }
+}
+html.low-power .logo-burst,
+html[data-anim='off'] .logo-burst,
+html[data-anim='reduced'] .logo-burst { display: none; }
+
+/* --------------------------------------------------------------------------
+   AI chat skin — bubbles, typing dots, tool chips and the composer.
+   -------------------------------------------------------------------------- */
+.ai-scroll { scroll-behavior: smooth; }
+.ai-bubble { max-width: min(78ch, 92%); border-radius: var(--r-lg); padding: 0.7rem 0.95rem; font-size: 13.5px; line-height: 1.65; }
+.ai-bubble-user {
+  margin-inline-start: auto;
+  background: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent-soft)));
+  color: rgb(var(--accent-fg));
+  border-end-end-radius: var(--r-xs);
+}
+.ai-bubble-assistant {
+  margin-inline-end: auto;
+  background: rgb(var(--surface-200) / 0.85);
+  border: 1px solid var(--hairline);
+  border-end-start-radius: var(--r-xs);
+}
+html.dark .ai-bubble-assistant { background: rgb(var(--surface-200) / 0.6); }
+.ai-bubble-assistant .prose-dh { font-size: 13.5px; line-height: 1.7; }
+.ai-bubble-assistant .prose-dh p { margin: 0.35rem 0; }
+.ai-bubble-assistant .prose-dh pre { font-size: 12px; }
+.ai-typing { display: inline-flex; gap: 4px; align-items: center; padding: 2px 0; }
+.ai-typing span { width: 6px; height: 6px; border-radius: 999px; background: rgb(var(--accent)); animation: aiBounce 1.2s var(--ease-in-out) infinite; }
+.ai-typing span:nth-child(2) { animation-delay: .15s; }
+.ai-typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes aiBounce {
+  0%, 100% { transform: translateY(0); opacity: 0.45; }
+  50% { transform: translateY(-5px); opacity: 1; }
+}
+.ai-tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.18rem 0.6rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgb(var(--accent));
+  background: rgb(var(--accent) / 0.10);
+  border: 1px solid rgb(var(--accent) / 0.22);
+}
+.ai-composer { position: relative; }
+.ai-composer::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: calc(var(--r-lg) + 1px);
+  background: linear-gradient(120deg, #22d3ee, #a78bfa, #f472b6, #fbbf24);
+  background-size: 300% 100%;
+  animation: paletteUnderline 6s linear infinite;
+  opacity: 0;
+  transition: opacity var(--dur-2);
+  z-index: 0;
+}
+.ai-composer:focus-within::before { opacity: 0.85; }
+.ai-composer > * { position: relative; z-index: 1; }
+html.low-power .ai-composer::before,
+html[data-anim='off'] .ai-composer::before,
+html[data-anim='reduced'] .ai-composer::before { animation: none; }
+html.low-power .ai-typing span,
+html[data-anim='off'] .ai-typing span,
+html[data-anim='reduced'] .ai-typing span { animation: none; opacity: 0.7; }
+.ai-provider-dot { width: 8px; height: 8px; border-radius: 999px; background: rgb(16 185 129); box-shadow: 0 0 0 3px rgb(16 185 129 / 0.18); }
+
+/* --------------------------------------------------------------------------
+   Version manager — release rows with a status spine.
+   -------------------------------------------------------------------------- */
+.rel-row { position: relative; overflow: hidden; }
+.rel-row::before { content: ''; position: absolute; inset-block: 0; inset-inline-start: 0; width: 3px; background: rgb(var(--surface-400) / 0.5); }
+.rel-row[data-state='current']::before { background: rgb(16 185 129); }
+.rel-row[data-state='newer']::before { background: rgb(var(--accent)); }
+.rel-row[data-state='older']::before { background: rgb(var(--surface-400) / 0.5); }
+.rel-notes { white-space: pre-wrap; word-break: break-word; }
+
+/* ==========================================================================
+   Eco quality — no backdrop blur anywhere.
+   Blurred glass over the animated aurora/wallpaper is the single biggest GPU
+   cost on weak machines and the worst offender for Chromium compositor
+   stalls. low-power / data-glass='off' already flatten their own surfaces;
+   this rule covers every remaining composite/glass surface at once (the
+   .glass base is handled next to its low-power counterpart above).
+   ========================================================================== */
+html[data-quality='eco'] .glass-btn,
+html[data-quality='eco'] .glass-prism::after,
+html[data-quality='eco'] .update-card::after,
+html[data-quality='eco'] .glow-surface > *,
+html[data-quality='eco'] .glow-self::after,
+html[data-quality='eco'] .hero-card::after,
+html[data-quality='eco'] .sidebar-panel,
+html[data-quality='eco'] .palette-shell::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.rel-notes-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }

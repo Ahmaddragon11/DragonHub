@@ -3,7 +3,7 @@ import { invoke } from '@/lib/api'
 import i18n from '@/i18n'
 import { DEFAULT_SETTINGS, APP_VERSION, type AppSettings, type Note, type Project, type Task, type DownloadItem } from '@shared/types'
 
-export type PageId = 'dashboard' | 'notes' | 'projects' | 'tasks' | 'files' | 'editor' | 'downloads' | 'network' | 'resources' | 'taskManager' | 'screenshot' | 'compress' | 'images' | 'video' | 'vault' | 'shortcuts' | 'settings' | 'about'
+export type PageId = 'dashboard' | 'notes' | 'projects' | 'tasks' | 'ai' | 'files' | 'editor' | 'downloads' | 'network' | 'resources' | 'taskManager' | 'screenshot' | 'compress' | 'images' | 'video' | 'vault' | 'shortcuts' | 'settings' | 'about'
 
 export interface ToastAction { label: string; run: () => void }
 export interface Toast { id: string; type: 'success' | 'error' | 'info' | 'warning'; text: string; action?: ToastAction; duration: number }
@@ -23,7 +23,7 @@ const loadUpdateCardDismissed = (): string | null => {
   try { return localStorage.getItem(UPDATE_CARD_DISMISS_KEY) || null } catch { return null }
 }
 
-export const PAGE_IDS: PageId[] = ['dashboard', 'notes', 'projects', 'tasks', 'files', 'editor', 'downloads', 'network', 'resources', 'taskManager', 'screenshot', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about']
+export const PAGE_IDS: PageId[] = ['dashboard', 'notes', 'projects', 'tasks', 'ai', 'files', 'editor', 'downloads', 'network', 'resources', 'taskManager', 'screenshot', 'compress', 'images', 'video', 'vault', 'shortcuts', 'settings', 'about']
 export interface UpdateProgress {
   phase: 'checking' | 'downloading'
   receivedBytes?: number
@@ -40,6 +40,8 @@ interface AppState {
   pageParams: Record<string, unknown>
   settings: AppSettings
   systemTheme: 'dark' | 'light'
+  /** Reported by main via app:powerState (battery vs AC) for perf-auto. */
+  onBattery: boolean
   toasts: Toast[]
   paletteOpen: boolean
   shortcutsOpen: boolean
@@ -94,7 +96,7 @@ interface AppState {
   clearPageParams: () => void
 }
 
-function applyTheme(s: AppSettings, sys: 'dark' | 'light') {
+function applyTheme(s: AppSettings, sys: 'dark' | 'light', onBattery = false) {
   const html = document.documentElement
   const theme = s.theme === 'system' ? sys : s.theme
   html.classList.toggle('dark', theme === 'dark')
@@ -107,6 +109,14 @@ function applyTheme(s: AppSettings, sys: 'dark' | 'light') {
   html.dataset.glass = glass ? 'on' : 'off'
   html.dataset.ambient = !s.lowPowerMode && s.ambientGlow ? 'on' : 'off'
   html.classList.toggle('low-power', !!s.lowPowerMode)
+  // Quality levels (v1.5.0): 'high' keeps the exact previous visuals. Eco forces
+  // the cheapest presentation (same tensor as low-power); auto resolves to eco
+  // while on battery power, exactly like when low-power forced it before.
+  const resolvedLevel = s.performanceAuto && onBattery ? 'eco' : s.performanceLevel
+  html.dataset.quality = s.lowPowerMode ? 'eco' : resolvedLevel
+  // Animated background preset ('' hides BackgroundLayer); css uses --bg-speed multiplier.
+  html.dataset.bgPreset = s.backgroundPreset || ''
+  html.style.setProperty('--bg-speed', String(s.backgroundPresetSpeed || 1))
   html.style.setProperty('--anim-speed', String(s.animationSpeed))
   html.style.setProperty('--font-scale', String(s.fontScale))
   // Wallpaper (dh-file:// path) + its blur/dim. Falls back to the aurora when unset.
@@ -157,7 +167,7 @@ const toastTimers = new Map<string, ReturnType<typeof setTimeout>>()
 let initStarted = false
 
 export const useApp = create<AppState>((set, get) => ({
-  ready: false, page: 'dashboard', pageParams: {}, settings: DEFAULT_SETTINGS, systemTheme: 'dark', toasts: [], paletteOpen: false, shortcutsOpen: false, windowMaximized: false,
+  ready: false, page: 'dashboard', pageParams: {}, settings: DEFAULT_SETTINGS, systemTheme: 'dark', onBattery: false, toasts: [], paletteOpen: false, shortcutsOpen: false, windowMaximized: false,
   backStack: [], fwdStack: [], recents: typeof window !== 'undefined' ? loadRecents() : [], recentFiles: [],
   updateProgress: null, updateAvailableVersion: null, updateReady: false,
   updateCardDismissedVersion: typeof window !== 'undefined' ? loadUpdateCardDismissed() : null,
@@ -190,7 +200,14 @@ export const useApp = create<AppState>((set, get) => ({
       applyTheme(settings, sys)
       const startPage = PAGE_IDS.includes(settings.startPage as PageId) ? (settings.startPage as PageId) : 'dashboard'
       set({ settings, systemTheme: sys, notes, projects, tasks, downloads, windowMaximized: maximized, page: startPage, lastSeenVersion: lastSeen, recentFiles: recentFiles.slice(0, 20) })
-      window.dh.on('theme:system', (t) => { set({ systemTheme: t as 'dark' | 'light' }); applyTheme(get().settings, t as 'dark' | 'light') })
+      window.dh.on('theme:system', (t) => { set({ systemTheme: t as 'dark' | 'light' }); applyTheme(get().settings, t as 'dark' | 'light', get().onBattery) })
+      // Battery-aware quality: main reports power state (powerMonitor); perf-auto resolves eco on battery.
+      window.dh.on('app:powerState', (p) => {
+        const onBattery = !!(p as { onBattery?: boolean } | null)?.onBattery
+        if (onBattery === get().onBattery) return
+        set({ onBattery })
+        applyTheme(get().settings, get().systemTheme, onBattery)
+      })
       window.dh.on('downloads:update', (d) => get().updateDownload(d as DownloadItem))
       window.dh.on('window:state', (s: any) => { if (s && 'maximized' in s) set({ windowMaximized: s.maximized }) })
       window.dh.on('updates:progress', (progress) => set({ updateProgress: progress as UpdateProgress }))
@@ -204,6 +221,13 @@ export const useApp = create<AppState>((set, get) => ({
         else if (a === 'settings') get().navigate('settings')
         else if (a === 'focus') get().navigate('dashboard')
       })
+      // AI tool side effects: jump to a section, or refresh collections after
+      // the assistant created/updated notes & tasks in the main process.
+      window.dh.on('ai:navigate', (p) => {
+        const page = (p as { page?: unknown } | null)?.page
+        if (typeof page === 'string' && PAGE_IDS.includes(page as PageId)) get().navigate(page as PageId)
+      })
+      window.dh.on('ai:dataChanged', () => { void get().reloadCollections() })
       if ([rSettings, rNotes, rProjects, rTasks].some((r) => r.status === 'rejected')) {
         get().toast(i18n.t('app.loadFailed'), 'error')
       }
@@ -254,11 +278,11 @@ export const useApp = create<AppState>((set, get) => ({
   clearPageParams: () => { if (Object.keys(get().pageParams).length) set({ pageParams: {} }) },
   setSettings: async (patch) => {
     const next = await invoke<AppSettings>('settings:set', patch)
-    applyTheme(next, get().systemTheme)
+    applyTheme(next, get().systemTheme, get().onBattery)
     set({ settings: next })
     if ('launchAtStartup' in patch) invoke('app:setLoginItem', !!patch.launchAtStartup).catch(() => {})
   },
-  resetSettings: async () => { const next = await invoke<AppSettings>('settings:reset'); applyTheme(next, get().systemTheme); set({ settings: next }) },
+  resetSettings: async () => { const next = await invoke<AppSettings>('settings:reset'); applyTheme(next, get().systemTheme, get().onBattery); set({ settings: next }) },
   toast: (text, type = 'success', opts = {}) => {
     const id = Math.random().toString(36).slice(2)
     // Errors and actionable toasts linger longer so they can be read / acted on.

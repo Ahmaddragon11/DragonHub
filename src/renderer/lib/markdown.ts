@@ -9,6 +9,10 @@ function inline(s: string): string {
   out = out.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
   out = out.replace(/~~(.+?)~~/g, '<del>$1</del>')
   out = out.replace(/==(.+?)==/g, '<mark>$1</mark>')
+  out = out.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt: string, url: string) =>
+    /^dh-attach:\/\//i.test(url)
+      ? `<img src="${url}" alt="${alt}" class="md-img" loading="lazy" style="max-width:100%;height:auto;border-radius:10px;display:block;margin:6px 0" />`
+      : m)
   out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" data-ext target="_blank" rel="noopener noreferrer">$1</a>')
   out = out.replace(/(^|\s)(https?:\/\/[^\s<]+)/g, '$1<a href="$2" data-ext target="_blank" rel="noopener noreferrer">$2</a>')
   return out

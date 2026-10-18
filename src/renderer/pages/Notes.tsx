@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { StickyNote, Plus, Pin, PinOff, Archive, ArchiveRestore, Star, Trash2, Search, Eye, Pencil, Columns, Download, Tag, Bold, Italic, Heading2, List, ListOrdered, ListChecks, Quote, Code, Link2 } from 'lucide-react'
+import { StickyNote, Plus, Pin, PinOff, Archive, ArchiveRestore, Star, Trash2, Search, Eye, Pencil, Columns, ImagePlus, Download, Tag, Bold, Italic, Heading2, List, ListOrdered, ListChecks, Quote, Code, Link2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useApp } from '@/store'
 import { deleteWithUndo } from '@/lib/undo'
@@ -10,6 +10,12 @@ import { uid, COLORS, cn, relTime, stripPath } from '@/lib/utils'
 import { renderMarkdown } from '@/lib/markdown'
 import { invoke, errorMessage } from '@/lib/api'
 import type { Note } from '@shared/types'
+
+const IMG_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp)$/i
+const IMG_EXT_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp' }
+const isImageFile = (f: File) => f.type.startsWith('image/') || IMG_EXT_RE.test(f.name)
+const imageMime = (f: File) => (f.type ? f.type.split(';')[0].trim().toLowerCase() : IMG_EXT_MIME[f.name.split('.').pop()?.toLowerCase() ?? ''] ?? '')
+const imageAltText = (f: File) => f.name.replace(/\.[^.]+$/, '').replace(/[[\]\\]/g, '').trim() || 'image'
 
 export default function Notes() {
   const { t } = useTranslation()
@@ -51,6 +57,7 @@ export default function Notes() {
     if (await deleteWithUndo('notes', id, t('notes.noteDeleted')) && sel === id) setSel(null)
   }
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   // Wrap or prefix the current selection in the Markdown editor. Keeps it light:
   // no editor library — just selection-aware insertion into the textarea.
   const mdAction = (kind: 'bold' | 'italic' | 'code' | 'h' | 'ul' | 'ol' | 'task' | 'link' | 'quote') => {
@@ -76,6 +83,32 @@ export default function Notes() {
     update(cur.id, { content: next })
     requestAnimationFrame(() => { ta.focus(); const caret = a + text.length; ta.setSelectionRange(caret, caret) })
   }
+  // Upload image files as note attachments and drop their dh-attach refs at the
+  // caret. Reads the latest content from the store after each await so
+  // consecutive uploads never clobber each other's insertion.
+  const uploadImages = async (files: File[]) => {
+    if (!cur) return
+    const ta = taRef.current && mode !== 'preview' ? taRef.current : null
+    let pos: number | null = ta ? ta.selectionStart : null
+    for (const f of files) {
+      try {
+        const mime = imageMime(f)
+        if (!mime) throw new Error(t('notes.imageFailed'))
+        const bytes = await f.arrayBuffer()
+        const res = await invoke<{ ref: string; name: string }>('notes:addAttachment', { name: f.name, mime, bytes })
+        const md = `![${imageAltText(f)}](${res.ref})\n`
+        const note = useApp.getState().notes.find((n) => n.id === cur.id)
+        if (!note) return
+        const at = pos === null ? note.content.length : Math.min(pos, note.content.length)
+        update(cur.id, { content: note.content.slice(0, at) + md + note.content.slice(at) })
+        if (pos !== null) pos = at + md.length
+      } catch (e) {
+        toast(errorMessage(e, t('notes.imageFailed')), 'error')
+      }
+    }
+    const caret = pos
+    if (ta && caret !== null) requestAnimationFrame(() => { const el = taRef.current; if (el) { el.focus(); el.setSelectionRange(caret, caret) } })
+  }
   const allTags = useMemo(() => Array.from(new Set(notes.flatMap((n) => n.tags))).sort(), [notes])
   const list = useMemo(() => notes
     .filter((n) => (filter === 'archived' ? n.archived : !n.archived))
@@ -89,11 +122,12 @@ export default function Notes() {
   const mdHtml = useMemo(() => (cur ? renderMarkdown(cur.content) : ''), [cur?.id, cur?.content])
   const exportMd = async () => {
     if (!cur) return
-    const p = await invoke<string | null>('dialog:save', { defaultPath: (cur.title || 'note') + '.md', filters: [{ name: 'Markdown', extensions: ['md'] }] })
-    if (p) {
+    try {
       const frontmatter = `---\ntitle: ${JSON.stringify(cur.title)}\ntags: [${cur.tags.map((tg) => JSON.stringify(tg)).join(', ')}]\nupdated: ${new Date(cur.updatedAt).toISOString()}\n---\n\n`
-      await invoke('fs:writeText', p, `${frontmatter}# ${cur.title}\n\n${cur.content}`)
-      toast(`${t('toast.saved')}: ${stripPath(p)}`)
+      const res = await invoke<{ path: string; images: number } | null>('notes:exportNote', { title: cur.title || 'note', markdown: `${frontmatter}# ${cur.title}\n\n${cur.content}` })
+      if (res) toast(`${t('toast.saved')}: ${stripPath(res.path)}`)
+    } catch (e) {
+      toast(errorMessage(e, t('toast.error')), 'error')
     }
   }
   const words = cur ? cur.content.trim().split(/\s+/).filter(Boolean).length : 0
@@ -170,8 +204,10 @@ export default function Notes() {
                   {([['bold', <Bold size={15} />, 'notes.mdBold'], ['italic', <Italic size={15} />, 'notes.mdItalic'], ['h', <Heading2 size={15} />, 'notes.mdHeading'], ['quote', <Quote size={15} />, 'notes.mdQuote'], ['ul', <List size={15} />, 'notes.mdBullet'], ['ol', <ListOrdered size={15} />, 'notes.mdNumber'], ['task', <ListChecks size={15} />, 'notes.mdTask'], ['code', <Code size={15} />, 'notes.mdCode'], ['link', <Link2 size={15} />, 'notes.mdLink']] as const).map(([kind, icon, key]) => (
                     <button key={kind} className="btn-icon p-1.5" title={t(key)} aria-label={t(key)} onClick={() => mdAction(kind)}>{icon}</button>
                   ))}
+                  <button className="btn-icon p-1.5" title={t('notes.insertImage')} aria-label={t('notes.insertImage')} onClick={() => fileRef.current?.click()}><ImagePlus size={15} /></button>
                 </div>
               )}
+              <input ref={fileRef} type="file" multiple accept="image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp" className="hidden" tabIndex={-1} aria-hidden="true" onChange={(e) => { const picked = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; if (picked.length) void uploadImages(picked) }} />
               <div className={cn('flex-1 min-h-0 grid overflow-auto', mode === 'split' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1')}>
                 {mode !== 'preview' && <textarea ref={taRef} className="h-full w-full resize-none bg-transparent p-4 outline-none font-mono text-sm leading-6 selectable" placeholder={t('notes.placeholderBody')} value={cur.content} onChange={(e) => update(cur.id, { content: e.target.value })}
                   onKeyDown={(e) => {
@@ -190,7 +226,24 @@ export default function Notes() {
                       requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(a, b) })
                     } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'b') { e.preventDefault(); mdAction('bold') }
                     else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); mdAction('italic') }
-                  }} spellCheck />}
+                  }}
+                  onPaste={(e) => {
+                    const imgs = e.clipboardData ? Array.from(e.clipboardData.files).filter(isImageFile) : []
+                    if (!imgs.length) return
+                    e.preventDefault()
+                    void uploadImages(imgs)
+                  }}
+                  onDragOver={(e) => {
+                    const types = Array.from(e.dataTransfer?.types ?? [])
+                    if (types.includes('Files') || types.some((ty) => ty.startsWith('image/'))) e.preventDefault()
+                  }}
+                  onDrop={(e) => {
+                    const imgs = Array.from(e.dataTransfer?.files ?? []).filter(isImageFile)
+                    if (!imgs.length) return
+                    e.preventDefault()
+                    void uploadImages(imgs)
+                  }}
+                  spellCheck />}
                 {mode !== 'edit' && <div className={cn('h-full overflow-auto p-4 prose-dh selectable', mode === 'split' && 'border-s border-surface-300/60')} dangerouslySetInnerHTML={{ __html: mdHtml }} onClick={handleExtNav} onAuxClick={handleExtNav} />}
               </div>
               <footer className="flex items-center gap-4 px-4 py-1.5 border-t border-surface-300/60 text-[11px] text-surface-500 flex-wrap">

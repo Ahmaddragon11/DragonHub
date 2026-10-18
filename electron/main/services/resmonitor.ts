@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import type { BrowserWindow } from 'electron'
-import { dataCollections } from './settings'
+import { dataCollections, settingsStore } from './settings'
 import {
   DEFAULT_RES_CONFIG,
   DEFAULT_RES_CARD_CONFIG,
@@ -63,11 +63,9 @@ export function setResConfig(patch: Partial<ResConfig>): ResConfig {
   try { dataCollections.set(RES_CONFIG_KEY, merged) } catch { /* in-memory only */ }
   // Re-read through the sanitizer so a raw patch can never drive the live timer.
   const next = getResConfig()
-  // Apply interval change on the next tick.
-  if (timer !== null) {
-    clearInterval(timer)
-    timer = setInterval(() => { void tick() }, next.intervalMs)
-  }
+  // Re-target the cadence for the current effective level (intervalMs/enabled
+  // changes apply immediately; 'off' just keeps the cheap heartbeat).
+  resyncTimers()
   return next
 }
 
@@ -200,8 +198,23 @@ function sampleCpu(): void {
 }
 
 // ---------- slow sources (each degrades gracefully, cached between refreshes) ----------
-const temperatureSrc = slowSource<number | null>(async () => {
-  const out = await ps('(Get-CimInstance -ClassName MSAcpi_ThermalZoneTemperature | ForEach-Object { "$($_.CurrentTemperature)" })', 8000)
+// The four "every few seconds is fine" CIM sources (temperature, pagefile, disk
+// capacity, GPU name) no longer own PowerShell reads: a single consolidated
+// probeSlowSources() command fills them in directly. gpuSrc (nvidia-smi) and
+// diskActivitySrc keep their own on-demand refresh() paths.
+type CachedSource<T> = { value: T | null; status: ResSourceStatus; lastAt: number }
+function cachedSource<T>(): CachedSource<T> {
+  return { value: null, status: 'unavailable', lastAt: 0 }
+}
+
+const temperatureSrc = cachedSource<number | null>()
+const pagefileSrc = cachedSource<number | null>()
+const diskCapacitySrc = cachedSource<ResDiskDrive[]>()
+const gpuNameSrc = cachedSource<string | null>()
+
+// --- pure parsers (shared by the consolidated probe and, for disk activity,
+// --- by the fast per-tick refresh path below) ---
+function parseTemperatureOut(out: string): number | null {
   let best: number | null = null
   for (const line of out.split(/\r?\n/)) {
     const v = num(line.trim())
@@ -211,17 +224,15 @@ const temperatureSrc = slowSource<number | null>(async () => {
     if (c >= 20 && c <= 120 && (best === null || c > best)) best = r1(c)
   }
   return best
-}, 15000)
+}
 
-const pagefileSrc = slowSource<number | null>(async () => {
-  const out = await ps('$o = Get-CimInstance Win32_OperatingSystem; "$($o.TotalVirtualMemorySize)|$($o.FreeVirtualMemory)"', 8000)
+function parsePagefileOut(out: string): number | null {
   const [totalKb, freeKb] = out.trim().split('|').map((x) => num(x))
   if (totalKb === null || freeKb === null || totalKb <= 0) return null
   return r1(((totalKb - freeKb) / totalKb) * 100)
-}, 15000)
+}
 
-const diskCapacitySrc = slowSource<ResDiskDrive[]>(async () => {
-  const out = await ps("Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { \"$($_.DeviceID)|$($_.VolumeName)|$($_.Size)|$($_.FreeSpace)\" }", 12000)
+function parseCapacityOut(out: string): ResDiskDrive[] {
   const drives: ResDiskDrive[] = []
   for (const line of out.split(/\r?\n/)) {
     const [letter, label, size, free] = line.trim().split('|')
@@ -241,10 +252,9 @@ const diskCapacitySrc = slowSource<ResDiskDrive[]>(async () => {
   }
   if (drives.length === 0) throw new Error('no logical drives')
   return drives
-}, 60000)
+}
 
-const diskActivitySrc = slowSource<Map<string, { busy: number; readMBs: number; writeMBs: number }>>(async () => {
-  const out = await ps('Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk | ForEach-Object { "$($_.Name)|$($_.PercentDiskTime)|$($_.DiskReadBytesPersec)|$($_.DiskWriteBytesPersec)" }', 10000)
+function parseDiskActivityOut(out: string): Map<string, { busy: number; readMBs: number; writeMBs: number }> {
   const map = new Map<string, { busy: number; readMBs: number; writeMBs: number }>()
   for (const line of out.split(/\r?\n/)) {
     const [name, busy, readBps, writeBps] = line.trim().split('|')
@@ -261,7 +271,21 @@ const diskActivitySrc = slowSource<Map<string, { busy: number; readMBs: number; 
   }
   if (map.size === 0) throw new Error('no disk activity counters')
   return map
-}, 8000)
+}
+
+function parseGpuNameOut(out: string): string {
+  const line = out.split(/\r?\n/).map((x) => x.trim()).find((x) => x.length > 0)
+  if (!line) throw new Error('no gpu name')
+  return line.slice(0, 96)
+}
+
+// Disk-activity counters change fast (chart-visible), so this one keeps a
+// dedicated on-demand refresh path (duty-cycled by maxAge) beside the probe.
+const DISK_ACTIVITY_PS = 'Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk | ForEach-Object { "$($_.Name)|$($_.PercentDiskTime)|$($_.DiskReadBytesPersec)|$($_.DiskWriteBytesPersec)" }'
+const diskActivitySrc = slowSource<Map<string, { busy: number; readMBs: number; writeMBs: number }>>(async () =>
+  parseDiskActivityOut(
+    await ps(DISK_ACTIVITY_PS, 10000),
+  ), 8000)
 
 let nvidiaSmiBroken = false
 const gpuSrc = slowSource<ResGpu | null>(async () => {
@@ -286,15 +310,7 @@ const gpuSrc = slowSource<ResGpu | null>(async () => {
     nvidiaSmiBroken = true // never retry inside this session (keeps ticks cheap)
     throw new Error('nvidia-smi unavailable')
   }
-}, 5000)
-
-// Generic GPU name fallback (no utilization without vendor tooling).
-const gpuNameSrc = slowSource<string | null>(async () => {
-  const out = await ps("(Get-CimInstance Win32_VideoController | ForEach-Object { \"$($_.Name)\" })", 8000)
-  const line = out.split(/\r?\n/).map((x) => x.trim()).find((x) => x.length > 0)
-  if (!line) throw new Error('no gpu name')
-  return line.slice(0, 96)
-}, 60000)
+}, 8000)
 
 // ---------- processes (Get-Process, grouped later in renderer) ----------
 type ProcRow = { pid: number; name: string; cpuSec: number; wsBytes: number; path: string | null }
@@ -321,7 +337,7 @@ const processSrc = slowSource<ProcRow[]>(async () => {
   }
   if (rows.length === 0) throw new Error('no processes')
   return rows
-}, 4000)
+}, 6000)
 
 // Per-PID CPU% derived from cumulative CPU seconds between refreshes.
 const prevCpuSec = new Map<number, { sec: number; at: number }>()
@@ -356,13 +372,64 @@ function toResProcesses(topN: number): ResProcess[] {
 }
 
 // ---------- snapshot / history / engine ----------
+// Demand-driven: the full sampling stack only runs while someone is actually
+// watching (the Resources/TaskManager page or the floating card). Hiding the
+// main window to tray drops beyond that unless the card keeps a consumer —
+// otherwise only a cheap pure-JS heartbeat keeps history alive.
+export type ResActivity = 'off' | 'basic' | 'full'
+
 let timer: ReturnType<typeof setInterval> | null = null
-let bootTimeout: ReturnType<typeof setTimeout> | null = null
+let timerMs = -1 // current cadence target
+let lastLevel: ResActivity | null = null
+let probeTimer: ReturnType<typeof setInterval> | null = null
+let probeTimerMs = -1
+let probeBoot: ReturnType<typeof setTimeout> | null = null
 let getWinFn: () => BrowserWindow | null = () => null
 let getCardFn: () => BrowserWindow | null = () => null
 let inFlight = false
 let lastSnapshot: ResLive | null = null
 const history: ResHistoryPoint[] = []
+
+// ---- activity inputs ----
+// 'full' is registered as a count of open claims (from IPC) instead of a plain
+// boolean: AnimatePresence crossfades pages, so the incoming monitoring page
+// mounts BEFORE the outgoing one unmounts and a boolean would race full→off.
+let fullClaims = 0
+let cardActivity = false
+let windowHidden = false
+
+const HEARTBEAT_MS = 12000   // 'off' cadence: pure-JS tick, zero child processes
+const PROBE_MS = 20000       // consolidated slow-source probe cadence (full mode)
+const BASIC_PROBE_MS = 90000 // card-only probe cadence (keeps its disk chip fresh)
+const PROBE_BOOT_MS = 1500   // first probe shortly after a busy level starts
+const EMIT_SILENCE_MS = 6000 // delta suppression: force-emit at least this often
+
+/** Called by ipc.ts when a monitoring page mounts ('full') / unmounts ('off'). */
+export function setPageActivity(level: 'off' | 'full'): void {
+  if (level === 'full') fullClaims = Math.min(fullClaims + 1, 8) // cap guards dev-time leaked claims
+  else fullClaims = Math.max(0, fullClaims - 1)
+  resyncTimers()
+}
+
+/** Called from the card window open/close wiring in index.ts. */
+export function setCardActivity(active: boolean): void {
+  cardActivity = !!active
+  resyncTimers()
+}
+
+/** Called from the main window hide/show/restore wiring in index.ts. */
+export function setWindowHidden(hidden: boolean): void {
+  windowHidden = !!hidden
+  resyncTimers()
+}
+
+function effectiveLevel(): ResActivity {
+  const cfg = getResConfig()
+  if (!cfg.enabled) return 'off'
+  if (windowHidden && !cardActivity) return 'off'
+  if (fullClaims > 0) return 'full'
+  return cardActivity ? 'basic' : 'off'
+}
 
 export function setResWindowProviders(main: () => BrowserWindow | null, card: () => BrowserWindow | null): void {
   getWinFn = main
@@ -429,44 +496,220 @@ function buildSnapshot(): ResLive {
   }
 }
 
-async function tick(): Promise<void> {
+// ---- delta-suppressed emit ----
+// Identical consecutive snapshots shrink to one send per force window, so an
+// idle machine doesn't wake the renderer every 2s. Thresholds are loose on
+// purpose: sustained CPU/RAM alerts in the renderer keep counting normally.
+type EmitFingerprint = { cpu: number; mem: number; down: number; up: number; disks: string }
+let lastEmitAt = 0
+let lastEmit: EmitFingerprint | null = null
+
+function disksFingerprint(disks: ResDiskDrive[]): string {
+  return disks.map((d) => `${d.letter}${Math.round(d.percentBusy ?? -1)}:${Math.round(d.freeGB)}`).join('|')
+}
+
+function shouldEmit(snap: ResLive): boolean {
+  const p = lastEmit
+  if (!p) return true
+  if (Date.now() - lastEmitAt >= EMIT_SILENCE_MS) return true
+  if (Math.abs(snap.cpuPercent - p.cpu) >= 1) return true
+  if (Math.abs(snap.memoryPercent - p.mem) >= 0.5) return true
+  if (Math.abs(snap.netDownSpeedBps - p.down) >= 2000) return true
+  if (Math.abs(snap.netUpSpeedBps - p.up) >= 2000) return true
+  if (disksFingerprint(snap.disks) !== p.disks) return true
+  return false
+}
+
+/**
+ * Cheap path: sampleCpu + snapshot built purely from cached source values
+ * (no child processes at all — sources keep their last values and statuses).
+ * Runs on every tick at every level; history keeps filling so sparkline data
+ * survives idle periods.
+ */
+function tickCheap(rowsRefreshed = false): void {
+  try {
+    sampleCpu()
+    const snap = buildSnapshot()
+    lastSnapshot = snap
+    if (rowsRefreshed) {
+      // Advance CPU baseline markers for next process diff — only after fresh
+      // rows landed: advancing on stale rows would pad the CPU% time window.
+      for (const r of lastProcRows) prevCpuSec.set(r.pid, { sec: r.cpuSec, at: snap.at })
+    }
+    history.push({ cpu: snap.cpuPercent, mem: snap.memoryPercent, downBps: snap.netDownSpeedBps, upBps: snap.netUpSpeedBps, at: snap.at })
+    if (history.length > HISTORY_CAP) history.splice(0, history.length - HISTORY_CAP)
+    // Hidden to tray/taskbar with nothing watching: skip the broadcast entirely
+    // so the hidden renderer isn't woken every silence window. The card is a
+    // separate webContents sharing the channel — its demand keeps the level
+    // above 'off', so a card-open emit still goes through below.
+    if (effectiveLevel() === 'off' && windowHidden && !cardActivity) return
+    if (shouldEmit(snap)) {
+      lastEmitAt = snap.at
+      lastEmit = { cpu: snap.cpuPercent, mem: snap.memoryPercent, down: snap.netDownSpeedBps, up: snap.netUpSpeedBps, disks: disksFingerprint(snap.disks) }
+      try { getWinFn()?.webContents.send('res:update', snap) } catch { /* renderer may be hidden */ }
+      try { getCardFn()?.webContents.send('res:update', snap) } catch { /* card may be closed */ }
+    }
+  } catch { /* monitor must never break main */ }
+}
+
+/**
+ * Busy path (basic/full): refresh() calls are maxAge-gated, so the child-process
+ * duty cycle stays low even while a page sits open.
+ *  - basic (card only): process list + disk activity; no probe, no nvidia-smi.
+ *  - full (page open): additionally nvidia-smi; the consolidated slow probe
+ *    (temperature / pagefile / capacity / GPU name) runs on its own cadence.
+ */
+async function tickBusy(level: 'basic' | 'full'): Promise<void> {
   if (inFlight) return
   inFlight = true
   try {
-    const cfg = getResConfig()
-    if (!cfg.enabled) return
-    sampleCpu()
-    await Promise.allSettled([
-      refresh(temperatureSrc),
-      refresh(pagefileSrc),
-      refresh(diskCapacitySrc),
-      refresh(diskActivitySrc),
-      refresh(gpuSrc),
-      refresh(gpuNameSrc),
-      refresh(processSrc),
-    ])
-    if (processSrc.value) {
-      const now = Date.now()
+    const rowsBefore = processSrc.value
+    const jobs: Promise<unknown>[] = [refresh(processSrc), refresh(diskActivitySrc)]
+    if (level === 'full') jobs.push(refresh(gpuSrc))
+    await Promise.allSettled(jobs)
+    if (processSrc.value && processSrc.value !== rowsBefore) {
       // Keep latest rows; first tick after start yields 0% for all (no baseline yet) — expected.
       lastProcRows = processSrc.value
-      for (const r of lastProcRows) {
-        if (!prevCpuSec.has(r.pid)) prevCpuSec.set(r.pid, { sec: r.cpuSec, at: now })
-      }
       if (prevCpuSec.size > 2000) {
         const alive = new Set(lastProcRows.map((r) => r.pid))
         for (const pid of [...prevCpuSec.keys()]) if (!alive.has(pid)) prevCpuSec.delete(pid)
       }
     }
-    const snap = buildSnapshot()
-    lastSnapshot = snap
-    // Advance CPU baseline markers for next process diff.
-    for (const r of lastProcRows) prevCpuSec.set(r.pid, { sec: r.cpuSec, at: snap.at })
-    history.push({ cpu: snap.cpuPercent, mem: snap.memoryPercent, downBps: snap.netDownSpeedBps, upBps: snap.netUpSpeedBps, at: snap.at })
-    if (history.length > HISTORY_CAP) history.splice(0, history.length - HISTORY_CAP)
-    try { getWinFn()?.webContents.send('res:update', snap) } catch { /* renderer may be hidden */ }
-    try { getCardFn()?.webContents.send('res:update', snap) } catch { /* card may be closed */ }
+    tickCheap(processSrc.value !== rowsBefore)
   } catch { /* monitor must never break main */ }
   finally { inFlight = false }
+}
+
+/** Single interval for all levels: re-resolves the level on every fire. */
+function onTick(): void {
+  const level = effectiveLevel()
+  if (level === 'off') tickCheap()
+  else void tickBusy(level)
+}
+
+// ---- timer management (one cadence per level, no-op when unchanged) ----
+function cadenceMs(level: ResActivity): number {
+  if (level === 'off') return HEARTBEAT_MS
+  return Math.min(Math.max(getResConfig().intervalMs, 1000), 10000)
+}
+
+function clearProbeTimers(): void {
+  if (probeTimer !== null) { clearInterval(probeTimer); probeTimer = null; probeTimerMs = -1 }
+  if (probeBoot !== null) { clearTimeout(probeBoot); probeBoot = null }
+}
+
+/** Re-target the sampling interval + probe schedule to the current level.
+ *  Called from every activity input and on config change; cheap when stable. */
+function resyncTimers(): void {
+  const level = effectiveLevel()
+  const ms = cadenceMs(level)
+  if (timer === null) {
+    timer = setInterval(() => { onTick() }, ms)
+    timerMs = ms
+  } else if (ms !== timerMs) {
+    clearInterval(timer)
+    timer = setInterval(() => { onTick() }, ms)
+    timerMs = ms
+  }
+  const entering = level !== lastLevel
+  lastLevel = level
+  // Responsiveness on entry: run one busy tick right away (refreshes are
+  // maxAge-gated, so this never spawns duplicated child processes).
+  if (entering && level !== 'off' && !inFlight) void tickBusy(level)
+  syncProbe(level, entering)
+}
+
+/** Eco performance level stretches the periodic probe schedules by 1.5x;
+ *  every other level (including 'high') keeps the base cadence. */
+function probeScale(): number {
+  try { return settingsStore.get().performanceLevel === 'eco' ? 1.5 : 1 } catch { return 1 }
+}
+
+/** Consolidated probe schedule: full = 20s recurring; basic = slow recurring
+ *  (priming keeps the card's capacity-disk chip populated); off = none.
+ *  Eco multiplies both cadences by 1.5. */
+function syncProbe(level: ResActivity, entering: boolean): void {
+  const scale = probeScale()
+  const ms = level === 'full' ? Math.round(PROBE_MS * scale) : level === 'basic' ? Math.round(BASIC_PROBE_MS * scale) : 0
+  if (ms === 0) { clearProbeTimers(); return }
+  if (probeTimerMs !== ms) {
+    if (probeTimer !== null) clearInterval(probeTimer)
+    probeTimerMs = ms
+    probeTimer = setInterval(() => { void probeSlowSources() }, ms)
+  }
+  if (entering && probeBoot === null) {
+    probeBoot = setTimeout(() => { probeBoot = null; void probeSlowSources() }, PROBE_BOOT_MS)
+  }
+}
+
+// ---------- consolidated slow-source probe (ONE PowerShell process) ----------
+// Temperature / pagefile / disk capacity / disk activity / GPU name used to be
+// four+ separate CIM refreshes; they now share a single -Command run whose
+// sections are separated by ---DH---. The parsers above are reused verbatim.
+const PROBE_SEP = '---DH---'
+const PROBE_COMMAND = [
+  "(Get-CimInstance -ClassName MSAcpi_ThermalZoneTemperature | ForEach-Object { \"$($_.CurrentTemperature)\" })",
+  `'${PROBE_SEP}'`,
+  '$os = Get-CimInstance Win32_OperatingSystem; "$($os.TotalVirtualMemorySize)|$($os.FreeVirtualMemory)"',
+  `'${PROBE_SEP}'`,
+  "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { \"$($_.DeviceID)|$($_.VolumeName)|$($_.Size)|$($_.FreeSpace)\" }",
+  `'${PROBE_SEP}'`,
+  DISK_ACTIVITY_PS,
+  `'${PROBE_SEP}'`,
+  '(Get-CimInstance Win32_VideoController | ForEach-Object { "$($_.Name)" })',
+].join('\n')
+
+let probeInFlight = false
+
+function publishProbe<T>(s: { value: T | null; status: ResSourceStatus; lastAt: number }, at: number, parse: () => T): void {
+  try {
+    s.value = parse()
+    s.status = 'ok'
+  } catch {
+    // Section empty/partially corrupted: keep the prior value and degrade.
+    if (s.value === null) s.status = 'unavailable'
+    else s.status = 'degraded'
+  }
+  s.lastAt = at
+}
+
+async function probeSlowSources(): Promise<void> {
+  if (probeInFlight) return
+  if (effectiveLevel() === 'off') return // never probe while nothing is watching
+  if (psWorking === false) return // PowerShell proven missing in this session
+  probeInFlight = true
+  const at = Date.now()
+  try {
+    // Sections: [0]=preamble [1]=temperature [2]=pagefile [3]=capacity [4]=activity [5]=gpu names
+    const sec = (await ps(PROBE_COMMAND, 12000)).split(PROBE_SEP)
+    // Hardware may legitimately report nothing (e.g. no ACPI thermal zone):
+    // that stays 'ok' with a null value, exactly like the old per-source reads.
+    temperatureSrc.value = parseTemperatureOut(sec[1] ?? '')
+    temperatureSrc.status = 'ok'
+    temperatureSrc.lastAt = at
+    pagefileSrc.value = parsePagefileOut(sec[2] ?? '')
+    pagefileSrc.status = 'ok'
+    pagefileSrc.lastAt = at
+    publishProbe(diskCapacitySrc, at, () => parseCapacityOut(sec[3] ?? ''))
+    if (!diskActivitySrc.refreshing) publishProbe(diskActivitySrc, at, () => parseDiskActivityOut(sec[4] ?? ''))
+    publishProbe(gpuNameSrc, at, () => parseGpuNameOut(sec[5] ?? ''))
+  } catch {
+    // Whole probe failed (timeout / PowerShell broken): keep cached values and
+    // degrade the badges honestly, mirroring the old refresh() catch path.
+    const degraded = (v: unknown) => (v === null ? 'unavailable' : 'degraded') as ResSourceStatus
+    temperatureSrc.status = degraded(temperatureSrc.value)
+    pagefileSrc.status = degraded(pagefileSrc.value)
+    diskCapacitySrc.status = degraded(diskCapacitySrc.value)
+    if (!diskActivitySrc.refreshing) diskActivitySrc.status = degraded(diskActivitySrc.value)
+    gpuNameSrc.status = degraded(gpuNameSrc.value)
+    temperatureSrc.lastAt = at
+    pagefileSrc.lastAt = at
+    diskCapacitySrc.lastAt = at
+    gpuNameSrc.lastAt = at
+    if (!diskActivitySrc.refreshing) diskActivitySrc.lastAt = at
+  } finally {
+    probeInFlight = false
+  }
 }
 
 export function startResMonitor(
@@ -479,18 +722,17 @@ export function startResMonitor(
   prevCoreTimes = cpuTimesSnapshot()
   cores = os.cpus().map((c, i) => ({ index: i, percent: 0, speedMHz: Math.round(c.speed ?? 0) }))
   cpuTotalPercent = 0
-  const cfg = getResConfig()
-  timer = setInterval(() => { void tick() }, Math.min(Math.max(cfg.intervalMs, 1000), 10000))
-  // Perf: the first tick spawns PowerShell/Get-Process (heavy on HDD) — delay it
-  // a few seconds so app startup isn't competing for disk/CPU. The Resources
-  // page falls back to a local CPU sample until the first tick lands.
-  const bootTimer = timer
-  bootTimeout = setTimeout(() => { if (timer === bootTimer && timer !== null) void tick() }, 4000)
+  // Boots at 'off' level: a 12s pure-JS heartbeat, no PowerShell/nvidia-smi
+  // burst at startup. Data starts flowing as soon as a page or the card
+  // claims attention (setPageActivity / setCardActivity).
+  resyncTimers()
 }
 
 export function stopResMonitor(): void {
   if (timer !== null) { clearInterval(timer); timer = null }
-  if (bootTimeout !== null) { clearTimeout(bootTimeout); bootTimeout = null }
+  timerMs = -1
+  lastLevel = null
+  clearProbeTimers()
 }
 
 export function getResSnapshot(): ResLive {

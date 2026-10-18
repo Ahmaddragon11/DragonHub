@@ -5,6 +5,7 @@ import {
   Languages, Palette, Sparkles, Rocket, ChevronRight, ChevronLeft, StickyNote, CheckSquare,
   Lightbulb, FolderOpen, ShieldCheck, Zap, Check,
 } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { Modal } from '@/components/ui'
 import { useApp } from '@/store'
 import { Logo } from '@/components/Shell'
@@ -57,7 +58,9 @@ function ThemeSwatch({ theme, accent }: { theme: Theme; accent: string }) {
 export function Onboarding() {
   const { t } = useTranslation()
   const { reduced } = useMotionPrefs()
-  const { onboardingOpen, settings, setSettings, dismissWhatsNew, navigate } = useApp()
+  const { onboardingOpen, settings, setSettings, dismissWhatsNew, navigate } = useApp(useShallow((s) => ({
+    onboardingOpen: s.onboardingOpen, settings: s.settings, setSettings: s.setSettings, dismissWhatsNew: s.dismissWhatsNew, navigate: s.navigate,
+  })))
   const [step, setStep] = useState(0)
   const [dir, setDir] = useState(1)
   if (!onboardingOpen) return null
@@ -223,7 +226,7 @@ export function Onboarding() {
 /** Shown once after an update: lists the running version's highlights (offline). */
 export function WhatsNew() {
   const { t } = useTranslation()
-  const { whatsNewOpen, dismissWhatsNew } = useApp()
+  const { whatsNewOpen, dismissWhatsNew } = useApp(useShallow((s) => ({ whatsNewOpen: s.whatsNewOpen, dismissWhatsNew: s.dismissWhatsNew })))
   if (!whatsNewOpen) return null
   // The running version's own entry is always in CHANGELOG (built-in, offline).
   const entry = CHANGELOG.find((e) => e.version === APP_VERSION)

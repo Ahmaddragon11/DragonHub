@@ -2,11 +2,12 @@ import React, { Suspense, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { useApp } from '@/store'
-import { TitleBar, Sidebar, Splash, CommandPalette, ShortcutsOverlay, useGlobalShortcuts, useViewport } from '@/components/Shell'
+import { TitleBar, Sidebar, Splash, CommandPalette, ShortcutsOverlay, useGlobalShortcuts, useViewport, NAV } from '@/components/Shell'
 import { Toasts, Skeleton } from '@/components/ui'
 import { Onboarding, WhatsNew } from '@/components/Onboarding'
 import { UpdateCard } from '@/components/UpdateCard'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import BackgroundLayer from '@/components/BackgroundLayer'
 import { pageVariants, useMotionPrefs } from '@/lib/motion'
 import Dashboard from '@/pages/Dashboard'
 import Notes from '@/pages/Notes'
@@ -16,6 +17,7 @@ import Tasks from '@/pages/Tasks'
 // Perf: everything except the four core productivity pages is code-split, so
 // the initial bundle stays small and first paint is fast (less to parse, less
 // startup RAM). Pages load on first navigation behind a skeleton fallback.
+const AiPage = React.lazy(() => import('@/pages/Ai'))
 const Files = React.lazy(() => import('@/pages/Files'))
 const Editor = React.lazy(() => import('@/pages/Editor'))
 const Downloads = React.lazy(() => import('@/pages/Downloads'))
@@ -31,7 +33,13 @@ const Shortcuts = React.lazy(() => import('@/pages/Shortcuts'))
 const Settings = React.lazy(() => import('@/pages/Settings'))
 const About = React.lazy(() => import('@/pages/About'))
 
-const PAGES: Record<string, React.ComponentType> = { dashboard: Dashboard, notes: Notes, projects: Projects, tasks: Tasks, files: Files, editor: Editor, downloads: Downloads, compress: Compress, images: Images, video: Video, vault: Vault, network: Network, resources: Resources, taskManager: TaskManager, screenshot: Screenshot, shortcuts: Shortcuts, settings: Settings, about: About }
+const PAGES: Record<string, React.ComponentType> = { dashboard: Dashboard, notes: Notes, projects: Projects, tasks: Tasks, ai: AiPage, files: Files, editor: Editor, downloads: Downloads, compress: Compress, images: Images, video: Video, vault: Vault, network: Network, resources: Resources, taskManager: TaskManager, screenshot: Screenshot, shortcuts: Shortcuts, settings: Settings, about: About }
+
+/** Position of a page in the sidebar NAV order. Pages outside NAV sort last, so known→unknown reads as forward and unknown→known as backward. */
+const navIndex = (id: string): number => {
+  const i = NAV.findIndex((n) => n.id === id)
+  return i === -1 ? NAV.length : i
+}
 
 /** Fires a desktop notification + toast once per task when its reminder time arrives. */
 function useReminders() {
@@ -55,6 +63,7 @@ function useReminders() {
     void ensurePermission()
 
     const check = () => {
+      if (document.hidden) return
       const { tasks, navigate } = useApp.getState()
       const now = Date.now()
       // Bound memory in long sessions: drop old keys once the set grows.
@@ -79,7 +88,13 @@ function useReminders() {
     }
     check()
     const i = setInterval(check, 30000)
-    return () => clearInterval(i)
+    // Reminders that fell due while hidden: run once when returning to view.
+    const onVis = () => { if (!document.hidden) check() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(i)
+      document.removeEventListener('visibilitychange', onVis)
+    }
   }, [ready, t])
 }
 
@@ -106,13 +121,26 @@ export default function App() {
   useEffect(() => { init() }, [init])
   useEffect(() => { if (viewport !== 'mobile') setDrawer(false) }, [viewport])
   const Page = PAGES[page] || Dashboard
-  const v = pageVariants(reduced, k)
+  // Direction-aware transition. Stale-ref compare during render: only refs are
+  // touched, so it is safe. `dirRef` persists the last direction, so extra
+  // renders (e.g. StrictMode) can never flip the animation.
+  const prevPage = useRef(page)
+  const dirRef = useRef<1 | -1>(1)
+  if (prevPage.current !== page) {
+    dirRef.current = navIndex(page) >= navIndex(prevPage.current) ? 1 : -1
+    prevPage.current = page
+  }
+  // RTL mirrors the travel axis so forward still reads as forward in Arabic.
+  const rtl = typeof document !== 'undefined' && document.documentElement.dir === 'rtl'
+  const dir: 1 | -1 = rtl ? (dirRef.current === 1 ? -1 : 1) : dirRef.current
+  const v = pageVariants(reduced, k, dir)
 
   return (
     <MotionConfig reducedMotion={off ? 'always' : 'user'} transition={off ? { duration: 0 } : undefined}>
       <div className="app-root h-screen w-screen overflow-hidden bg-surface-50 text-surface-900 relative">
         <a href="#main" className="sr-only-focusable fixed top-2 start-2 z-[300] btn-primary">{t('a11y.skip')}</a>
         <div className="app-bg" aria-hidden />
+        <BackgroundLayer />
         <div className="aurora fixed inset-0 pointer-events-none" />
         <div className="bg-detail" aria-hidden />
         <AnimatePresence>{!ready && <Splash key="splash" />}</AnimatePresence>

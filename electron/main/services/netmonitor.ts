@@ -243,6 +243,7 @@ function effectiveDailyCapMB(limits: NetLimits | null, plan: NetPlan | null): nu
 
 let state: NetState = loadState()
 let timer: ReturnType<typeof setInterval> | null = null
+let timerMs = TICK_MS
 let getWinFn: () => BrowserWindow | null = () => null
 let hooks: NetHooks = {
   onCapExceeded() { /* set via setNetHooks */ },
@@ -256,6 +257,40 @@ let lastNeedsAdmin = false
  *  cap flag so midnight restore only ever clears cap-triggered blocks. */
 export function setManualBlocked(v: boolean): void {
   manualBlocked = v
+}
+
+/** Demand-driven cadence switch (Network page open / floating card, wire from
+ *  index.ts). While something is watching (or a block state is latched) the
+ *  normal 2s tick runs; fully idle it relaxes 3x so the execFile(netstat)
+ *  heartbeat cost mostly disappears. */
+let netActivity = false
+export function setNetActivity(active: boolean): void {
+  netActivity = !!active
+  retargetNetTimer()
+}
+
+/** Main window hidden (tray/minimize): nothing is rendering net data (the card
+ *  never shows it), so the tick drops the broadcast while accounting, cap and
+ *  persistence keep running. Wired from index.ts hide/minimize/show/restore. */
+let windowHidden = false
+export function setWindowHidden(hidden: boolean): void {
+  windowHidden = !!hidden
+}
+
+function netTickMs(): number {
+  return netActivity || state.blockedByCap || manualBlocked ? TICK_MS : TICK_MS * 3
+}
+
+/** Swap the interval period without priming/base resets: just a clearInterval +
+ *  setInterval around the same overlapping-guarded tick loop. */
+function retargetNetTimer(): void {
+  const ms = netTickMs()
+  if (timer === null || ms === timerMs) return
+  clearInterval(timer)
+  timerMs = ms
+  timer = setInterval(() => {
+    void tick()
+  }, ms)
 }
 
 /** Last admin/elevation outcome, so the UI warning survives the next poll. */
@@ -287,6 +322,7 @@ export function setBlockedFlagProvider(fn: () => boolean): void {
 }
 
 function emit(win: BrowserWindow | null, live: NetLive): void {
+  if (windowHidden) return // hidden renderer has no consumer for net:update
   win?.webContents.send('net:update', live)
 }
 
@@ -387,6 +423,9 @@ async function tick(): Promise<void> {
   } catch { /* the monitor must never break the main process */ }
   finally {
     inFlight = false
+    // Keep the cadence in step with block-state flips (cap latch, manual
+    // block via netblock IPC) without plumbing a call at every mutation site.
+    retargetNetTimer()
   }
 }
 
@@ -400,9 +439,10 @@ export function startNetMonitor(getWin: () => BrowserWindow | null): void {
   prevAt = 0
   downSpeedBps = 0
   upSpeedBps = 0
+  timerMs = netTickMs()
   timer = setInterval(() => {
     void tick()
-  }, TICK_MS)
+  }, timerMs)
   void tick()
 }
 
